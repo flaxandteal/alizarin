@@ -457,16 +457,29 @@ export function getWKRMClass(): any {
 // Static type factories (WASM ↔ plain objects for NAPI)
 // ============================================================================
 
+/** Core's name for each static type a factory builds (`constructStatic`).
+ * Tiles are left out: on NAPI they are `NapiStaticTile`s (`createStaticTile`). */
+const STATIC_KINDS = new Map<string, string>([
+  ['StaticGraphMeta', 'graph_meta'],
+  ['StaticNode', 'node'],
+  ['StaticNodegroup', 'nodegroup'],
+  ['StaticEdge', 'edge'],
+  ['StaticCard', 'card'],
+  ['StaticCardsXNodesXWidgets', 'cards_x_nodes_x_widgets'],
+  ['StaticPublication', 'publication'],
+  ['StaticResource', 'resource'],
+]);
+
 /**
- * Generic factory: create a WASM type instance, or return plain object in NAPI mode.
- *
- * ALL WASM types (StaticGraph, StaticNode, StaticTile, etc.) are serde wrappers
- * that take a JS object, deserialize into Rust, and provide getters. In NAPI mode,
- * we just use plain objects — NAPI stringifies them when it needs them in Rust.
+ * Generic factory: a static type built by core from a JS object. On WASM, an
+ * instance of the class (StaticNode, StaticResource, ...), a serde wrapper with
+ * getters; on NAPI, the plain object core builds (`constructStatic`).
  */
 export function createWasmType(className: string, data: any): any {
   if (_backend === 'napi') {
-    return data;
+    const kind = STATIC_KINDS.get(className);
+    if (!kind) throw new Error(`Unknown static type: ${className}`);
+    return getNapiModule().constructStatic(kind, data);
   }
   const Cls = getWasmModule()[className];
   if (!Cls) throw new Error(`Unknown WASM type: ${className}`);
@@ -623,14 +636,12 @@ export function applyGraphMutations(graph: any, mutationsJson: string): any {
 }
 
 /**
- * Parse a business_data JSON string into StaticResource[].
- * In WASM mode uses the Rust bulk parser; in NAPI mode JSON.parse.
+ * Parse a business_data JSON string into StaticResource[], by core on either
+ * backend (WASM classes, or NAPI's plain objects).
  */
 export function parseStaticResources(jsonText: string): any[] {
   if (_backend === 'napi') {
-    const parsed = JSON.parse(jsonText);
-    const resources = parsed?.business_data?.resources;
-    return Array.isArray(resources) ? resources : [];
+    return getNapiModule().resourcesFromBusinessDataJson(jsonText);
   }
   const { StaticResource } = getWasmModule();
   return StaticResource.fromBusinessDataJsonString(jsonText);

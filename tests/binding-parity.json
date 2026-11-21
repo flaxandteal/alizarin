@@ -3295,7 +3295,7 @@
       "python": "canonical_static",
       "why": {
         "wasm": "ecosystem: WASM's static classes already serialise through core",
-        "napi": "gap: B-7, NAPI needs canonicalStatic so js/backend.ts createStatic* goes through core"
+        "napi": "ecosystem: NAPI's static types are core's JSON already, built by constructStatic"
       }
     },
     "cards_to_tree": {
@@ -3485,6 +3485,14 @@
       "wasm": "composeResourceLayers",
       "napi": "composeResourceLayers",
       "python": "compose_resource_layers"
+    },
+    "construct_static": {
+      "wasm": null,
+      "napi": "constructStatic",
+      "python": "construct_static",
+      "why": {
+        "wasm": "ecosystem: WASM's static classes' constructors (new StaticNode(...)) build through core"
+      }
     },
     "export_all_graphs": {
       "wasm": "exportAllGraphs",
@@ -4010,6 +4018,14 @@
       "wasm": "resourceLifecycleState",
       "napi": "resourceLifecycleState",
       "python": "resource_lifecycle_state"
+    },
+    "resources_from_business_data_json": {
+      "wasm": null,
+      "napi": "resourcesFromBusinessDataJson",
+      "python": "resources_from_business_data_json",
+      "why": {
+        "wasm": "ecosystem: a static method on WASM's resource class, StaticResource.fromBusinessDataJsonString"
+      }
     },
     "set_current_language": {
       "wasm": "setCurrentLanguage",

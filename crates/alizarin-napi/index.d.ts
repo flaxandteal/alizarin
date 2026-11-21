@@ -157,6 +157,16 @@ export declare function findNeededCollections(treeJson: string, aliasToCollectio
  */
 export declare function summaryToMetadata(summary: any): any
 /**
+ * A static type (`"node"`, `"resource"`, ...) built from a JS object, as
+ * core builds it: what the WASM classes' constructors hold.
+ */
+export declare function constructStatic(kind: string, value: any): any
+/**
+ * The resources of a business data JSON string, as core builds them: the
+ * WASM `StaticResource.fromBusinessDataJsonString`.
+ */
+export declare function resourcesFromBusinessDataJson(json: string): any
+/**
  * A lightweight resource (no tiles, `tiles_loaded: false`) from a registry
  * summary, as core builds it: the WASM `StaticResource.fromSummary`.
  */

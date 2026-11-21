@@ -132,6 +132,23 @@ fn outputs() -> BTreeMap<String, String> {
         .unwrap();
     put("business_data:refs".into(), canonical(&refs));
 
+    // Resources built from input, as the bindings' constructors build them.
+    put(
+        "resource:constructed".into(),
+        canonical(
+            &alizarin_core::construct_static_resource(
+                serde_json::from_str(&read("resource.json")).unwrap(),
+            )
+            .unwrap(),
+        ),
+    );
+    put(
+        "business_data:resources".into(),
+        canonical(
+            &alizarin_core::resources_from_business_data_json(&read("business-data.json")).unwrap(),
+        ),
+    );
+
     // A tile with every optional field empty, as `createStaticTile` makes one.
     let mut empty = StaticTile::new_empty("0a0a0a0a-0000-4000-8000-000000000011".into());
     empty.resourceinstance_id = "0b0b0b0b-0000-4000-8000-000000000001".into();

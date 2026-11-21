@@ -113,6 +113,22 @@ def routes():
             return alizarin.ResourceRegistry().load_from_business_data_bytes(f.read())
 
     out.append(("load_from_business_data_bytes", "business_data:refs", business_data_refs))
+
+    # Built from input, as the WASM constructors and NAPI's createStatic* build them.
+    for node in GRAPH["nodes"]:
+        out.append(
+            ("construct_static(node)", f"node:{node['alias']}", lambda node=node: alizarin.construct_static("node", node))
+        )
+    out.append(("construct_static(resource)", "resource:constructed", lambda: alizarin.construct_static("resource", RESOURCE)))
+    with open(os.path.join(DATA_DIR, "business-data.json"), encoding="utf-8") as f:
+        business_data_text = f.read()
+    out.append(
+        (
+            "resources_from_business_data_json",
+            "business_data:resources",
+            lambda: alizarin.resources_from_business_data_json(business_data_text),
+        )
+    )
     out.append(("summary_to_metadata", "resource.summary.metadata", lambda: alizarin.summary_to_metadata(summary())))
     out.append(
         ("static_resource_from_summary", "resource.from_summary", lambda: alizarin.static_resource_from_summary(summary()))

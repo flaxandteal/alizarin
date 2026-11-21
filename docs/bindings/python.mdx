@@ -92,6 +92,7 @@ state = alizarin.resource_lifecycle_state(json.dumps(resource), json.dumps(graph
 | `merge_resources(resources_json)` | Merge a JSON array of resources (grouped by resourceinstanceid) |
 | `batch_merge_resources(batches_json, recompute_descriptors, strict)` | Batch merge across multiple JSON batches |
 | `streamed_merge_from_files(file_paths, chunk_size, ...)` | Memory-efficient stream-merge of resources from files |
+| `construct_static(kind, value)` / `resources_from_business_data_json(json)` | A static type built from a dict (a resource gets `tiles_loaded` as given, else whether it has tiles), or a business data file's resources, as core builds them on every binding |
 | `ResourceRegistry` | Class: create and manage a resource registry. `load_from_business_data_bytes(data, store_full=True, include_caches=True)` loads a business data file's bytes and returns `{resourceinstanceid, graph_id, isPublic}` for each resource, as WASM's and NAPI's `loadFromBusinessDataBytes` do |
 | `summary_to_metadata(summary)` / `static_resource_from_summary(summary)` | From a registry summary (`ResourceRegistry.get_summary`): its resource metadata, or a lightweight resource with no tiles (`tiles_loaded: False`), as core builds them |
 | `compose_resource_layers(resources_json, base_graph_json, overlay_graphs_json, strict=False)` | Compose [resource layers](/docs/resource-layers) |

@@ -2479,13 +2479,7 @@ impl StaticResource {
         let mut core: CoreStaticResource = crate::js_json::from_value(data).map_err(|e| {
             JsValue::from_str(&format!("Failed to deserialize StaticResource: {:?}", e))
         })?;
-
-        // As declared, as on NAPI and Python; inferred from the tiles only if not.
-        core.tiles_loaded = Some(
-            core.tiles_loaded
-                .unwrap_or_else(|| core.tiles.as_ref().is_some_and(|t| !t.is_empty())),
-        );
-
+        core.infer_tiles_loaded();
         Ok(StaticResource(core))
     }
 
@@ -2499,13 +2493,7 @@ impl StaticResource {
     pub fn from_json_string(json_str: &str) -> Result<StaticResource, JsValue> {
         let mut core: CoreStaticResource = serde_json::from_str(json_str)
             .map_err(|e| JsValue::from_str(&format!("Failed to parse resource JSON: {}", e)))?;
-
-        // As declared, as on NAPI and Python; inferred from the tiles only if not.
-        core.tiles_loaded = Some(
-            core.tiles_loaded
-                .unwrap_or_else(|| core.tiles.as_ref().is_some_and(|t| !t.is_empty())),
-        );
-
+        core.infer_tiles_loaded();
         Ok(StaticResource(core))
     }
 
@@ -2513,32 +2501,12 @@ impl StaticResource {
     /// This is much faster than parsing each resource individually
     #[wasm_bindgen(js_name = fromBusinessDataJsonString)]
     pub fn from_business_data_json_string(json_str: &str) -> Result<Vec<StaticResource>, JsValue> {
-        #[derive(serde::Deserialize)]
-        struct BusinessDataWrapper {
-            business_data: BusinessData,
-        }
-        #[derive(serde::Deserialize)]
-        struct BusinessData {
-            resources: Vec<CoreStaticResource>,
-        }
-
-        let wrapper: BusinessDataWrapper = serde_json::from_str(json_str).map_err(|e| {
-            JsValue::from_str(&format!("Failed to parse business_data JSON: {}", e))
-        })?;
-
-        let resources: Vec<StaticResource> = wrapper
-            .business_data
-            .resources
-            .into_iter()
-            .map(|mut core| {
-                // As declared, as on NAPI and Python; inferred only if not.
-                core.tiles_loaded = Some(
-                    core.tiles_loaded
-                        .unwrap_or_else(|| core.tiles.as_ref().is_some_and(|t| !t.is_empty())),
-                );
-                StaticResource(core)
-            })
-            .collect();
+        let resources: Vec<StaticResource> =
+            alizarin_core::resources_from_business_data_json(json_str)
+                .map_err(|e| JsValue::from_str(&e))?
+                .into_iter()
+                .map(StaticResource)
+                .collect();
 
         Ok(resources)
     }

@@ -26,6 +26,13 @@ import {
   createStaticGraphMeta,
   createWKRM,
   createStaticTile,
+  createStaticNode,
+  createStaticNodegroup,
+  createStaticEdge,
+  createStaticCard,
+  createStaticPublication,
+  createStaticCardsXNodesXWidgets,
+  createStaticResource,
   createResourceRegistry,
   createInstanceWrapperForModel,
   parseStaticResources,
@@ -163,6 +170,19 @@ function routes(): [string, string, () => any][] {
   out.push(["tilesToTree", "tree", () => tilesToTree(resourceText, graph)]);
   out.push(["cardsToTree", "tree:cards", () => cardsToTree(resourceText, graph)]);
   out.push(["batchTilesToTrees", "trees:batch", () => batchTilesToTrees(`[${resourceText}]`, graph, true)]);
+  // The factories: core builds each, on either backend.
+  graphFixture.nodes.forEach((n: any) => out.push([`createStaticNode(${n.alias})`, `node:${n.alias}`, () => createStaticNode(n)]));
+  graphFixture.nodegroups.forEach((g: any) =>
+    out.push([`createStaticNodegroup(${g.nodegroupid})`, `nodegroup:${g.nodegroupid}`, () => createStaticNodegroup(g)]),
+  );
+  graphFixture.edges.forEach((e: any) => out.push([`createStaticEdge(${e.edgeid})`, `edge:${e.edgeid}`, () => createStaticEdge(e)]));
+  graphFixture.cards.forEach((c: any) => out.push([`createStaticCard(${c.cardid})`, `card:${c.cardid}`, () => createStaticCard(c)]));
+  graphFixture.cards_x_nodes_x_widgets.forEach((x: any) =>
+    out.push([`createStaticCardsXNodesXWidgets(${x.id})`, `cxnxw:${x.id}`, () => createStaticCardsXNodesXWidgets(x)]),
+  );
+  out.push(["createStaticPublication", "publication", () => createStaticPublication(graphFixture.publication)]);
+  out.push(["createStaticResource", "resource:constructed", () => createStaticResource(resourceFixture)]);
+  out.push(["parseStaticResources", "business_data:resources", () => parseStaticResources(read("business-data.json"))]);
   out.push([
     "registry.loadFromBusinessDataBytes",
     "business_data:refs",

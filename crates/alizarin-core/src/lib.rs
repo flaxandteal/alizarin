@@ -10,6 +10,7 @@
 /// The version of alizarin-core (from Cargo.toml at compile time).
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+pub mod canonical;
 pub mod card_traversal;
 pub mod csv_business_data_loader;
 pub mod csv_model_loader;
@@ -136,6 +137,11 @@ pub use graph::{
 // Former names of DeriveConfig and derive_functions, kept for existing callers.
 #[allow(deprecated)]
 pub use graph::{compute_tiles_functions, ComputeTilesConfig};
+
+pub use canonical::{
+    canonical_static, construct_static, construct_static_resource,
+    resources_from_business_data_json,
+};
 
 // Loader
 pub use loader::{

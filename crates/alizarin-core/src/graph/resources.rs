@@ -186,6 +186,13 @@ impl StaticResource {
             .is_some_and(|arr| arr.iter().any(|v| v.as_str() == Some(scope)))
     }
 
+    /// Settle `tiles_loaded` as a resource built from input has it: as
+    /// declared, else whether it has any tiles.
+    pub fn infer_tiles_loaded(&mut self) {
+        let has_tiles = self.tiles.as_ref().is_some_and(|t| !t.is_empty());
+        self.tiles_loaded = Some(self.tiles_loaded.unwrap_or(has_tiles));
+    }
+
     /// Convert to a summary (for registry storage)
     pub fn to_summary(&self) -> StaticResourceSummary {
         StaticResourceSummary {

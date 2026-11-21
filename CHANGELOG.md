@@ -17,6 +17,11 @@ entries is tracked in `PARITY-RESEARCH.md`.
   registered graph the resource names. TypeScript: the same three exported
   from `alizarin`, on either backend. Python: `cards_to_json_tree` exported
   from `alizarin` (it was only in the compiled submodule).
+- NAPI: `constructStatic(kind, value)` and `resourcesFromBusinessDataJson`.
+  Python: `construct_static` and `resources_from_business_data_json`. A
+  static type, or a business data file's resources, built by core as WASM's
+  constructors build them. Python's `canonical_static` is now core's, and
+  takes `"graph_meta"`.
 - Python: `ResourceRegistry.load_from_business_data_bytes`, as WASM's and
   NAPI's `loadFromBusinessDataBytes`. Core now decides each ref's `isPublic`
   (its `__scopes` include `"public"`); both bindings had their own copy.
@@ -39,6 +44,18 @@ entries is tracked in `PARITY-RESEARCH.md`.
   - malformed `tiles` are an error in Python too (it gave an empty tree).
   - Python's `batch_tiles_to_trees` result always has `errors` and
     `error_count`, as WASM's did.
+- NAPI: `createStaticResource`, `createStaticNode`, `createStaticNodegroup`,
+  `createStaticEdge`, `createStaticCard`, `createStaticPublication`,
+  `createStaticCardsXNodesXWidgets`, `createStaticGraphMeta` (and `new
+  StaticResource(…)` etc.) build through core, as on WASM; they returned
+  their input unchanged. `parseStaticResources` parses through core too.
+  **Breaking**, on NAPI only, where it differed from WASM:
+  - malformed input is an error (it was passed through).
+  - a resource gets `tiles_loaded` (as given, else whether it has tiles).
+  - `parseStaticResources` on JSON with no `business_data.resources` is an
+    error (it gave `[]`).
+  - `new StaticTile(…)` gives a `NapiStaticTile`, as `createStaticTile` does
+    (it gave the input object).
 - Malformed resource descriptors (`{"name": 5}`, or the same under a
   language) are an error when a resource is read. The business-data loader
   used to drop them silently to empty.

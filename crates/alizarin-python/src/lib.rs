@@ -575,34 +575,38 @@ fn batch_trees_to_tiles(
 /// Args:
 ///     kind: the core type: "node", "nodegroup", "edge", "card", "constraint",
 ///         "cards_x_nodes_x_widgets", "functions_x_graphs", "publication",
-///         "tile", "resource", "resource_descriptors" or "graph".
+///         "graph_meta", "tile", "resource", "resource_descriptors" or "graph".
 ///     value: the dict to normalise.
 #[pyfunction]
 fn canonical_static(py: Python, kind: &str, value: &Bound<'_, PyAny>) -> PyResult<PyObject> {
-    fn via<T: serde::de::DeserializeOwned + serde::Serialize>(
-        json: serde_json::Value,
-    ) -> Result<serde_json::Value, String> {
-        let typed: T = serde_json::from_value(json).map_err(|e| e.to_string())?;
-        serde_json::to_value(&typed).map_err(|e| e.to_string())
-    }
-    let json = python_json::python_to_json(py, value)?;
-    let canonical = match kind {
-        "node" => via::<alizarin_core::StaticNode>(json),
-        "nodegroup" => via::<alizarin_core::StaticNodegroup>(json),
-        "edge" => via::<alizarin_core::StaticEdge>(json),
-        "card" => via::<alizarin_core::StaticCard>(json),
-        "constraint" => via::<alizarin_core::StaticConstraint>(json),
-        "cards_x_nodes_x_widgets" => via::<alizarin_core::StaticCardsXNodesXWidgets>(json),
-        "functions_x_graphs" => via::<alizarin_core::StaticFunctionsXGraphs>(json),
-        "publication" => via::<alizarin_core::StaticPublication>(json),
-        "tile" => via::<alizarin_core::StaticTile>(json),
-        "resource" => via::<alizarin_core::StaticResource>(json),
-        "resource_descriptors" => via::<alizarin_core::StaticResourceDescriptors>(json),
-        "graph" => via::<alizarin_core::StaticGraph>(json),
-        other => Err(format!("unknown static type: {other}")),
-    }
-    .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("{kind}: {e}")))?;
+    let canonical = alizarin_core::canonical_static(kind, python_json::python_to_json(py, value)?)
+        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
     pythonize::pythonize(py, &canonical)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
+}
+
+/// A static type built from a dict, as every binding's constructor builds it:
+/// `canonical_static`, except that a resource's `tiles_loaded` is settled (as
+/// given, else whether it has tiles).
+///
+/// Args:
+///     kind: as for `canonical_static`.
+///     value: the dict to build from.
+#[pyfunction]
+fn construct_static(py: Python, kind: &str, value: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+    let built = alizarin_core::construct_static(kind, python_json::python_to_json(py, value)?)
+        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
+    pythonize::pythonize(py, &built)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
+}
+
+/// The resources of a business data file (`{"business_data": {"resources":
+/// [...]}}`), each as `construct_static("resource", ...)` builds it.
+#[pyfunction]
+fn resources_from_business_data_json(py: Python, json: &str) -> PyResult<PyObject> {
+    let resources = alizarin_core::resources_from_business_data_json(json)
+        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
+    pythonize::pythonize(py, &resources)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
 
@@ -2396,6 +2400,8 @@ fn alizarin(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(resource_lifecycle_state, m)?)?;
     m.add_function(wrap_pyfunction!(transition_resource_lifecycle, m)?)?;
     m.add_function(wrap_pyfunction!(canonical_static, m)?)?;
+    m.add_function(wrap_pyfunction!(construct_static, m)?)?;
+    m.add_function(wrap_pyfunction!(resources_from_business_data_json, m)?)?;
     m.add_function(wrap_pyfunction!(summary_to_metadata, m)?)?;
     m.add_function(wrap_pyfunction!(static_resource_from_summary, m)?)?;
     m.add_function(wrap_pyfunction!(cards_to_json_tree, m)?)?;

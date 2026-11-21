@@ -6,6 +6,7 @@ import {
   createStaticNode,
   createStaticTranslatableString,
   createStaticPublication,
+  createStaticTile,
   createWasmType,
   getRdmCache,
   parseStaticGraph as _parseStaticGraph,
@@ -58,7 +59,7 @@ type StaticNode = _WasmStaticNode;
 const StaticEdge: typeof _WasmStaticEdge = _proxyClass(_WasmStaticEdge, (d: any) => createWasmType('StaticEdge', d));
 type StaticEdge = _WasmStaticEdge;
 
-const StaticTile: typeof _WasmStaticTile = _proxyClass(_WasmStaticTile, (d: any) => createWasmType('StaticTile', d));
+const StaticTile: typeof _WasmStaticTile = _proxyClass(_WasmStaticTile, (d: any) => createStaticTile(d));
 type StaticTile = _WasmStaticTile;
 
 const StaticResource: typeof _WasmStaticResource = _proxyClass(_WasmStaticResource, (d: any) => createWasmType('StaticResource', d));

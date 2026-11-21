@@ -1188,6 +1188,26 @@ pub fn summary_to_metadata(
         .map_err(|e| napi::Error::from_reason(format!("Serialization failed: {}", e)))
 }
 
+/// A static type (`"node"`, `"resource"`, ...) built from a JS object, as
+/// core builds it: what the WASM classes' constructors hold.
+#[napi]
+pub fn construct_static(
+    kind: String,
+    #[napi(ts_arg_type = "any")] value: JsonArg,
+) -> Result<serde_json::Value> {
+    alizarin_core::construct_static(&kind, value.0).map_err(napi::Error::from_reason)
+}
+
+/// The resources of a business data JSON string, as core builds them: the
+/// WASM `StaticResource.fromBusinessDataJsonString`.
+#[napi]
+pub fn resources_from_business_data_json(json: String) -> Result<serde_json::Value> {
+    let resources = alizarin_core::resources_from_business_data_json(&json)
+        .map_err(napi::Error::from_reason)?;
+    serde_json::to_value(resources)
+        .map_err(|e| napi::Error::from_reason(format!("Serialization failed: {}", e)))
+}
+
 /// A lightweight resource (no tiles, `tiles_loaded: false`) from a registry
 /// summary, as core builds it: the WASM `StaticResource.fromSummary`.
 #[napi]
