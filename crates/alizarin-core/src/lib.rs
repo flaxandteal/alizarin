@@ -141,7 +141,7 @@ pub use graph::{compute_tiles_functions, ComputeTilesConfig};
 pub use loader::{
     import_prebuild, load_collections_from_dir, load_ontology_xml_from_dir,
     parse_business_data_bytes, parse_business_data_resource_bytes, stream_business_data_resources,
-    ImportPrebuildResult, LoaderError, PrebuildInfo, PrebuildLoader,
+    BusinessDataRef, ImportPrebuildResult, LoaderError, PrebuildInfo, PrebuildLoader,
 };
 
 // Exporter

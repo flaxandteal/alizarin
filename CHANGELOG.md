@@ -17,6 +17,9 @@ entries is tracked in `PARITY-RESEARCH.md`.
   registered graph the resource names. TypeScript: the same three exported
   from `alizarin`, on either backend. Python: `cards_to_json_tree` exported
   from `alizarin` (it was only in the compiled submodule).
+- Python: `ResourceRegistry.load_from_business_data_bytes`, as WASM's and
+  NAPI's `loadFromBusinessDataBytes`. Core now decides each ref's `isPublic`
+  (its `__scopes` include `"public"`); both bindings had their own copy.
 - NAPI: `staticResourceFromSummary`. Python: `static_resource_from_summary`
   and `summary_to_metadata`. A lightweight resource (no tiles,
   `tiles_loaded: false`) or the metadata from a registry summary, as WASM's

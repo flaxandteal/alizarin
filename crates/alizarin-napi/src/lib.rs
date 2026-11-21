@@ -455,34 +455,20 @@ impl NapiStaticResourceRegistry {
         store_full: Option<bool>,
         include_caches: Option<bool>,
     ) -> Result<Vec<serde_json::Value>> {
-        let resources = alizarin_core::parse_business_data_bytes(&bytes).map_err(|e| {
-            napi::Error::from_reason(format!("Failed to parse business data: {}", e))
-        })?;
-
-        let store_full = store_full.unwrap_or(true);
-        let include_caches = include_caches.unwrap_or(true);
-
-        let refs: Vec<serde_json::Value> = resources
-            .iter()
-            .map(|r| {
-                let is_public = r
-                    .scopes
-                    .as_ref()
-                    .and_then(|s| s.as_array())
-                    .map(|arr| arr.iter().any(|v| v.as_str() == Some("public")))
-                    .unwrap_or(false);
-                serde_json::json!({
-                    "resourceinstanceid": r.resourceinstance.resourceinstanceid,
-                    "graph_id": r.resourceinstance.graph_id,
-                    "isPublic": is_public,
-                })
-            })
-            .collect();
-
-        self.inner
-            .merge_from_resources(&resources, store_full, include_caches);
-
-        Ok(refs)
+        let refs = self
+            .inner
+            .load_from_business_data_bytes(
+                &bytes,
+                store_full.unwrap_or(true),
+                include_caches.unwrap_or(true),
+            )
+            .map_err(|e| {
+                napi::Error::from_reason(format!("Failed to parse business data: {}", e))
+            })?;
+        refs.iter()
+            .map(serde_json::to_value)
+            .collect::<std::result::Result<_, _>>()
+            .map_err(|e| napi::Error::from_reason(e.to_string()))
     }
 
     /// Insert full resources from a business_data JSON file string.

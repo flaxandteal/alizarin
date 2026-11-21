@@ -1390,7 +1390,7 @@
           "napi": "contains",
           "python": null,
           "why": {
-            "python": "gap: the resource registry's methods differ per binding (A-7, B-11)"
+            "python": "gap: the resource registry's methods differ per binding (A-7)"
           }
         },
         {
@@ -1398,7 +1398,7 @@
           "napi": null,
           "python": "get_all_full",
           "why": {
-            "napi": "gap: the resource registry's methods differ per binding (A-7, B-11)"
+            "napi": "gap: the resource registry's methods differ per binding (A-7)"
           }
         },
         {
@@ -1411,8 +1411,8 @@
           "napi": "getFilteredTileValues",
           "python": null,
           "why": {
-            "wasm": "gap: the resource registry's methods differ per binding (A-7, B-11)",
-            "python": "gap: the resource registry's methods differ per binding (A-7, B-11)"
+            "wasm": "gap: the resource registry's methods differ per binding (A-7)",
+            "python": "gap: the resource registry's methods differ per binding (A-7)"
           }
         },
         {
@@ -1425,7 +1425,7 @@
           "napi": null,
           "python": "get_graph_id",
           "why": {
-            "napi": "gap: the resource registry's methods differ per binding (A-7, B-11)"
+            "napi": "gap: the resource registry's methods differ per binding (A-7)"
           }
         },
         {
@@ -1458,8 +1458,8 @@
           "napi": null,
           "python": null,
           "why": {
-            "napi": "gap: the resource registry's methods differ per binding (A-7, B-11)",
-            "python": "gap: the resource registry's methods differ per binding (A-7, B-11)"
+            "napi": "gap: the resource registry's methods differ per binding (A-7)",
+            "python": "gap: the resource registry's methods differ per binding (A-7)"
           }
         },
         {
@@ -1467,7 +1467,7 @@
           "napi": null,
           "python": "is_empty",
           "why": {
-            "napi": "gap: the resource registry's methods differ per binding (A-7, B-11)"
+            "napi": "gap: the resource registry's methods differ per binding (A-7)"
           }
         },
         {
@@ -1475,16 +1475,13 @@
           "napi": "length",
           "python": null,
           "why": {
-            "python": "gap: the resource registry's methods differ per binding (A-7, B-11)"
+            "python": "gap: the resource registry's methods differ per binding (A-7)"
           }
         },
         {
           "wasm": "loadFromBusinessDataBytes",
           "napi": "loadFromBusinessDataBytes",
-          "python": null,
-          "why": {
-            "python": "gap: the resource registry's methods differ per binding (A-7, B-11)"
-          }
+          "python": "load_from_business_data_bytes"
         },
         {
           "wasm": "markAggregatePending",
@@ -1496,7 +1493,7 @@
           "napi": "memoryStats",
           "python": null,
           "why": {
-            "python": "gap: the resource registry's methods differ per binding (A-7, B-11)"
+            "python": "gap: the resource registry's methods differ per binding (A-7)"
           }
         },
         {
@@ -1504,7 +1501,7 @@
           "napi": "memoryStatsDetailed",
           "python": null,
           "why": {
-            "python": "gap: the resource registry's methods differ per binding (A-7, B-11)"
+            "python": "gap: the resource registry's methods differ per binding (A-7)"
           }
         },
         {
@@ -1512,8 +1509,8 @@
           "napi": "mergeFromBusinessDataJson",
           "python": null,
           "why": {
-            "wasm": "gap: the resource registry's methods differ per binding (A-7, B-11)",
-            "python": "gap: the resource registry's methods differ per binding (A-7, B-11)"
+            "wasm": "gap: the resource registry's methods differ per binding (A-7)",
+            "python": "gap: the resource registry's methods differ per binding (A-7)"
           }
         },
         {
@@ -1526,7 +1523,7 @@
           "napi": "mergeFromResourcesJson",
           "python": null,
           "why": {
-            "python": "gap: the resource registry's methods differ per binding (A-7, B-11)"
+            "python": "gap: the resource registry's methods differ per binding (A-7)"
           }
         },
         {
@@ -1534,7 +1531,7 @@
           "napi": null,
           "python": "populate_caches",
           "why": {
-            "napi": "gap: the resource registry's methods differ per binding (A-7, B-11)"
+            "napi": "gap: the resource registry's methods differ per binding (A-7)"
           }
         },
         {
@@ -1542,7 +1539,7 @@
           "napi": "populateCachesFromJson",
           "python": null,
           "why": {
-            "python": "gap: the resource registry's methods differ per binding (A-7, B-11)"
+            "python": "gap: the resource registry's methods differ per binding (A-7)"
           }
         }
       ]

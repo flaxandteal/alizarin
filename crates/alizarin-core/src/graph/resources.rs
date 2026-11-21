@@ -178,6 +178,14 @@ pub struct StaticResource {
 }
 
 impl StaticResource {
+    /// Whether the resource's `__scopes` include `scope` (e.g. `"public"`).
+    pub fn has_scope(&self, scope: &str) -> bool {
+        self.scopes
+            .as_ref()
+            .and_then(|s| s.as_array())
+            .is_some_and(|arr| arr.iter().any(|v| v.as_str() == Some(scope)))
+    }
+
     /// Convert to a summary (for registry storage)
     pub fn to_summary(&self) -> StaticResourceSummary {
         StaticResourceSummary {
@@ -1316,13 +1324,7 @@ impl StaticResourceRegistry {
 
             // Check resource-level scope if required
             if let Some(scope) = required_scope {
-                let has_scope = resource
-                    .scopes
-                    .as_ref()
-                    .and_then(|s| s.as_array())
-                    .map(|arr| arr.iter().any(|v| v.as_str() == Some(scope)))
-                    .unwrap_or(false);
-                if !has_scope {
+                if !resource.has_scope(scope) {
                     continue;
                 }
             }

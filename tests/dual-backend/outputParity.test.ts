@@ -164,6 +164,11 @@ function routes(): [string, string, () => any][] {
   out.push(["cardsToTree", "tree:cards", () => cardsToTree(resourceText, graph)]);
   out.push(["batchTilesToTrees", "trees:batch", () => batchTilesToTrees(`[${resourceText}]`, graph, true)]);
   out.push([
+    "registry.loadFromBusinessDataBytes",
+    "business_data:refs",
+    () => createResourceRegistry().loadFromBusinessDataBytes(fs.readFileSync(path.join(DIR, "business-data.json")), true, true),
+  ]);
+  out.push([
     "createStaticTile(empty)",
     "tile:empty",
     () => createStaticTile({ nodegroup_id: resourceFixture.tiles[0].nodegroup_id, resourceinstance_id: RESOURCE_ID, data: {} }),

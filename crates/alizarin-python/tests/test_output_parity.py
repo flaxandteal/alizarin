@@ -108,6 +108,11 @@ def routes():
     out.append(
         ("batch_tiles_to_trees", "trees:batch", lambda: alizarin.batch_tiles_to_trees(f"[{resource_text}]", True))
     )
+    def business_data_refs():
+        with open(os.path.join(DATA_DIR, "business-data.json"), "rb") as f:
+            return alizarin.ResourceRegistry().load_from_business_data_bytes(f.read())
+
+    out.append(("load_from_business_data_bytes", "business_data:refs", business_data_refs))
     out.append(("summary_to_metadata", "resource.summary.metadata", lambda: alizarin.summary_to_metadata(summary())))
     out.append(
         ("static_resource_from_summary", "resource.from_summary", lambda: alizarin.static_resource_from_summary(summary()))

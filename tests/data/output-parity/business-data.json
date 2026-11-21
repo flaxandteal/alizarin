@@ -1,0 +1,23 @@
+{
+  "business_data": {
+    "resources": [
+      {
+        "resourceinstance": {
+          "graph_id": "0a0a0a0a-0000-4000-8000-000000000001",
+          "name": "Parity private",
+          "resourceinstanceid": "0b0b0b0b-0000-4000-8000-000000000002"
+        },
+        "tiles": []
+      },
+      {
+        "resourceinstance": {
+          "graph_id": "0a0a0a0a-0000-4000-8000-000000000001",
+          "name": "Parity public",
+          "resourceinstanceid": "0b0b0b0b-0000-4000-8000-000000000003"
+        },
+        "tiles": [],
+        "__scopes": ["public"]
+      }
+    ]
+  }
+}

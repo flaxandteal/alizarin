@@ -125,6 +125,13 @@ fn outputs() -> BTreeMap<String, String> {
         ),
     );
 
+    // A business data file loaded into a registry: one ref per resource, and
+    // whether its `__scopes` make it public.
+    let refs = alizarin_core::StaticResourceRegistry::new()
+        .load_from_business_data_bytes(read("business-data.json").as_bytes(), true, true)
+        .unwrap();
+    put("business_data:refs".into(), canonical(&refs));
+
     // A tile with every optional field empty, as `createStaticTile` makes one.
     let mut empty = StaticTile::new_empty("0a0a0a0a-0000-4000-8000-000000000011".into());
     empty.resourceinstance_id = "0b0b0b0b-0000-4000-8000-000000000001".into();

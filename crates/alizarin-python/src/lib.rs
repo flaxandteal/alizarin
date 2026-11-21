@@ -978,6 +978,43 @@ impl ResourceRegistry {
         Ok(())
     }
 
+    /// Load a business data file from raw bytes, merge its resources, and
+    /// return a ref for each, in file order.
+    ///
+    /// Args:
+    ///     data: The file's bytes (a `{"business_data": {"resources": [...]}}`
+    ///         wrapper, or one bare resource)
+    ///     store_full: If True (default), store full resources; else summaries
+    ///     include_caches: If True (default), also merge related resources from __cache
+    ///
+    /// Returns:
+    ///     List of `{"resourceinstanceid", "graph_id", "isPublic"}` dicts, where
+    ///     `isPublic` is whether the resource's `__scopes` include "public"
+    #[pyo3(signature = (data, store_full=true, include_caches=true))]
+    fn load_from_business_data_bytes(
+        &mut self,
+        py: Python,
+        data: &[u8],
+        store_full: bool,
+        include_caches: bool,
+    ) -> PyResult<PyObject> {
+        let refs = self
+            .inner
+            .load_from_business_data_bytes(data, store_full, include_caches)
+            .map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "Failed to parse business data: {}",
+                    e
+                ))
+            })?;
+        pythonize::pythonize(py, &refs).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to convert result to Python: {}",
+                e
+            ))
+        })
+    }
+
     /// Populate __cache on resources with summaries for referenced resources
     ///
     /// Uses the graph to identify resource-instance nodes, then populates

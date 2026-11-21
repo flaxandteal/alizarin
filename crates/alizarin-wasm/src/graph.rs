@@ -2934,43 +2934,14 @@ impl StaticResourceRegistry {
         store_full: Option<bool>,
         include_caches: Option<bool>,
     ) -> Result<JsValue, JsValue> {
-        let resources = alizarin_core::parse_business_data_bytes(bytes)
+        let refs = self
+            .0
+            .load_from_business_data_bytes(
+                bytes,
+                store_full.unwrap_or(true),
+                include_caches.unwrap_or(true),
+            )
             .map_err(|e| JsValue::from_str(&format!("Failed to parse business data: {}", e)))?;
-
-        // Collect lightweight refs before merge_from_resources consumes.
-        // Use a concrete struct — serde_wasm_bindgen 0.6 doesn't handle
-        // serde_json::Value correctly (serializes as empty objects).
-        #[derive(serde::Serialize)]
-        struct ResourceRef {
-            resourceinstanceid: String,
-            graph_id: String,
-            #[serde(rename = "isPublic")]
-            is_public: bool,
-        }
-
-        let refs: Vec<ResourceRef> = resources
-            .iter()
-            .map(|r| {
-                let is_public = r
-                    .scopes
-                    .as_ref()
-                    .and_then(|s| s.as_array())
-                    .map(|arr| arr.iter().any(|v| v.as_str() == Some("public")))
-                    .unwrap_or(false);
-                ResourceRef {
-                    resourceinstanceid: r.resourceinstance.resourceinstanceid.clone(),
-                    graph_id: r.resourceinstance.graph_id.clone(),
-                    is_public,
-                }
-            })
-            .collect();
-
-        self.0.merge_from_resources(
-            &resources,
-            store_full.unwrap_or(true),
-            include_caches.unwrap_or(true),
-        );
-
         crate::js_json::to_value(&refs)
             .map_err(|e| JsValue::from_str(&format!("Failed to serialize refs: {}", e)))
     }

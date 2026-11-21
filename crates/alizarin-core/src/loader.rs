@@ -5,7 +5,7 @@
 
 use crate::graph::{
     StaticGraph, StaticResource, StaticResourceDescriptors, StaticResourceMetadata,
-    StaticResourceSummary, StaticTile,
+    StaticResourceRegistry, StaticResourceSummary, StaticTile,
 };
 use crate::ontology::{OntologyConfig, OntologyValidator};
 use crate::skos::{parse_skos_to_collections, SkosCollection};
@@ -1143,6 +1143,43 @@ pub fn parse_business_data_bytes(bytes: &[u8]) -> Result<Vec<StaticResource>, Lo
     } else {
         let resource: BusinessDataResourceFull = serde_json::from_slice(bytes)?;
         Ok(vec![resource.to_static_resource()])
+    }
+}
+
+/// A resource loaded by [`StaticResourceRegistry::load_from_business_data_bytes`]:
+/// its id, its graph, and whether its `__scopes` include `"public"`.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct BusinessDataRef {
+    pub resourceinstanceid: String,
+    pub graph_id: String,
+    #[serde(rename = "isPublic")]
+    pub is_public: bool,
+}
+
+impl From<&StaticResource> for BusinessDataRef {
+    fn from(resource: &StaticResource) -> Self {
+        BusinessDataRef {
+            resourceinstanceid: resource.resourceinstance.resourceinstanceid.clone(),
+            graph_id: resource.resourceinstance.graph_id.clone(),
+            is_public: resource.has_scope("public"),
+        }
+    }
+}
+
+impl StaticResourceRegistry {
+    /// Parse a business data file (as [`parse_business_data_bytes`] does),
+    /// merge its resources, and return a [`BusinessDataRef`] for each, in
+    /// file order.
+    pub fn load_from_business_data_bytes(
+        &mut self,
+        bytes: &[u8],
+        store_full: bool,
+        include_caches: bool,
+    ) -> Result<Vec<BusinessDataRef>, LoaderError> {
+        let resources = parse_business_data_bytes(bytes)?;
+        let refs = resources.iter().map(BusinessDataRef::from).collect();
+        self.merge_from_resources(&resources, store_full, include_caches);
+        Ok(refs)
     }
 }
 
