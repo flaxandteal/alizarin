@@ -235,16 +235,19 @@ pub use label_resolution::{
 
 // Card-based traversal (card hierarchy instead of node hierarchy)
 pub use card_traversal::{
-    cards_to_tree, serialize_card, serialize_root_cards, CardSerializationParams,
+    cards_to_tree, cards_to_tree_from_json, cards_to_tree_from_json_registered, serialize_card,
+    serialize_root_cards, CardSerializationParams,
 };
 
 // JSON conversion (tiles <-> tree)
 pub use json_conversion::{
-    batch_convert_trees, build_tree_from_tiles, convert_single_tree, create_static_resource,
-    resolve_extension_markers, resource_tiles_to_tree, resource_tiles_to_tree_with_context,
-    tiles_to_tree, tree_to_tiles, tree_to_tiles_with_namespace, tree_to_tiles_with_options,
-    validate_business_data, BatchOptions, BatchOutcome, BusinessData, BusinessDataWrapper,
-    ValidationDiagnostic, ValidationMode,
+    batch_convert_trees, batch_tiles_to_trees_from_json, build_tree_from_tiles,
+    convert_single_tree, create_static_resource, resolve_extension_markers, resource_for_tree,
+    resource_graph_id, resource_tiles_to_tree, resource_tiles_to_tree_with_context, tiles_to_tree,
+    tiles_to_tree_from_json, tiles_to_tree_from_json_registered, tree_to_tiles,
+    tree_to_tiles_with_namespace, tree_to_tiles_with_options, validate_business_data, BatchOptions,
+    BatchOutcome, BatchTreesOutcome, BusinessData, BusinessDataWrapper, ValidationDiagnostic,
+    ValidationMode,
 };
 
 // Pseudo value core types (for JSON conversion)

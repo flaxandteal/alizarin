@@ -13,6 +13,10 @@ entries is tracked in `PARITY-RESEARCH.md`.
   `get_rdm_namespace_raw`. TypeScript: `setRdmNamespace` and
   `getRdmNamespaceRaw` exported from `alizarin`, on either backend. Core now
   keeps the string the namespace was set from (it was a WASM-only global).
+- NAPI: `tilesToTree`, `cardsToTree`, `batchTilesToTrees`, against the
+  registered graph the resource names. TypeScript: the same three exported
+  from `alizarin`, on either backend. Python: `cards_to_json_tree` exported
+  from `alizarin` (it was only in the compiled submodule).
 - NAPI: `staticResourceFromSummary`. Python: `static_resource_from_summary`
   and `summary_to_metadata`. A lightweight resource (no tiles,
   `tiles_loaded: false`) or the metadata from a registry summary, as WASM's
@@ -21,11 +25,24 @@ entries is tracked in `PARITY-RESEARCH.md`.
   object by hand).
 
 ### Changed
+- Tiles to trees (`tilesToTree`, `cardsToTree`, `batchTilesToTrees`; Python
+  `tiles_to_json_tree`, `cards_to_json_tree`, `batch_tiles_to_trees`) read a
+  resource by one rule in core. **Breaking**, where it differed:
+  - a resource with no `resourceinstanceid` takes its tiles'
+    `resourceinstance_id`; with neither it is an error (a random id was
+    invented). Give the resource its id.
+  - a resource naming another graph than the one converted against is an
+    error (WASM relabelled it with the graph's id).
+  - malformed `tiles` are an error in Python too (it gave an empty tree).
+  - Python's `batch_tiles_to_trees` result always has `errors` and
+    `error_count`, as WASM's did.
 - Malformed resource descriptors (`{"name": 5}`, or the same under a
   language) are an error when a resource is read. The business-data loader
   used to drop them silently to empty.
 
 ### Fixed
+- Python CLI: `alizarin to-trees` and `alizarin convert` failed on every run
+  (they passed their bindings an argument those do not take).
 - Per-language resource descriptors (Arches' `{"en": {"name": …}}`) are read
   wherever a resource is, as "en", else the lowest language, and written flat.
   Only the business-data loader read them; elsewhere (`StaticResource` from

@@ -101,7 +101,7 @@ ECO_DATACLASS = "ecosystem: pure-Python dataclasses in python/alizarin/static_ty
 GAP_RDM_GLOBAL = "gap: the global RDM cache functions differ per binding (A-6)"
 GAP_NAMESPACE = "gap: H-3, RDM namespaces and deterministic UUIDs must agree across bindings"
 GAP_EXTENSIONS = "gap: the extension registry functions differ per binding (A-6, G)"
-GAP_TREES = "gap: B-9, tile/tree conversion is hand-written per binding and missing on NAPI; one core function for all"
+GAP_TREES = "gap: B-9 follow-up, trees to tiles and resource merging are core functions not yet bound on NAPI (they need its extension registry)"
 
 # Why a binding lacks something (PARITY-RESEARCH.md A-6/A-7). Keys are
 # "fn:<canonical>", "class:<key>" or "op:<class key>.<canonical>", with fnmatch
@@ -163,6 +163,10 @@ REASONS = [
     ("fn:*datatype*", {"wasm": "gap: core's datatype registry (registry.rs) is bound only in Python",
                        "napi": "gap: core's datatype registry (registry.rs) is bound only in Python",
                        "python": "gap: label-resolution defaults not bound in Python (A-6)"}),
+    ("fn:build_tree_from_tiles", {"wasm": "gap: bare tiles to a tree (core's, against its graph registry) is bound only in Python",
+                                  "napi": "gap: bare tiles to a tree (core's, against its graph registry) is bound only in Python"}),
+    ("fn:resolve_labels_in_tree", {"wasm": "gap: resolving a tree's labels before conversion (core's) is bound only in Python",
+                                   "napi": "gap: resolving a tree's labels before conversion (core's) is bound only in Python"}),
     ("fn:*_tree*", {"wasm": GAP_TREES, "napi": GAP_TREES, "python": GAP_TREES}),
     ("fn:*tiles*", {"wasm": GAP_TREES, "napi": GAP_TREES, "python": GAP_TREES}),
     ("fn:*merge_resources", {"napi": GAP_TREES}),

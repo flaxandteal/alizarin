@@ -18,7 +18,6 @@ mod rdm_cache_py;
 mod skos_py;
 mod type_coercion_py;
 use pyo3::types::PyCapsule;
-use rayon::prelude::*;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -183,9 +182,6 @@ fn render_display_with_extension(
 // Import core types and functions directly (no WASM dependency needed)
 use alizarin_core::{
     batch_merge_resources as core_batch_merge_resources,
-    // JSON conversion
-    cards_to_tree,
-    create_static_resource,
     // Semantic child matching
     matches_semantic_child as core_matches_semantic_child,
     merge_resources as core_merge_resources,
@@ -193,7 +189,6 @@ use alizarin_core::{
     // Label resolution
     resolve_labels as core_resolve_labels,
     snake_to_camel,
-    tiles_to_tree,
     // Graph model access
     GraphModelAccess,
     MergeAccumulator,
@@ -231,86 +226,17 @@ fn get_registered_graph(graph_id: &str) -> PyResult<std::sync::Arc<AlizarinCoreS
 /// Convert tiled resource to nested JSON tree
 ///
 /// Args:
-///     resource_json: Resource dict as JSON string containing:
-///         - resourceinstanceid (or resourceinstance.resourceinstanceid)
-///         - graph_id (or resourceinstance.graph_id)
-///         - tiles array
+///     resource_json: Resource as JSON string: StaticResource, or flat
+///         `{resourceinstanceid, graph_id, tiles}` (see core's `resource_for_tree`).
+///         Its graph must be registered.
 ///
 /// Returns:
 ///     Nested dict structure representing the resource tree with resourceinstanceid and graph_id
 #[pyfunction]
 #[pyo3(signature = (resource_json))]
 fn tiles_to_json_tree(py: Python, resource_json: String) -> PyResult<PyObject> {
-    // Parse resource from JSON
-    let resource: serde_json::Value = serde_json::from_str(&resource_json).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse resource: {}", e))
-    })?;
-
-    // Extract graph_id from resource (supports both formats)
-    let graph_id = resource
-        .get("resourceinstance")
-        .and_then(|ri| ri.get("graph_id"))
-        .or_else(|| resource.get("graph_id"))
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>("Missing graph_id in resource")
-        })?
-        .to_string();
-
-    // Extract resource_id from resource (supports both formats)
-    let resource_id = resource
-        .get("resourceinstance")
-        .and_then(|ri| ri.get("resourceinstanceid"))
-        .or_else(|| resource.get("resourceinstanceid"))
-        .and_then(|v| v.as_str())
-        .map(String::from)
-        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-
-    // Get graph from registry
-    let graph = get_registered_graph(&graph_id)?;
-
-    // Check if input is already in StaticResource format (has resourceinstance)
-    let input_json = if resource.get("resourceinstance").is_some() {
-        // Already in StaticResource format, use directly
-        resource.clone()
-    } else {
-        // Old format - convert to StaticResource
-        let tiles: Vec<AlizarinStaticTile> = resource
-            .get("tiles")
-            .and_then(|t| serde_json::from_value(t.clone()).ok())
-            .unwrap_or_default();
-
-        let static_resource =
-            create_static_resource(resource_id.clone(), graph_id.clone(), tiles, &graph);
-        serde_json::to_value(&static_resource).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                "Failed to serialize resource: {}",
-                e
-            ))
-        })?
-    };
-
-    // Call shared Rust conversion function (returns array)
-    let json_tree_array = tiles_to_tree(&input_json, &*graph)
+    let result = alizarin_core::tiles_to_tree_from_json_registered(&resource_json)
         .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
-
-    // Extract first element (single resource case)
-    let json_tree = json_tree_array
-        .as_array()
-        .and_then(|arr| arr.first().cloned())
-        .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
-
-    // Wrap tree with metadata for consistency with json_tree_to_tiles
-    let mut result = json_tree.clone();
-    if let serde_json::Value::Object(ref mut map) = result {
-        map.insert(
-            "resourceinstanceid".to_string(),
-            serde_json::Value::String(resource_id),
-        );
-        map.insert("graph_id".to_string(), serde_json::Value::String(graph_id));
-    }
-
-    // Convert to Python dict directly
     pythonize::pythonize(py, &result).map_err(|e| {
         PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
             "Failed to convert result to Python: {}",
@@ -364,65 +290,8 @@ fn build_tree_from_tiles(
 #[pyfunction]
 #[pyo3(signature = (resource_json))]
 fn cards_to_json_tree(py: Python, resource_json: String) -> PyResult<PyObject> {
-    let resource: serde_json::Value = serde_json::from_str(&resource_json).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse resource: {}", e))
-    })?;
-
-    let graph_id = resource
-        .get("resourceinstance")
-        .and_then(|ri| ri.get("graph_id"))
-        .or_else(|| resource.get("graph_id"))
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>("Missing graph_id in resource")
-        })?
-        .to_string();
-
-    let resource_id = resource
-        .get("resourceinstance")
-        .and_then(|ri| ri.get("resourceinstanceid"))
-        .or_else(|| resource.get("resourceinstanceid"))
-        .and_then(|v| v.as_str())
-        .map(String::from)
-        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-
-    let graph = get_registered_graph(&graph_id)?;
-
-    let input_json = if resource.get("resourceinstance").is_some() {
-        resource.clone()
-    } else {
-        let tiles: Vec<AlizarinStaticTile> = resource
-            .get("tiles")
-            .and_then(|t| serde_json::from_value(t.clone()).ok())
-            .unwrap_or_default();
-
-        let static_resource =
-            create_static_resource(resource_id.clone(), graph_id.clone(), tiles, &graph);
-        serde_json::to_value(&static_resource).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                "Failed to serialize resource: {}",
-                e
-            ))
-        })?
-    };
-
-    let json_tree_array = cards_to_tree(&input_json, &graph)
+    let result = alizarin_core::cards_to_tree_from_json_registered(&resource_json)
         .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
-
-    let json_tree = json_tree_array
-        .as_array()
-        .and_then(|arr| arr.first().cloned())
-        .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
-
-    let mut result = json_tree.clone();
-    if let serde_json::Value::Object(ref mut map) = result {
-        map.insert(
-            "resourceinstanceid".to_string(),
-            serde_json::Value::String(resource_id),
-        );
-        map.insert("graph_id".to_string(), serde_json::Value::String(graph_id));
-    }
-
     pythonize::pythonize(py, &result).map_err(|e| {
         PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
             "Failed to convert result to Python: {}",
@@ -1421,119 +1290,8 @@ impl TreeToTilesIterator {
 #[pyfunction]
 #[pyo3(signature = (resources_json, strict=true))]
 fn batch_tiles_to_trees(py: Python, resources_json: String, strict: bool) -> PyResult<PyObject> {
-    let resources: Vec<serde_json::Value> = serde_json::from_str(&resources_json).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse resources: {}", e))
-    })?;
-
-    let results: Vec<Result<serde_json::Value, String>> = resources
-        .into_par_iter()
-        .enumerate()
-        .map(|(i, resource)| {
-            // Extract graph_id from resource
-            let graph_id = resource
-                .get("resourceinstance")
-                .and_then(|ri| ri.get("graph_id"))
-                .or_else(|| resource.get("graph_id"))
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| format!("Resource {}: Missing graph_id", i))?
-                .to_string();
-
-            // Get graph from registry
-            let graph = alizarin_core::get_graph(&graph_id)
-                .ok_or_else(|| format!("Resource {}: Graph '{}' not registered", i, graph_id))?;
-
-            // Extract resource_id from either format:
-            // - New format: resource.resourceinstance.resourceinstanceid
-            // - Old format: resource.resourceinstanceid
-            let resource_id = resource
-                .get("resourceinstance")
-                .and_then(|ri| ri.get("resourceinstanceid"))
-                .or_else(|| resource.get("resourceinstanceid"))
-                .and_then(|v| v.as_str())
-                .map(String::from)
-                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-
-            // Check if input is already in StaticResource format (has resourceinstance)
-            let input_json = if resource.get("resourceinstance").is_some() {
-                // Already in StaticResource format, use directly
-                resource.clone()
-            } else {
-                // Old format - convert to StaticResource
-                let tiles: Vec<AlizarinStaticTile> = resource
-                    .get("tiles")
-                    .map(|t| serde_json::from_value(t.clone()))
-                    .transpose()
-                    .map_err(|e| format!("Resource {}: Failed to parse tiles: {}", i, e))?
-                    .unwrap_or_default();
-
-                let static_resource =
-                    create_static_resource(resource_id.clone(), graph_id.clone(), tiles, &graph);
-
-                serde_json::to_value(&static_resource)
-                    .map_err(|e| format!("Resource {}: Failed to serialize: {}", i, e))?
-            };
-
-            // Call tiles_to_tree (returns array)
-            let json_tree_array = tiles_to_tree(&input_json, &*graph)
-                .map_err(|e| format!("Resource {}: {}", i, e))?;
-
-            // Extract first element and add metadata
-            let mut tree = json_tree_array
-                .as_array()
-                .and_then(|arr| arr.first().cloned())
-                .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
-
-            if let serde_json::Value::Object(ref mut map) = tree {
-                map.insert(
-                    "resourceinstanceid".to_string(),
-                    serde_json::Value::String(resource_id),
-                );
-                map.insert(
-                    "graph_id".to_string(),
-                    serde_json::Value::String(graph_id.clone()),
-                );
-            }
-
-            Ok(tree)
-        })
-        .collect();
-
-    // Handle results based on strict mode
-    if strict {
-        // In strict mode, fail on first error
-        let successes: Result<Vec<_>, _> = results.into_iter().collect();
-        let successes = successes.map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Strict mode error: {}", e))
-        })?;
-
-        let output = serde_json::json!({
-            "success": true,
-            "results": successes,
-            "count": successes.len()
-        });
-
-        return pythonize::pythonize(py, &output).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                "Failed to convert to Python: {}",
-                e
-            ))
-        });
-    }
-
-    // Non-strict: separate successes and errors
-    let (successes, errors): (Vec<_>, Vec<_>) = results.into_iter().partition(Result::is_ok);
-    let successes: Vec<_> = successes.into_iter().map(Result::unwrap).collect();
-    let errors: Vec<_> = errors.into_iter().map(|e| e.unwrap_err()).collect();
-
-    let output = if errors.is_empty() {
-        serde_json::json!({ "success": true, "results": successes, "count": successes.len() })
-    } else {
-        serde_json::json!({
-            "success": false, "results": successes, "count": successes.len(),
-            "errors": errors, "error_count": errors.len()
-        })
-    };
-
+    let output = alizarin_core::batch_tiles_to_trees_from_json(&resources_json, None, strict)
+        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
     pythonize::pythonize(py, &output).map_err(|e| {
         PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
             "Failed to convert to Python: {}",

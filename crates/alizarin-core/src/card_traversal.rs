@@ -14,7 +14,10 @@ use std::collections::HashMap;
 
 use crate::graph::card_index::{CardIndex, CardRef};
 use crate::graph::StaticGraph;
-use crate::json_conversion::{build_pseudo_cache_from_tiles, extract_resources};
+use crate::json_conversion::{
+    build_pseudo_cache_from_tiles, extract_resources, parse_resource_json, registered_graph_for,
+    resource_for_tree,
+};
 use crate::node_config::NodeConfigManager;
 use crate::pseudo_value_core::{matches_tile_filter, PseudoListCore};
 use crate::type_serialization::{SerializationContext, SerializationOptions};
@@ -77,6 +80,36 @@ pub fn cards_to_tree(input: &Value, graph: &StaticGraph) -> Result<Value, String
     }
 
     Ok(Value::Array(results))
+}
+
+/// One resource (see [`resource_for_tree`]) as a card tree:
+/// `{resourceinstance, cards}`, with `resourceinstanceid` and `graph_id` at
+/// its root too.
+pub fn cards_to_tree_from_json(resource_json: &str, graph: &StaticGraph) -> Result<Value, String> {
+    let resource = resource_for_tree(&parse_resource_json(resource_json)?, graph)?;
+    let input = serde_json::to_value(&resource)
+        .map_err(|e| format!("Failed to serialize resource: {e}"))?;
+    let mut trees = cards_to_tree(&input, graph)?;
+    let mut tree = trees
+        .get_mut(0)
+        .map(Value::take)
+        .unwrap_or_else(|| Value::Object(Map::new()));
+    if let Some(obj) = tree.as_object_mut() {
+        let ri = &resource.resourceinstance;
+        obj.insert(
+            "resourceinstanceid".to_string(),
+            Value::String(ri.resourceinstanceid.clone()),
+        );
+        obj.insert("graph_id".to_string(), Value::String(ri.graph_id.clone()));
+    }
+    Ok(tree)
+}
+
+/// [`cards_to_tree_from_json`] against the registered graph the resource
+/// names, for bindings that hold graphs in core's registry.
+pub fn cards_to_tree_from_json_registered(resource_json: &str) -> Result<Value, String> {
+    let graph = registered_graph_for(&parse_resource_json(resource_json)?)?;
+    cards_to_tree_from_json(resource_json, &graph)
 }
 
 // =============================================================================

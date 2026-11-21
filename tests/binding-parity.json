@@ -3222,23 +3222,20 @@
       "napi": null,
       "python": "batch_merge_resources",
       "why": {
-        "napi": "gap: B-9, tile/tree conversion is hand-written per binding and missing on NAPI; one core function for all"
+        "napi": "gap: B-9 follow-up, trees to tiles and resource merging are core functions not yet bound on NAPI (they need its extension registry)"
       }
     },
     "batch_tiles_to_trees": {
       "wasm": "batchTilesToTrees",
-      "napi": null,
-      "python": "batch_tiles_to_trees",
-      "why": {
-        "napi": "gap: B-9, tile/tree conversion is hand-written per binding and missing on NAPI; one core function for all"
-      }
+      "napi": "batchTilesToTrees",
+      "python": "batch_tiles_to_trees"
     },
     "batch_trees_to_tiles": {
       "wasm": "batchTreesToTiles",
       "napi": null,
       "python": "batch_trees_to_tiles",
       "why": {
-        "napi": "gap: B-9, tile/tree conversion is hand-written per binding and missing on NAPI; one core function for all"
+        "napi": "gap: B-9 follow-up, trees to tiles and resource merging are core functions not yet bound on NAPI (they need its extension registry)"
       }
     },
     "build_alias_to_collection_map": {
@@ -3291,8 +3288,8 @@
       "napi": null,
       "python": "build_tree_from_tiles",
       "why": {
-        "wasm": "gap: B-9, tile/tree conversion is hand-written per binding and missing on NAPI; one core function for all",
-        "napi": "gap: B-9, tile/tree conversion is hand-written per binding and missing on NAPI; one core function for all"
+        "wasm": "gap: bare tiles to a tree (core's, against its graph registry) is bound only in Python",
+        "napi": "gap: bare tiles to a tree (core's, against its graph registry) is bound only in Python"
       }
     },
     "canonical_static": {
@@ -3306,11 +3303,8 @@
     },
     "cards_to_tree": {
       "wasm": "cardsToTree",
-      "napi": null,
-      "python": "cards_to_json_tree",
-      "why": {
-        "napi": "gap: B-9, tile/tree conversion is hand-written per binding and missing on NAPI; one core function for all"
-      }
+      "napi": "cardsToTree",
+      "python": "cards_to_json_tree"
     },
     "clear_global_rdm_cache": {
       "wasm": "clearGlobalRdmCache",
@@ -3859,7 +3853,7 @@
       "napi": null,
       "python": "merge_resources",
       "why": {
-        "napi": "gap: B-9, tile/tree conversion is hand-written per binding and missing on NAPI; one core function for all"
+        "napi": "gap: B-9 follow-up, trees to tiles and resource merging are core functions not yet bound on NAPI (they need its extension registry)"
       }
     },
     "new_wasmresource_instance_wrapper_for_model": {
@@ -4002,8 +3996,8 @@
       "napi": null,
       "python": "resolve_labels_in_tree",
       "why": {
-        "wasm": "gap: B-9, tile/tree conversion is hand-written per binding and missing on NAPI; one core function for all",
-        "napi": "gap: B-9, tile/tree conversion is hand-written per binding and missing on NAPI; one core function for all"
+        "wasm": "gap: resolving a tree's labels before conversion (core's) is bound only in Python",
+        "napi": "gap: resolving a tree's labels before conversion (core's) is bound only in Python"
       }
     },
     "resolve_labels_with_lookup": {
@@ -4074,11 +4068,8 @@
     },
     "tiles_to_tree": {
       "wasm": "tilesToTree",
-      "napi": null,
-      "python": "tiles_to_json_tree",
-      "why": {
-        "napi": "gap: B-9, tile/tree conversion is hand-written per binding and missing on NAPI; one core function for all"
-      }
+      "napi": "tilesToTree",
+      "python": "tiles_to_json_tree"
     },
     "transition_resource_lifecycle": {
       "wasm": "transitionResourceLifecycle",
@@ -4090,7 +4081,7 @@
       "napi": null,
       "python": "json_tree_to_tiles",
       "why": {
-        "napi": "gap: B-9, tile/tree conversion is hand-written per binding and missing on NAPI; one core function for all"
+        "napi": "gap: B-9 follow-up, trees to tiles and resource merging are core functions not yet bound on NAPI (they need its extension registry)"
       }
     },
     "unregister_extension_handler": {

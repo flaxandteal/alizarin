@@ -101,6 +101,13 @@ def routes():
         registry.merge_from_resources(json.dumps([RESOURCE]))
         return registry.get_summary(RESOURCE["resourceinstance"]["resourceinstanceid"])
 
+    alizarin.register_graph(json.dumps(GRAPH))
+    resource_text = json.dumps(RESOURCE)
+    out.append(("tiles_to_json_tree", "tree", lambda: alizarin.tiles_to_json_tree(resource_text)))
+    out.append(("cards_to_json_tree", "tree:cards", lambda: alizarin.cards_to_json_tree(resource_text)))
+    out.append(
+        ("batch_tiles_to_trees", "trees:batch", lambda: alizarin.batch_tiles_to_trees(f"[{resource_text}]", True))
+    )
     out.append(("summary_to_metadata", "resource.summary.metadata", lambda: alizarin.summary_to_metadata(summary())))
     out.append(
         ("static_resource_from_summary", "resource.from_summary", lambda: alizarin.static_resource_from_summary(summary()))

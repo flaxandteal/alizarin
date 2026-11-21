@@ -73,10 +73,10 @@ state = alizarin.resource_lifecycle_state(json.dumps(resource), json.dumps(graph
 
 | Function | Description |
 |----------|-------------|
-| `tiles_to_json_tree(resource_json)` | Tiles to nested JSON tree |
+| `tiles_to_json_tree(resource_json)` | Tiles to nested JSON tree. The resource is a StaticResource, or flat `{resourceinstanceid, graph_id, tiles}`; its graph must be registered. Without a `resourceinstanceid`, its tiles' `resourceinstance_id` is used; with neither, it raises |
 | `build_tree_from_tiles(tiles_json, resource_id, graph_id)` | Pre-extracted tiles to tree |
-| `batch_tiles_to_trees(...)` | Parallel batch tiles-to-tree conversion |
-| `alizarin.alizarin.cards_to_json_tree(resource_json)` | Tiles to card-structured tree (in the compiled submodule, not re-exported) |
+| `batch_tiles_to_trees(resources_json, strict=True)` | Parallel batch tiles-to-tree conversion: `{success, results, count, errors, error_count}` |
+| `cards_to_json_tree(resource_json)` | Tiles to card-structured tree, as for `tiles_to_json_tree` |
 | `json_tree_to_tiles(tree_json, resource_id, graph_id, from_camel, strict, rdm_cache, id_key, scopes, tile_namespace)` | Tree back to tiles format |
 | `batch_trees_to_tiles(trees, graph_id, from_camel, strict, ...)` | Parallel batch conversion |
 | `resolve_labels_in_tree(...)` | Resolve human labels to concept UUIDs in a tree |

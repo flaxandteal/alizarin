@@ -31,6 +31,9 @@ import {
   parseStaticResources,
   createStaticResourceFromSummary,
   summaryToMetadata,
+  tilesToTree,
+  cardsToTree,
+  batchTilesToTrees,
 } from "../../js/backend";
 import { ResourceModelWrapper } from "../../js/graphManager";
 import { composeResourceLayers } from "../../js/csvModelLoader";
@@ -156,6 +159,10 @@ function routes(): [string, string, () => any][] {
     out.push([`getFull().tiles[${i}]`, `tile:${t.tileid}`, () => full.tiles[i]]);
     out.push([`createStaticTile(tiles[${i}])`, `tile:${t.tileid}`, () => createStaticTile(t)]);
   });
+  const resourceText = JSON.stringify(resourceFixture);
+  out.push(["tilesToTree", "tree", () => tilesToTree(resourceText, graph)]);
+  out.push(["cardsToTree", "tree:cards", () => cardsToTree(resourceText, graph)]);
+  out.push(["batchTilesToTrees", "trees:batch", () => batchTilesToTrees(`[${resourceText}]`, graph, true)]);
   out.push([
     "createStaticTile(empty)",
     "tile:empty",

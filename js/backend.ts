@@ -721,6 +721,48 @@ export function getRdmNamespaceRaw(): string | null {
 }
 
 /**
+ * One resource's JSON (a StaticResource, or flat `{resourceinstanceid,
+ * graph_id, tiles}`) as a node tree. WASM converts against `graph`; NAPI
+ * against the registered graph the resource names (registered when a
+ * `ResourceModelWrapper` is made for it). Core does the work on both.
+ */
+export function tilesToTree(resourceJson: string, graph: any): any {
+  if (_backend === 'napi') {
+    const napi = getNapiModule();
+    if (!napi) throw new Error('NAPI backend selected but @alizarin/napi not available');
+    return napi.tilesToTree(resourceJson);
+  }
+  return getWasmModule().tilesToTree(resourceJson, graph);
+}
+
+/**
+ * One resource's JSON as a card tree (`{resourceinstance, cards}`), as for
+ * `tilesToTree`.
+ */
+export function cardsToTree(resourceJson: string, graph: any): any {
+  if (_backend === 'napi') {
+    const napi = getNapiModule();
+    if (!napi) throw new Error('NAPI backend selected but @alizarin/napi not available');
+    return napi.cardsToTree(resourceJson);
+  }
+  return getWasmModule().cardsToTree(resourceJson, graph);
+}
+
+/**
+ * Each resource of a JSON array as a node tree, as for `tilesToTree`:
+ * `{success, results, count, errors, error_count}`. Strict, the first
+ * failure throws.
+ */
+export function batchTilesToTrees(resourcesJson: string, graph: any, strict: boolean): any {
+  if (_backend === 'napi') {
+    const napi = getNapiModule();
+    if (!napi) throw new Error('NAPI backend selected but @alizarin/napi not available');
+    return napi.batchTilesToTrees(resourcesJson, strict);
+  }
+  return getWasmModule().batchTilesToTrees(resourcesJson, graph, strict);
+}
+
+/**
  * Get the default resolvable datatypes.
  * Backend-aware: calls WASM or NAPI implementation.
  */

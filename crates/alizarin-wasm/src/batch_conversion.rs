@@ -1,9 +1,6 @@
 use std::ops::Deref;
 
 use crate::graph::StaticGraph;
-use crate::json_conversion::create_static_resource;
-use alizarin_core::cards_to_tree as core_cards_to_tree;
-use alizarin_core::tiles_to_tree as core_tiles_to_tree;
 use alizarin_core::{
     batch_merge_resources, merge_resources, transform_keys_to_snake, StaticResource,
 };
@@ -21,15 +18,6 @@ struct BatchResult<'a> {
     error_count: usize,
     #[serde(skip_serializing_if = "<[String]>::is_empty")]
     warnings: &'a [String],
-}
-
-#[derive(serde::Serialize)]
-struct BatchTilesToTreesResult<'a> {
-    success: bool,
-    results: &'a [Value],
-    count: usize,
-    errors: &'a [String],
-    error_count: usize,
 }
 
 /// Batch conversion functions for WASM - parallel processing
@@ -98,7 +86,8 @@ pub fn tree_to_tiles_enhanced(
 /// Single tiles to tree conversion
 ///
 /// Args:
-///     resource_json: Single resource as JSON string
+///     resource_json: Single resource as JSON string: StaticResource, or flat
+///         `{resourceinstanceid, graph_id, tiles}` (see core's `resource_for_tree`)
 ///     graph: StaticGraph wrapper
 ///
 /// Returns:
@@ -108,60 +97,10 @@ pub fn tiles_to_tree_enhanced(
     resource_json: &str,
     graph: &StaticGraph,
 ) -> Result<JsValue, JsError> {
-    // Parse resource from JSON
-    let resource: Value = serde_json::from_str(resource_json)
-        .map_err(|e| JsError::new(&format!("Failed to parse resource: {}", e)))?;
-
-    let graph_id = graph.graph_id();
-
-    // Extract resource_id
-    let resource_id = resource
-        .get("resourceinstance")
-        .and_then(|ri| ri.get("resourceinstanceid"))
-        .or_else(|| resource.get("resourceinstanceid"))
-        .and_then(|v| v.as_str())
-        .map(String::from)
-        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-
-    // Check if input is already in StaticResource format
-    let input_json = if resource.get("resourceinstance").is_some() {
-        resource.clone()
-    } else {
-        // Old format - convert to StaticResource
-        let tiles: Vec<alizarin_core::StaticTile> = resource
-            .get("tiles")
-            .map(|t| serde_json::from_value(t.clone()))
-            .transpose()
-            .map_err(|e| JsError::new(&format!("Failed to parse tiles: {}", e)))?
-            .unwrap_or_default();
-
-        let static_resource =
-            create_static_resource(resource_id.clone(), graph_id.to_string(), tiles, graph);
-
-        serde_json::to_value(&static_resource)
-            .map_err(|e| JsError::new(&format!("Failed to serialize resource: {}", e)))?
-    };
-
-    // Call tiles_to_tree
-    match core_tiles_to_tree(&input_json, graph.deref()) {
-        Ok(json_tree_array) => {
-            // Extract first element and add metadata
-            let mut tree = json_tree_array
-                .as_array()
-                .and_then(|arr| arr.first().cloned())
-                .unwrap_or(Value::Object(serde_json::Map::new()));
-
-            if let Value::Object(ref mut map) = tree {
-                map.insert("resourceinstanceid".to_string(), Value::String(resource_id));
-                map.insert("graph_id".to_string(), Value::String(graph_id.to_string()));
-            }
-
-            // Convert to JS value
-            crate::js_json::to_value(&tree)
-                .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e)))
-        }
-        Err(e) => Err(JsError::new(&e)),
-    }
+    let tree = alizarin_core::tiles_to_tree_from_json(resource_json, graph.deref())
+        .map_err(|e| JsError::new(&e))?;
+    crate::js_json::to_value(&tree)
+        .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e)))
 }
 
 /// Convert tiles to a card-structured tree.
@@ -178,52 +117,10 @@ pub fn tiles_to_tree_enhanced(
 ///     Card-structured tree with widgets and nested cards
 #[wasm_bindgen(js_name = cardsToTree)]
 pub fn cards_to_tree(resource_json: &str, graph: &StaticGraph) -> Result<JsValue, JsError> {
-    let resource: Value = serde_json::from_str(resource_json)
-        .map_err(|e| JsError::new(&format!("Failed to parse resource: {}", e)))?;
-
-    let graph_id = graph.graph_id();
-    let resource_id = resource
-        .get("resourceinstance")
-        .and_then(|ri| ri.get("resourceinstanceid"))
-        .or_else(|| resource.get("resourceinstanceid"))
-        .and_then(|v| v.as_str())
-        .map(String::from)
-        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-
-    let input_json = if resource.get("resourceinstance").is_some() {
-        resource.clone()
-    } else {
-        let tiles: Vec<alizarin_core::StaticTile> = resource
-            .get("tiles")
-            .map(|t| serde_json::from_value(t.clone()))
-            .transpose()
-            .map_err(|e| JsError::new(&format!("Failed to parse tiles: {}", e)))?
-            .unwrap_or_default();
-
-        let static_resource =
-            create_static_resource(resource_id.clone(), graph_id.to_string(), tiles, graph);
-
-        serde_json::to_value(&static_resource)
-            .map_err(|e| JsError::new(&format!("Failed to serialize resource: {}", e)))?
-    };
-
-    match core_cards_to_tree(&input_json, graph.deref()) {
-        Ok(json_array) => {
-            let mut tree = json_array
-                .as_array()
-                .and_then(|arr| arr.first().cloned())
-                .unwrap_or(Value::Object(serde_json::Map::new()));
-
-            if let Value::Object(ref mut map) = tree {
-                map.insert("resourceinstanceid".to_string(), Value::String(resource_id));
-                map.insert("graph_id".to_string(), Value::String(graph_id.to_string()));
-            }
-
-            crate::js_json::to_value(&tree)
-                .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e)))
-        }
-        Err(e) => Err(JsError::new(&e)),
-    }
+    let tree = alizarin_core::cards_to_tree_from_json(resource_json, graph.deref())
+        .map_err(|e| JsError::new(&e))?;
+    crate::js_json::to_value(&tree)
+        .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e)))
 }
 
 /// Batch convert multiple JSON trees to tiles in parallel
@@ -344,84 +241,9 @@ pub fn batch_tiles_to_trees(
     graph: &StaticGraph,
     strict: bool,
 ) -> Result<JsValue, JsError> {
-    // Parse resources from JSON
-    let resources: Vec<Value> = serde_json::from_str(resources_json)
-        .map_err(|e| JsError::new(&format!("Failed to parse resources: {}", e)))?;
-
-    let graph_id = graph.graph_id();
-    let mut results = Vec::new();
-    let mut errors = Vec::new();
-
-    // Process each resource
-    for (i, resource) in resources.iter().enumerate() {
-        // Extract resource_id from either format:
-        // - New format: resource.resourceinstance.resourceinstanceid
-        // - Old format: resource.resourceinstanceid
-        let resource_id = resource
-            .get("resourceinstance")
-            .and_then(|ri| ri.get("resourceinstanceid"))
-            .or_else(|| resource.get("resourceinstanceid"))
-            .and_then(|v| v.as_str())
-            .map(String::from)
-            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-
-        // Check if input is already in StaticResource format (has resourceinstance)
-        let input_json = if resource.get("resourceinstance").is_some() {
-            // Already in StaticResource format, use directly
-            resource.clone()
-        } else {
-            // Old format - convert to StaticResource
-            let tiles: Vec<alizarin_core::StaticTile> = resource
-                .get("tiles")
-                .map(|t| serde_json::from_value(t.clone()))
-                .transpose()
-                .map_err(|e| format!("Resource {}: Failed to parse tiles: {}", i, e))
-                .map_err(|e| JsError::new(&e))?
-                .unwrap_or_default();
-
-            let static_resource =
-                create_static_resource(resource_id.clone(), graph_id.to_string(), tiles, graph);
-
-            serde_json::to_value(&static_resource)
-                .map_err(|e| format!("Resource {}: Failed to serialize: {}", i, e))
-                .map_err(|e| JsError::new(&e))?
-        };
-
-        // Call tiles_to_tree (returns array)
-        match core_tiles_to_tree(&input_json, graph.deref()) {
-            Ok(json_tree_array) => {
-                // Extract first element and add metadata
-                let mut tree = json_tree_array
-                    .as_array()
-                    .and_then(|arr| arr.first().cloned())
-                    .unwrap_or(Value::Object(serde_json::Map::new()));
-
-                if let Value::Object(ref mut map) = tree {
-                    map.insert("resourceinstanceid".to_string(), Value::String(resource_id));
-                    map.insert("graph_id".to_string(), Value::String(graph_id.to_string()));
-                }
-
-                results.push(tree);
-            }
-            Err(e) => {
-                let error_msg = format!("Resource {}: {}", i, e);
-                errors.push(error_msg.clone());
-                if strict {
-                    return Err(JsError::new(&format!("Strict mode error: {}", error_msg)));
-                }
-            }
-        }
-    }
-
-    // Serialize directly to JS — no intermediate serde_json::Value
-    let output = BatchTilesToTreesResult {
-        success: errors.is_empty(),
-        results: &results,
-        count: results.len(),
-        errors: &errors,
-        error_count: errors.len(),
-    };
-
+    let output =
+        alizarin_core::batch_tiles_to_trees_from_json(resources_json, Some(graph.deref()), strict)
+            .map_err(|e| JsError::new(&e))?;
     crate::js_json::to_value(&output)
         .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e)))
 }

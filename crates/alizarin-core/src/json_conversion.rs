@@ -291,6 +291,158 @@ pub fn build_tree_from_tiles(
     resource_tiles_to_tree(&tiles, &metadata, &*graph)
 }
 
+/// The graph id a resource names: `resourceinstance.graph_id`, or a flat
+/// resource's `graph_id`.
+pub fn resource_graph_id(resource: &Value) -> Option<&str> {
+    resource
+        .get("resourceinstance")
+        .and_then(|ri| ri.get("graph_id"))
+        .or_else(|| resource.get("graph_id"))
+        .and_then(Value::as_str)
+}
+
+/// One resource, as the bindings' tiles-to-tree functions take it: either
+/// `StaticResource` JSON, or flat `{resourceinstanceid, graph_id, tiles}`
+/// (descriptors then built from `graph`). A graph id it names must be
+/// `graph`'s. Its id is its own, else its tiles' `resourceinstance_id`; with
+/// neither, it is an error (no id is invented).
+pub fn resource_for_tree(resource: &Value, graph: &StaticGraph) -> Result<StaticResource, String> {
+    if let Some(named) = resource_graph_id(resource) {
+        if named != graph.graphid {
+            return Err(format!(
+                "Resource is of graph '{named}', not '{}'",
+                graph.graphid
+            ));
+        }
+    }
+    if resource.get("resourceinstance").is_some() {
+        return serde_json::from_value(resource.clone())
+            .map_err(|e| format!("Failed to parse resource: {e}"));
+    }
+    let tiles: Vec<StaticTile> = match resource.get("tiles") {
+        Some(tiles) => serde_json::from_value(tiles.clone())
+            .map_err(|e| format!("Failed to parse tiles: {e}"))?,
+        None => Vec::new(),
+    };
+    let resource_id = resource
+        .get("resourceinstanceid")
+        .and_then(Value::as_str)
+        .map(String::from)
+        .or_else(|| {
+            tiles
+                .iter()
+                .map(|t| t.resourceinstance_id.as_str())
+                .find(|id| !id.is_empty())
+                .map(String::from)
+        })
+        .ok_or_else(|| "Resource has no resourceinstanceid, nor do its tiles".to_string())?;
+    Ok(create_static_resource(
+        resource_id,
+        graph.graphid.clone(),
+        tiles,
+        graph,
+    ))
+}
+
+pub(crate) fn parse_resource_json(resource_json: &str) -> Result<Value, String> {
+    serde_json::from_str(resource_json).map_err(|e| format!("Failed to parse resource: {e}"))
+}
+
+/// The registered graph a resource names, for bindings that hold graphs in
+/// core's registry.
+pub(crate) fn registered_graph_for(resource: &Value) -> Result<Arc<StaticGraph>, String> {
+    let graph_id = resource_graph_id(resource).ok_or("Missing graph_id in resource")?;
+    crate::get_graph(graph_id)
+        .ok_or_else(|| format!("Graph '{graph_id}' not registered. Call register_graph() first."))
+}
+
+/// One resource (see [`resource_for_tree`]) as a node tree, its root carrying
+/// `resourceinstanceid` and `graph_id`.
+fn resource_to_tree(resource: &Value, graph: &StaticGraph) -> Result<Value, String> {
+    let resource = resource_for_tree(resource, graph)?;
+    let tiles = resource
+        .tiles
+        .as_ref()
+        .ok_or_else(|| "Resource has no tiles".to_string())?;
+    resource_tiles_to_tree(tiles, &resource.resourceinstance, graph)
+}
+
+/// One resource's JSON (see [`resource_for_tree`]) as a node tree, its root
+/// carrying `resourceinstanceid` and `graph_id`.
+pub fn tiles_to_tree_from_json(resource_json: &str, graph: &StaticGraph) -> Result<Value, String> {
+    resource_to_tree(&parse_resource_json(resource_json)?, graph)
+}
+
+/// [`tiles_to_tree_from_json`] against the registered graph the resource names.
+pub fn tiles_to_tree_from_json_registered(resource_json: &str) -> Result<Value, String> {
+    let resource = parse_resource_json(resource_json)?;
+    resource_to_tree(&resource, &*registered_graph_for(&resource)?)
+}
+
+/// What the bindings' batch tiles-to-trees returns. Every key is always
+/// present.
+#[derive(Debug, Serialize)]
+pub struct BatchTreesOutcome {
+    pub success: bool,
+    pub results: Vec<Value>,
+    pub count: usize,
+    pub errors: Vec<String>,
+    pub error_count: usize,
+}
+
+/// Each resource of a JSON array (see [`resource_for_tree`]) as a node tree:
+/// against `graph`, or, given none, against the registered graph each names.
+/// Strict, the first failure (in input order) fails the batch; otherwise
+/// failures are collected as `"Resource {i}: ..."`.
+pub fn batch_tiles_to_trees_from_json(
+    resources_json: &str,
+    graph: Option<&StaticGraph>,
+    strict: bool,
+) -> Result<BatchTreesOutcome, String> {
+    let resources: Vec<Value> = serde_json::from_str(resources_json)
+        .map_err(|e| format!("Failed to parse resources: {e}"))?;
+    let convert_one = |i: usize, resource: &Value| -> Result<Value, String> {
+        match graph {
+            Some(graph) => resource_to_tree(resource, graph),
+            None => resource_to_tree(resource, &*registered_graph_for(resource)?),
+        }
+        .map_err(|e| format!("Resource {i}: {e}"))
+    };
+
+    #[cfg(feature = "parallel")]
+    let converted: Vec<Result<Value, String>> = {
+        use rayon::prelude::*;
+        resources
+            .par_iter()
+            .enumerate()
+            .map(|(i, r)| convert_one(i, r))
+            .collect()
+    };
+    #[cfg(not(feature = "parallel"))]
+    let converted: Vec<Result<Value, String>> = resources
+        .iter()
+        .enumerate()
+        .map(|(i, r)| convert_one(i, r))
+        .collect();
+
+    let mut results = Vec::with_capacity(converted.len());
+    let mut errors = Vec::new();
+    for r in converted {
+        match r {
+            Ok(tree) => results.push(tree),
+            Err(e) if strict => return Err(format!("Strict mode error: {e}")),
+            Err(e) => errors.push(e),
+        }
+    }
+    Ok(BatchTreesOutcome {
+        success: errors.is_empty(),
+        count: results.len(),
+        error_count: errors.len(),
+        results,
+        errors,
+    })
+}
+
 /// Extract resources from input (handles both wrapper format and single resource)
 pub(crate) fn extract_resources(input: &Value) -> Result<Vec<StaticResource>, String> {
     // Try business_data wrapper format first

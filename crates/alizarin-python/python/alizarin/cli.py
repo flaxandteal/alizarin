@@ -12,7 +12,7 @@ from typing import Optional
 
 import click
 
-from . import batch_trees_to_tiles, batch_tiles_to_trees
+from . import batch_trees_to_tiles, batch_tiles_to_trees, register_graph
 
 
 @click.group()
@@ -131,7 +131,7 @@ def convert(
         trees_json = json.dumps(trees)
         batch_result = batch_trees_to_tiles(
             trees_json=trees_json,
-            graph_json=graph_json,
+            graph_id=register_graph(graph_json),
             from_camel=from_camel,
             strict=strict
         )
@@ -257,9 +257,9 @@ def to_trees(
 
     try:
         resources_json = json.dumps(resources)
+        register_graph(graph_json)  # the resources name their graph
         batch_result = batch_tiles_to_trees(
             resources_json=resources_json,
-            graph_json=graph_json,
             strict=strict
         )
 

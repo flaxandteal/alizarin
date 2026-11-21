@@ -17,7 +17,8 @@ use alizarin_core::graph::{
     compose_resource_layers_from_json, lifecycle_state_from_json, transition_from_json,
 };
 use alizarin_core::{
-    GraphWrapper, StaticPublication, StaticResource, StaticTile, StaticTranslatableString,
+    batch_tiles_to_trees_from_json, cards_to_tree_from_json, tiles_to_tree_from_json, GraphWrapper,
+    StaticPublication, StaticResource, StaticTile, StaticTranslatableString,
 };
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -106,6 +107,24 @@ fn outputs() -> BTreeMap<String, String> {
         );
     }
 
+    // Tiles to trees: by node, by card, and as a batch.
+    let resource_json = read("resource.json");
+    put(
+        "tree".into(),
+        canonical(&tiles_to_tree_from_json(&resource_json, &graph).unwrap()),
+    );
+    put(
+        "tree:cards".into(),
+        canonical(&cards_to_tree_from_json(&resource_json, &graph).unwrap()),
+    );
+    put(
+        "trees:batch".into(),
+        canonical(
+            &batch_tiles_to_trees_from_json(&format!("[{resource_json}]"), Some(&graph), true)
+                .unwrap(),
+        ),
+    );
+
     // A tile with every optional field empty, as `createStaticTile` makes one.
     let mut empty = StaticTile::new_empty("0a0a0a0a-0000-4000-8000-000000000011".into());
     empty.resourceinstance_id = "0b0b0b0b-0000-4000-8000-000000000001".into();
@@ -127,7 +146,6 @@ fn outputs() -> BTreeMap<String, String> {
     // Lifecycles: the base is Active and the layer copy Draft, so the
     // composed resource above is a Conflict.
     let lifecycle = serde_json::to_string(&graph.resource_instance_lifecycle).unwrap();
-    let resource_json = read("resource.json");
     let composed_json = serde_json::to_string(&composed.resource).unwrap();
     put(
         "lifecycle:state".into(),

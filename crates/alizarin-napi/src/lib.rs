@@ -1214,6 +1214,35 @@ pub fn static_resource_from_summary(
         .map_err(|e| napi::Error::from_reason(format!("Serialization failed: {}", e)))
 }
 
+/// One resource as a node tree, against the registered graph it names.
+///
+/// `resourceJson` is a StaticResource, or flat `{resourceinstanceid,
+/// graph_id, tiles}` (see core's `resource_for_tree`).
+#[napi(js_name = "tilesToTree")]
+pub fn tiles_to_tree(resource_json: String) -> Result<serde_json::Value> {
+    alizarin_core::tiles_to_tree_from_json_registered(&resource_json)
+        .map_err(napi::Error::from_reason)
+}
+
+/// One resource as a card tree (`{resourceinstance, cards}`), against the
+/// registered graph it names.
+#[napi(js_name = "cardsToTree")]
+pub fn cards_to_tree(resource_json: String) -> Result<serde_json::Value> {
+    alizarin_core::cards_to_tree_from_json_registered(&resource_json)
+        .map_err(napi::Error::from_reason)
+}
+
+/// Each resource of a JSON array as a node tree, against the registered graph
+/// each names: `{success, results, count, errors, error_count}`. Strict, the
+/// first failure throws.
+#[napi(js_name = "batchTilesToTrees")]
+pub fn batch_tiles_to_trees(resources_json: String, strict: bool) -> Result<serde_json::Value> {
+    let outcome = alizarin_core::batch_tiles_to_trees_from_json(&resources_json, None, strict)
+        .map_err(napi::Error::from_reason)?;
+    serde_json::to_value(outcome)
+        .map_err(|e| napi::Error::from_reason(format!("Serialization failed: {}", e)))
+}
+
 /// Set the global RDM namespace (UUID or http(s) URL) for deterministic UUID
 /// generation; the string itself is kept as the RDF base URI.
 #[napi(js_name = "setRdmNamespace")]

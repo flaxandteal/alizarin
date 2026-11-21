@@ -162,6 +162,24 @@ export declare function summaryToMetadata(summary: any): any
  */
 export declare function staticResourceFromSummary(summary: any): any
 /**
+ * One resource as a node tree, against the registered graph it names.
+ *
+ * `resourceJson` is a StaticResource, or flat `{resourceinstanceid,
+ * graph_id, tiles}` (see core's `resource_for_tree`).
+ */
+export declare function tilesToTree(resourceJson: string): any
+/**
+ * One resource as a card tree (`{resourceinstance, cards}`), against the
+ * registered graph it names.
+ */
+export declare function cardsToTree(resourceJson: string): any
+/**
+ * Each resource of a JSON array as a node tree, against the registered graph
+ * each names: `{success, results, count, errors, error_count}`. Strict, the
+ * first failure throws.
+ */
+export declare function batchTilesToTrees(resourcesJson: string, strict: boolean): any
+/**
  * Set the global RDM namespace (UUID or http(s) URL) for deterministic UUID
  * generation; the string itself is kept as the RDF base URI.
  */

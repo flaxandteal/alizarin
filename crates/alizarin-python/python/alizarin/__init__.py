@@ -27,6 +27,7 @@ fold_may_match = _alizarin_rust.fold_may_match
 get_graph_json = _alizarin_rust.get_graph_json
 get_graph_schema = _alizarin_rust.get_graph_schema
 tiles_to_json_tree = _alizarin_rust.tiles_to_json_tree
+cards_to_json_tree = _alizarin_rust.cards_to_json_tree
 build_tree_from_tiles = _alizarin_rust.build_tree_from_tiles
 json_tree_to_tiles = _alizarin_rust.json_tree_to_tiles
 batch_trees_to_tiles = _alizarin_rust.batch_trees_to_tiles
@@ -421,6 +422,7 @@ __all__ = [
     "get_graph_schema",
     # Core Rust functions
     "tiles_to_json_tree",
+    "cards_to_json_tree",
     "build_tree_from_tiles",
     "json_tree_to_tiles",
     "batch_trees_to_tiles",
