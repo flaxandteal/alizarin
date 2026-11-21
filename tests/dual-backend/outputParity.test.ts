@@ -69,6 +69,26 @@ const GETTER_EXCEPTIONS: Record<string, Record<string, string>> = {
 
 let graph: any;
 let full: any;
+let fullByLanguage: any;
+
+/** resource.json with its descriptors in Arches' per-language form: its own
+ * under "en", a decoy under "de" (which sorts first). Read as "en", it must
+ * give the same resource (as output_parity_test.rs checks in core). */
+const resourceByLanguage = {
+  ...resourceFixture,
+  resourceinstance: {
+    ...resourceFixture.resourceinstance,
+    descriptors: { de: { name: "Parität eins" }, en: resourceFixture.resourceinstance.descriptors },
+  },
+};
+
+function loadRegistry(resource: any) {
+  const registry = createResourceRegistry();
+  const json = JSON.stringify([resource]);
+  if (typeof registry.mergeFromResourcesJson === "function") registry.mergeFromResourcesJson(json, true);
+  else registry.loadFromResourcesJson(json, true);
+  return registry;
+}
 
 beforeAll(() => {
   graph = parseStaticGraph(graphText);
@@ -83,12 +103,10 @@ beforeAll(() => {
     }),
   );
   new ResourceModelWrapper(wkrm, graph, undefined, true);
-  const registry = createResourceRegistry();
-  const json = JSON.stringify([resourceFixture]);
-  if (typeof registry.mergeFromResourcesJson === "function") registry.mergeFromResourcesJson(json, true);
-  else registry.loadFromResourcesJson(json, true);
+  const registry = loadRegistry(resourceFixture);
   full = registry.getFull(RESOURCE_ID);
   (globalThis as any).__parityRegistry = registry;
+  fullByLanguage = loadRegistry(resourceByLanguage).getFull(RESOURCE_ID);
 });
 
 /** Each object a route returns, with the golden label it must match. */
@@ -120,6 +138,7 @@ function routes(): [string, string, () => any][] {
     out.push([`graph.functions_x_graphs[${i}]`, `fxg:${f.id}`, () => graph.functions_x_graphs[i]]),
   );
   out.push(["registry.getFull", "resource", () => full]);
+  out.push(["registry.getFull(per-language descriptors)", "resource", () => fullByLanguage]);
   out.push(["registry.getSummary", "resource.summary", () => (globalThis as any).__parityRegistry.getSummary(RESOURCE_ID)]);
   resourceFixture.tiles.forEach((t: any, i: number) => {
     out.push([`getFull().tiles[${i}]`, `tile:${t.tileid}`, () => full.tiles[i]]);

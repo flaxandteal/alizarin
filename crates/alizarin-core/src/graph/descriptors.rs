@@ -18,7 +18,14 @@ pub const COMPUTE_TILES_FUNCTION_ID: &str = "60000000-0000-0000-0000-00000000000
 pub const AGGREGATE_FUNCTION_ID: &str = "60000000-0000-0000-0000-000000000003";
 
 /// Descriptors for resource display
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+///
+/// Deserializes from either form:
+/// - Flat (alizarin's own output): `{"name": "...", "slug": "..."}`
+/// - Language-nested (Arches export): `{"en": {"name": "...", ...}}`, resolved
+///   to "en", else the lowest language key.
+///
+/// Always serializes flat.
+#[derive(Clone, Debug, Serialize, Default)]
 pub struct StaticResourceDescriptors {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
@@ -51,6 +58,67 @@ impl StaticResourceDescriptors {
     /// Create empty descriptors
     pub fn empty() -> Self {
         Self::default()
+    }
+}
+
+/// The flat form, field for field; what both forms deserialize through.
+#[derive(Clone, Deserialize)]
+struct FlatDescriptors {
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    map_popup: Option<String>,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    slug: Option<String>,
+    #[serde(default)]
+    point: Option<String>,
+}
+
+const DESCRIPTOR_FIELDS: [&str; 5] = ["name", "map_popup", "description", "slug", "point"];
+
+impl From<FlatDescriptors> for StaticResourceDescriptors {
+    fn from(flat: FlatDescriptors) -> Self {
+        StaticResourceDescriptors {
+            name: flat.name,
+            map_popup: flat.map_popup,
+            description: flat.description,
+            slug: flat.slug,
+            point: flat.point,
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for StaticResourceDescriptors {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        // Language-nested: a non-empty object of objects, none keyed by a
+        // descriptor field.
+        let nested = match &value {
+            serde_json::Value::Object(map) => {
+                !map.is_empty()
+                    && map.values().all(serde_json::Value::is_object)
+                    && !map.keys().any(|k| DESCRIPTOR_FIELDS.contains(&k.as_str()))
+            }
+            _ => false,
+        };
+        if nested {
+            let by_lang: HashMap<String, FlatDescriptors> =
+                serde_json::from_value(value).map_err(serde::de::Error::custom)?;
+            return Ok(by_lang
+                .get("en")
+                .or_else(|| crate::sorted_serde::lowest_key_value(&by_lang))
+                .cloned()
+                .map(Into::into)
+                .unwrap_or_default());
+        }
+        serde_json::from_value::<FlatDescriptors>(value)
+            .map(Into::into)
+            .map_err(serde::de::Error::custom)
     }
 }
 
@@ -247,6 +315,33 @@ mod tests {
         let parsed: StaticResourceDescriptors = serde_json::from_str(json).unwrap();
         assert_eq!(parsed.name.as_deref(), Some("Test"));
         assert!(parsed.slug.is_none());
+    }
+
+    #[test]
+    fn test_descriptors_deserialize_language_nested() {
+        let json = r#"{"de": {"name": "Gruppe"}, "en": {"name": "Group", "map_popup": "A group"}}"#;
+        let parsed: StaticResourceDescriptors = serde_json::from_str(json).unwrap();
+        assert_eq!(parsed.name.as_deref(), Some("Group"));
+        assert_eq!(parsed.map_popup.as_deref(), Some("A group"));
+
+        // No "en": the lowest language key
+        let json = r#"{"ga": {"name": "Grúpa"}, "de": {"name": "Gruppe"}}"#;
+        let parsed: StaticResourceDescriptors = serde_json::from_str(json).unwrap();
+        assert_eq!(parsed.name.as_deref(), Some("Gruppe"));
+
+        // Serializes flat
+        let out = serde_json::to_value(&parsed).unwrap();
+        assert_eq!(out, serde_json::json!({"name": "Gruppe"}));
+    }
+
+    #[test]
+    fn test_descriptors_deserialize_empty_and_malformed() {
+        let parsed: StaticResourceDescriptors = serde_json::from_str("{}").unwrap();
+        assert!(parsed.is_empty());
+        assert!(serde_json::from_str::<StaticResourceDescriptors>(r#"{"name": 5}"#).is_err());
+        assert!(
+            serde_json::from_str::<StaticResourceDescriptors>(r#"{"en": {"name": 5}}"#).is_err()
+        );
     }
 
     #[test]

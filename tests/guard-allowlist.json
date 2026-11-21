@@ -48,12 +48,5 @@
       "TS7053": 10
     }
   },
-  "coreRoundTrip": {
-    "tests/definitions/resources/_07883c9e-b25c-11e9-975a-a4d18cec433a.json::resource.resourceinstance.descriptors.description::added by Python": "B-4",
-    "tests/definitions/resources/_07883c9e-b25c-11e9-975a-a4d18cec433a.json::resource.resourceinstance.descriptors.map_popup::added by Python": "B-4",
-    "tests/definitions/resources/_07883c9e-b25c-11e9-975a-a4d18cec433a.json::resource.resourceinstance.descriptors.name::added by Python": "B-4",
-    "tests/definitions/resources/d2368123-9628-49a2-b3dd-78ac6ee3e911.json::resource.resourceinstance.descriptors.description::added by Python": "B-4",
-    "tests/definitions/resources/d2368123-9628-49a2-b3dd-78ac6ee3e911.json::resource.resourceinstance.descriptors.map_popup::added by Python": "B-4",
-    "tests/definitions/resources/d2368123-9628-49a2-b3dd-78ac6ee3e911.json::resource.resourceinstance.descriptors.name::added by Python": "B-4"
-  }
+  "coreRoundTrip": {}
 }

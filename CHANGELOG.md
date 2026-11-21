@@ -14,7 +14,16 @@ entries is tracked in `PARITY-RESEARCH.md`.
   `getRdmNamespaceRaw` exported from `alizarin`, on either backend. Core now
   keeps the string the namespace was set from (it was a WASM-only global).
 
+### Changed
+- Malformed resource descriptors (`{"name": 5}`, or the same under a
+  language) are an error when a resource is read. The business-data loader
+  used to drop them silently to empty.
+
 ### Fixed
+- Per-language resource descriptors (Arches' `{"en": {"name": …}}`) are read
+  wherever a resource is, as "en", else the lowest language, and written flat.
+  Only the business-data loader read them; elsewhere (`StaticResource` from
+  JSON, Python's `canonical_static`) they became empty.
 - NAPI: `ArchesClientLocal` parsed collections from SKOS XML against
   `http://localhost/` whatever namespace was set, since NAPI had none; it uses
   the namespace's string, as WASM does.

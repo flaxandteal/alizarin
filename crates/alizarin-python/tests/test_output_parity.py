@@ -35,6 +35,16 @@ GOLDEN = load("expected.json")
 GRAPH = load("graph.json")["graph"][0]
 RESOURCE = load("resource.json")
 LAYER = load("resource-layer.json")
+# resource.json with its descriptors in Arches' per-language form: its own under
+# "en", a decoy under "de" (which sorts first). Read as "en", it must give the
+# same resource (as output_parity_test.rs checks in core).
+RESOURCE_BY_LANGUAGE = {
+    **RESOURCE,
+    "resourceinstance": {
+        **RESOURCE["resourceinstance"],
+        "descriptors": {"de": {"name": "Parität eins"}, "en": RESOURCE["resourceinstance"]["descriptors"]},
+    },
+}
 
 # Arches' Standard lifecycle, as in graph.json.
 ACTIVE = "f75bb034-36e3-4ab4-8167-f520cf0b4c58"
@@ -78,6 +88,13 @@ def routes():
         ("StaticPublication", "publication", lambda: StaticPublication.from_dict(GRAPH["publication"]).to_dict())
     )
     out.append(("StaticResource", "resource", lambda: StaticResource.from_dict(RESOURCE).to_dict()))
+    out.append(
+        (
+            "StaticResource(per-language descriptors)",
+            "resource",
+            lambda: StaticResource.from_dict(RESOURCE_BY_LANGUAGE).to_dict(),
+        )
+    )
     for tile in RESOURCE["tiles"]:
         out.append(
             (

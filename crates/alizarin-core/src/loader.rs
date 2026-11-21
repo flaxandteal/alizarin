@@ -49,7 +49,7 @@ struct BusinessDataResourceInstance {
     graph_id: String,
     name: String,
     #[serde(default)]
-    descriptors: Option<FlexibleDescriptors>,
+    descriptors: Option<StaticResourceDescriptors>,
     #[serde(default)]
     createdtime: Option<String>,
     #[serde(default)]
@@ -68,56 +68,6 @@ struct BusinessDataResourceInstance {
     lifecycle_state_conflict: Vec<String>,
 }
 
-/// Descriptors that may appear in either format:
-/// - Language-nested (Arches export): `{"en": {"name": "...", "slug": "..."}}`
-/// - Flat (alizarin's own output): `{"name": "...", "slug": "..."}`
-#[derive(Debug)]
-struct FlexibleDescriptors {
-    resolved: StaticResourceDescriptors,
-}
-
-impl FlexibleDescriptors {
-    fn get_for_lang(&self, _lang: &str) -> Option<StaticResourceDescriptors> {
-        if self.resolved.is_empty() {
-            None
-        } else {
-            Some(self.resolved.clone())
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for FlexibleDescriptors {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let value = serde_json::Value::deserialize(deserializer)?;
-
-        // Try flat format first: {"name": "...", "slug": "..."}
-        if let Ok(flat) = serde_json::from_value::<StaticResourceDescriptors>(value.clone()) {
-            if !flat.is_empty() {
-                return Ok(FlexibleDescriptors { resolved: flat });
-            }
-        }
-
-        // Try language-nested: {"en": {"name": "...", ...}}
-        if let Ok(nested) =
-            serde_json::from_value::<HashMap<String, StaticResourceDescriptors>>(value)
-        {
-            let resolved = nested
-                .get("en")
-                .or_else(|| crate::sorted_serde::lowest_key_value(&nested))
-                .cloned()
-                .unwrap_or_default();
-            return Ok(FlexibleDescriptors { resolved });
-        }
-
-        Ok(FlexibleDescriptors {
-            resolved: StaticResourceDescriptors::default(),
-        })
-    }
-}
-
 impl BusinessDataResource {
     /// Convert to StaticResourceSummary
     fn to_summary(&self) -> StaticResourceSummary {
@@ -126,7 +76,7 @@ impl BusinessDataResource {
             resourceinstanceid: ri.resourceinstanceid.clone(),
             graph_id: ri.graph_id.clone(),
             name: ri.name.clone(),
-            descriptors: ri.descriptors.as_ref().and_then(|d| d.get_for_lang("en")),
+            descriptors: ri.descriptors.clone().filter(|d| !d.is_empty()),
             metadata: self.metadata.clone().unwrap_or_default(),
             createdtime: ri.createdtime.clone(),
             lastmodified: ri.lastmodified.clone(),
@@ -205,7 +155,7 @@ struct BusinessDataResourceInstanceFull {
     graph_id: String,
     name: String,
     #[serde(default)]
-    descriptors: Option<FlexibleDescriptors>,
+    descriptors: Option<StaticResourceDescriptors>,
     #[serde(default)]
     createdtime: Option<String>,
     #[serde(default)]
@@ -228,11 +178,7 @@ impl BusinessDataResourceFull {
     /// Convert to StaticResource
     fn to_static_resource(&self) -> StaticResource {
         let ri = &self.resourceinstance;
-        let descriptors = ri
-            .descriptors
-            .as_ref()
-            .and_then(|d| d.get_for_lang("en"))
-            .unwrap_or_default();
+        let descriptors = ri.descriptors.clone().unwrap_or_default();
 
         StaticResource {
             resourceinstance: StaticResourceMetadata {

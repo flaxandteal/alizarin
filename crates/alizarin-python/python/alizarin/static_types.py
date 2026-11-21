@@ -774,21 +774,8 @@ class StaticResourceDescriptors:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> StaticResourceDescriptors:
-        """Flat, or Arches' per-language form ({"en": {...}}), read as core's
-        business-data loader reads it (loader.rs FlexibleDescriptors): "en",
-        else the lowest language. Other keys are ignored, as serde ignores them."""
-        fields = ("name", "description", "map_popup", "slug", "point")
-
-        def pick(source: Dict[str, Any]) -> StaticResourceDescriptors:
-            return cls(**{k: source[k] for k in fields if source.get(k) is not None})
-
-        flat = pick(data)
-        if flat != cls():
-            return flat
-        languages = {k: v for k, v in data.items() if isinstance(v, dict)}
-        if not languages:
-            return cls()
-        return pick(languages["en"] if "en" in languages else languages[min(languages)])
+        """Flat, or Arches' per-language form ({"en": {...}}), read by core."""
+        return cls(**canonical_static("resource_descriptors", data))
 
 
 @dataclass
@@ -1241,6 +1228,7 @@ for _cls, _kind in (
     (StaticPublication, "publication"),
     (StaticTile, "tile"),
     (StaticResource, "resource"),
+    (StaticResourceDescriptors, "resource_descriptors"),
     (StaticGraph, "graph"),
 ):
     _through_core(_cls, _kind)

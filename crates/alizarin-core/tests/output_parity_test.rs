@@ -172,6 +172,27 @@ fn the_golden_file_is_cores_output() {
     );
 }
 
+/// `resource.json` with its descriptors in Arches' per-language form: the
+/// fixture's own under "en", and a decoy under "de", which sorts first. The
+/// bindings read it through the same routes as `resource.json`.
+fn resource_descriptors_by_language() -> String {
+    let mut resource: serde_json::Value = serde_json::from_str(&read("resource.json")).unwrap();
+    let flat = resource["resourceinstance"]["descriptors"].take();
+    resource["resourceinstance"]["descriptors"] =
+        serde_json::json!({"de": {"name": "Parität eins"}, "en": flat});
+    resource.to_string()
+}
+
+/// Per-language descriptors are read as "en", so the resource serialises
+/// exactly as `resource.json` does (the golden's "resource").
+#[test]
+fn per_language_descriptors_give_the_flat_resource() {
+    let by_language: StaticResource =
+        serde_json::from_str(&resource_descriptors_by_language()).unwrap();
+    let flat: StaticResource = serde_json::from_str(&read("resource.json")).unwrap();
+    assert_eq!(canonical(&by_language), canonical(&flat));
+}
+
 /// A struct serialised straight to a string (as `exportTilesJson` and the
 /// exporters do) keeps its maps' iteration order, so a `HashMap` field would
 /// make the output differ from run to run. Serialising the same values from

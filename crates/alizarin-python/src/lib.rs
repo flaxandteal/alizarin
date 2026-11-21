@@ -706,7 +706,7 @@ fn batch_trees_to_tiles(
 /// Args:
 ///     kind: the core type: "node", "nodegroup", "edge", "card", "constraint",
 ///         "cards_x_nodes_x_widgets", "functions_x_graphs", "publication",
-///         "tile", "resource" or "graph".
+///         "tile", "resource", "resource_descriptors" or "graph".
 ///     value: the dict to normalise.
 #[pyfunction]
 fn canonical_static(py: Python, kind: &str, value: &Bound<'_, PyAny>) -> PyResult<PyObject> {
@@ -728,6 +728,7 @@ fn canonical_static(py: Python, kind: &str, value: &Bound<'_, PyAny>) -> PyResul
         "publication" => via::<alizarin_core::StaticPublication>(json),
         "tile" => via::<alizarin_core::StaticTile>(json),
         "resource" => via::<alizarin_core::StaticResource>(json),
+        "resource_descriptors" => via::<alizarin_core::StaticResourceDescriptors>(json),
         "graph" => via::<alizarin_core::StaticGraph>(json),
         other => Err(format!("unknown static type: {other}")),
     }
