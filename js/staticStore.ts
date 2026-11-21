@@ -6,7 +6,7 @@ import {
   StaticResourceRegistry,
   StaticTile,
 } from "./static-types";
-import { createResourceRegistry, createStaticResource, resourceTilesLoaded, summaryToMetadata } from "./backend";
+import { createResourceRegistry, createStaticResource, getBackend, resourceTilesLoaded, summaryToMetadata } from "./backend";
 
 /**
  * StaticStore - Thin wrapper around StaticResourceRegistry with optional archesClient fallback
@@ -112,7 +112,11 @@ class StaticStore {
 
         // If not already in registry (remote clients), merge first
         if (!this.registry.hasFull(id)) {
-          const wrapped = resource instanceof StaticResource ? resource : createStaticResource(resource);
+          // NAPI's registry reads it through core as it merges, so only
+          // WASM's needs it built as a class first.
+          const wrapped = resource instanceof StaticResource || getBackend() === 'napi'
+            ? resource
+            : createStaticResource(resource);
           this.registry.mergeFromResources([wrapped], true, true);
         }
 

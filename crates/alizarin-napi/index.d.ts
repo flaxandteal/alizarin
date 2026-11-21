@@ -160,12 +160,12 @@ export declare function summaryToMetadata(summary: any): any
  * A static type (`"node"`, `"resource"`, ...) built from a JS object, as
  * core builds it: what the WASM classes' constructors hold.
  */
-export declare function constructStatic(kind: string, value: any): any
+export declare function constructStatic(kind: string, value: any): JsonOut
 /**
  * The resources of a business data JSON string, as core builds them: the
  * WASM `StaticResource.fromBusinessDataJsonString`.
  */
-export declare function resourcesFromBusinessDataJson(json: string): any
+export declare function resourcesFromBusinessDataJson(json: string): JsonOut
 /**
  * A lightweight resource (no tiles, `tiles_loaded: false`) from a registry
  * summary, as core builds it: the WASM `StaticResource.fromSummary`.

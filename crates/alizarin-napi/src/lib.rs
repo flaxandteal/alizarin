@@ -3,7 +3,7 @@ mod json_arg;
 mod node_config_napi;
 
 use instance_wrapper_napi::NapiRdmCache;
-pub(crate) use json_arg::JsonArg;
+pub(crate) use json_arg::{JsonArg, JsonOut};
 
 use std::collections::HashMap;
 
@@ -1194,17 +1194,21 @@ pub fn summary_to_metadata(
 pub fn construct_static(
     kind: String,
     #[napi(ts_arg_type = "any")] value: JsonArg,
-) -> Result<serde_json::Value> {
-    alizarin_core::construct_static(&kind, value.0).map_err(napi::Error::from_reason)
+) -> Result<JsonOut> {
+    alizarin_core::construct_static(&kind, value.0)
+        .map(JsonOut)
+        .map_err(napi::Error::from_reason)
 }
 
 /// The resources of a business data JSON string, as core builds them: the
 /// WASM `StaticResource.fromBusinessDataJsonString`.
 #[napi]
-pub fn resources_from_business_data_json(json: String) -> Result<serde_json::Value> {
+pub fn resources_from_business_data_json(json: String) -> Result<JsonOut> {
     let resources = alizarin_core::resources_from_business_data_json(&json)
         .map_err(napi::Error::from_reason)?;
+    drop(json);
     serde_json::to_value(resources)
+        .map(JsonOut)
         .map_err(|e| napi::Error::from_reason(format!("Serialization failed: {}", e)))
 }
 

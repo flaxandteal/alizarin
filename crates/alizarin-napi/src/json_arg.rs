@@ -7,8 +7,8 @@
 //! TypeError on a cycle instead, as on WASM (a RangeError) and Python (a
 //! ValueError), and is one native call rather than one per property.
 
-use napi::bindgen_prelude::{FromNapiValue, TypeName, ValidateNapiValue};
-use napi::{sys, Env, JsFunction, JsObject, JsUnknown, NapiValue, ValueType};
+use napi::bindgen_prelude::{FromNapiValue, ToNapiValue, TypeName, ValidateNapiValue};
+use napi::{sys, Env, JsFunction, JsObject, JsUnknown, NapiRaw, NapiValue, ValueType};
 
 /// A JSON value passed from JavaScript: what JSON.stringify gives it (an
 /// `undefined` is null). Take this, not `serde_json::Value`, for any argument
@@ -42,6 +42,36 @@ impl FromNapiValue for JsonArg {
         serde_json::from_str(&text)
             .map(JsonArg)
             .map_err(|e| napi::Error::from_reason(format!("Invalid JSON value: {e}")))
+    }
+}
+
+/// A JSON value returned to JavaScript through V8's own JSON.parse, the mirror
+/// of [`JsonArg`]: one native call, where napi-rs's `serde_json::Value` return
+/// makes one per property (about ten times slower on a large business data
+/// file, with a far higher peak). Keys keep `serde_json::Value`'s sorted order,
+/// so the result stringifies as a `serde_json::Value` return does.
+pub struct JsonOut(pub serde_json::Value);
+
+impl TypeName for JsonOut {
+    fn type_name() -> &'static str {
+        "any"
+    }
+
+    fn value_type() -> ValueType {
+        ValueType::Unknown
+    }
+}
+
+impl ToNapiValue for JsonOut {
+    unsafe fn to_napi_value(env: sys::napi_env, val: Self) -> napi::Result<sys::napi_value> {
+        let env = Env::from_raw(env);
+        let text = serde_json::to_string(&val.0)
+            .map_err(|e| napi::Error::from_reason(format!("Serialization failed: {e}")))?;
+        drop(val);
+        let json: JsObject = env.get_global()?.get_named_property("JSON")?;
+        let parse: JsFunction = json.get_named_property("parse")?;
+        let parsed = parse.call(Some(&json), &[env.create_string_from_std(text)?])?;
+        Ok(parsed.raw())
     }
 }
 
