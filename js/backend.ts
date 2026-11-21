@@ -552,11 +552,9 @@ export function summaryToMetadata(summary: any): any {
  */
 export function createStaticResourceFromSummary(summary: any): any {
   if (_backend === 'napi') {
-    return {
-      resourceinstance: summaryToMetadata(summary),
-      metadata: summary.metadata ?? {},
-      tiles_loaded: false,
-    };
+    const napi = getNapiModule();
+    if (!napi) throw new Error('NAPI backend selected but @alizarin/napi not available');
+    return napi.staticResourceFromSummary(summary);
   }
   return getWasmModule().StaticResource.fromSummary(summary);
 }

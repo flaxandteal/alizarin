@@ -138,8 +138,8 @@ REASONS = [
                           "napi": "gap: NapiStaticGraph and StaticGraph expose different fields and builders (A-7)"}),
     ("fn:canonical_static", {"wasm": "ecosystem: WASM's static classes already serialise through core",
                              "napi": "gap: B-7, NAPI needs canonicalStatic so js/backend.ts createStatic* goes through core"}),
-    ("fn:summary_to_metadata", {"wasm": "gap: B-8, WASM does this inside StaticResource.fromSummary; one core *_from_json for both",
-                                "python": "gap: B-8, not bound in Python"}),
+    ("fn:summary_to_metadata", {"wasm": "ecosystem: a method on WASM's summary class, StaticResourceSummary.toMetadata"}),
+    ("fn:static_resource_from_summary", {"wasm": "ecosystem: a static method on WASM's resource class, StaticResource.fromSummary"}),
     ("class:rustRdmCollection", {"wasm": "ecosystem: JS gets RDM collections as plain JSON", "napi": "ecosystem: JS gets RDM collections as plain JSON"}),
     ("class:rustRdmConcept", {"wasm": "ecosystem: JS gets RDM concepts as plain JSON", "napi": "ecosystem: JS gets RDM concepts as plain JSON"}),
     # To remove rather than add elsewhere.

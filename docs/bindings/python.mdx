@@ -93,6 +93,7 @@ state = alizarin.resource_lifecycle_state(json.dumps(resource), json.dumps(graph
 | `batch_merge_resources(batches_json, recompute_descriptors, strict)` | Batch merge across multiple JSON batches |
 | `streamed_merge_from_files(file_paths, chunk_size, ...)` | Memory-efficient stream-merge of resources from files |
 | `ResourceRegistry` | Class: create and manage a resource registry |
+| `summary_to_metadata(summary)` / `static_resource_from_summary(summary)` | From a registry summary (`ResourceRegistry.get_summary`): its resource metadata, or a lightweight resource with no tiles (`tiles_loaded: False`), as core builds them |
 | `compose_resource_layers(resources_json, base_graph_json, overlay_graphs_json, strict=False)` | Compose [resource layers](/docs/resource-layers) |
 | `build_resources_from_business_csv(csv_data, graph_json, collections_json, ...)` | Build resource instances from business-data CSV |
 | `resource_lifecycle_state(resource_json, lifecycle_json)` | Resolve a resource's [lifecycle](/docs/lifecycles) state |

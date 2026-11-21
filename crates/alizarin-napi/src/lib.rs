@@ -1202,6 +1202,18 @@ pub fn summary_to_metadata(
         .map_err(|e| napi::Error::from_reason(format!("Serialization failed: {}", e)))
 }
 
+/// A lightweight resource (no tiles, `tiles_loaded: false`) from a registry
+/// summary, as core builds it: the WASM `StaticResource.fromSummary`.
+#[napi]
+pub fn static_resource_from_summary(
+    #[napi(ts_arg_type = "any")] summary: JsonArg,
+) -> Result<serde_json::Value> {
+    let summary: StaticResourceSummary = serde_json::from_value(summary.0)
+        .map_err(|e| napi::Error::from_reason(format!("Invalid summary: {}", e)))?;
+    serde_json::to_value(alizarin_core::StaticResource::from_summary(&summary))
+        .map_err(|e| napi::Error::from_reason(format!("Serialization failed: {}", e)))
+}
+
 /// Set the global RDM namespace (UUID or http(s) URL) for deterministic UUID
 /// generation; the string itself is kept as the RDF base URI.
 #[napi(js_name = "setRdmNamespace")]

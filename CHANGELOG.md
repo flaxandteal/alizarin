@@ -13,6 +13,12 @@ entries is tracked in `PARITY-RESEARCH.md`.
   `get_rdm_namespace_raw`. TypeScript: `setRdmNamespace` and
   `getRdmNamespaceRaw` exported from `alizarin`, on either backend. Core now
   keeps the string the namespace was set from (it was a WASM-only global).
+- NAPI: `staticResourceFromSummary`. Python: `static_resource_from_summary`
+  and `summary_to_metadata`. A lightweight resource (no tiles,
+  `tiles_loaded: false`) or the metadata from a registry summary, as WASM's
+  `StaticResource.fromSummary` and `summary.toMetadata()` give; core builds
+  all of them. `createStaticResourceFromSummary` on NAPI uses it (it built the
+  object by hand).
 
 ### Changed
 - Malformed resource descriptors (`{"name": 5}`, or the same under a

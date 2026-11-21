@@ -199,6 +199,19 @@ impl StaticResource {
             lifecycle_state_conflict: self.resourceinstance.lifecycle_state_conflict.clone(),
         }
     }
+
+    /// A lightweight resource from a registry summary: its metadata, no tiles,
+    /// and `tiles_loaded: false`, so the tiles are fetched when first needed.
+    pub fn from_summary(summary: &StaticResourceSummary) -> Self {
+        StaticResource {
+            resourceinstance: summary.to_metadata(),
+            tiles: None,
+            metadata: summary.metadata.clone(),
+            cache: None,
+            scopes: None,
+            tiles_loaded: Some(false),
+        }
+    }
 }
 
 /// Cache entry for a related resource, matching ResourceInstanceCacheEntry from TypeScript.

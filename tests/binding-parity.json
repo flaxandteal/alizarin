@@ -4047,6 +4047,14 @@
       "napi": "setRdmNamespace",
       "python": "set_rdm_namespace"
     },
+    "static_resource_from_summary": {
+      "wasm": null,
+      "napi": "staticResourceFromSummary",
+      "python": "static_resource_from_summary",
+      "why": {
+        "wasm": "ecosystem: a static method on WASM's resource class, StaticResource.fromSummary"
+      }
+    },
     "streamed_merge_from_files": {
       "wasm": null,
       "napi": null,
@@ -4059,10 +4067,9 @@
     "summary_to_metadata": {
       "wasm": null,
       "napi": "summaryToMetadata",
-      "python": null,
+      "python": "summary_to_metadata",
       "why": {
-        "wasm": "gap: B-8, WASM does this inside StaticResource.fromSummary; one core *_from_json for both",
-        "python": "gap: B-8, not bound in Python"
+        "wasm": "ecosystem: a method on WASM's summary class, StaticResourceSummary.toMetadata"
       }
     },
     "tiles_to_tree": {

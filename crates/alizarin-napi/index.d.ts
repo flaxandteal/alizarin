@@ -157,6 +157,11 @@ export declare function findNeededCollections(treeJson: string, aliasToCollectio
  */
 export declare function summaryToMetadata(summary: any): any
 /**
+ * A lightweight resource (no tiles, `tiles_loaded: false`) from a registry
+ * summary, as core builds it: the WASM `StaticResource.fromSummary`.
+ */
+export declare function staticResourceFromSummary(summary: any): any
+/**
  * Set the global RDM namespace (UUID or http(s) URL) for deterministic UUID
  * generation; the string itself is kept as the RDF base URI.
  */

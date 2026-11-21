@@ -29,6 +29,8 @@ import {
   createResourceRegistry,
   createInstanceWrapperForModel,
   parseStaticResources,
+  createStaticResourceFromSummary,
+  summaryToMetadata,
 } from "../../js/backend";
 import { ResourceModelWrapper } from "../../js/graphManager";
 import { composeResourceLayers } from "../../js/csvModelLoader";
@@ -140,6 +142,16 @@ function routes(): [string, string, () => any][] {
   out.push(["registry.getFull", "resource", () => full]);
   out.push(["registry.getFull(per-language descriptors)", "resource", () => fullByLanguage]);
   out.push(["registry.getSummary", "resource.summary", () => (globalThis as any).__parityRegistry.getSummary(RESOURCE_ID)]);
+  out.push([
+    "summaryToMetadata",
+    "resource.summary.metadata",
+    () => summaryToMetadata((globalThis as any).__parityRegistry.getSummary(RESOURCE_ID)),
+  ]);
+  out.push([
+    "createStaticResourceFromSummary",
+    "resource.from_summary",
+    () => createStaticResourceFromSummary((globalThis as any).__parityRegistry.getSummary(RESOURCE_ID)),
+  ]);
   resourceFixture.tiles.forEach((t: any, i: number) => {
     out.push([`getFull().tiles[${i}]`, `tile:${t.tileid}`, () => full.tiles[i]]);
     out.push([`createStaticTile(tiles[${i}])`, `tile:${t.tileid}`, () => createStaticTile(t)]);

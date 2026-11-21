@@ -91,6 +91,14 @@ fn outputs() -> BTreeMap<String, String> {
     let resource: StaticResource = serde_json::from_str(&read("resource.json")).unwrap();
     put("resource".into(), canonical(&resource));
     put("resource.summary".into(), canonical(&resource.to_summary()));
+    put(
+        "resource.summary.metadata".into(),
+        canonical(&resource.to_summary().to_metadata()),
+    );
+    put(
+        "resource.from_summary".into(),
+        canonical(&StaticResource::from_summary(&resource.to_summary())),
+    );
     for tile in resource.tiles.as_deref().unwrap_or_default() {
         put(
             format!("tile:{}", tile.tileid.as_deref().unwrap()),

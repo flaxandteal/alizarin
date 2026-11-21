@@ -95,6 +95,16 @@ def routes():
             lambda: StaticResource.from_dict(RESOURCE_BY_LANGUAGE).to_dict(),
         )
     )
+
+    def summary():
+        registry = alizarin.ResourceRegistry()
+        registry.merge_from_resources(json.dumps([RESOURCE]))
+        return registry.get_summary(RESOURCE["resourceinstance"]["resourceinstanceid"])
+
+    out.append(("summary_to_metadata", "resource.summary.metadata", lambda: alizarin.summary_to_metadata(summary())))
+    out.append(
+        ("static_resource_from_summary", "resource.from_summary", lambda: alizarin.static_resource_from_summary(summary()))
+    )
     for tile in RESOURCE["tiles"]:
         out.append(
             (

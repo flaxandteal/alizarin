@@ -352,6 +352,8 @@ clear_rdm_namespace = _alizarin_rust.clear_rdm_namespace
 resolve_labels = _alizarin_rust.resolve_labels
 get_needed_collections = _alizarin_rust.get_needed_collections
 is_valid_uuid = _alizarin_rust.is_valid_uuid
+summary_to_metadata = _alizarin_rust.summary_to_metadata
+static_resource_from_summary = _alizarin_rust.static_resource_from_summary
 
 # =============================================================================
 # Build Pipeline Utilities
@@ -557,6 +559,8 @@ __all__ = [
     "resolve_labels",
     "get_needed_collections",
     "is_valid_uuid",
+    "summary_to_metadata",
+    "static_resource_from_summary",
     # Graph Mutation API
     "apply_mutations_from_json",
     "apply_mutations_create",

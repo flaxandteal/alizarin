@@ -2545,15 +2545,7 @@ impl StaticResource {
 
     #[wasm_bindgen(js_name = fromSummary)]
     pub fn from_summary(summary: &StaticResourceSummary) -> StaticResource {
-        let core = CoreStaticResource {
-            resourceinstance: summary.0.to_metadata(),
-            tiles: None,
-            metadata: summary.0.metadata.clone(),
-            cache: None,
-            scopes: None,
-            tiles_loaded: Some(false),
-        };
-        StaticResource(core)
+        StaticResource(CoreStaticResource::from_summary(&summary.0))
     }
 
     #[wasm_bindgen(getter = resourceinstance)]

@@ -737,6 +737,34 @@ fn canonical_static(py: Python, kind: &str, value: &Bound<'_, PyAny>) -> PyResul
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
 
+fn summary_arg(py: Python, summary: &Bound<'_, PyAny>) -> PyResult<CoreStaticResourceSummary> {
+    serde_json::from_value(python_json::python_to_json(py, summary)?).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Invalid summary: {e}"))
+    })
+}
+
+/// A registry summary's resource metadata, as core builds it.
+///
+/// Args:
+///     summary: a summary dict, as `ResourceRegistry.get_summary` gives.
+#[pyfunction]
+fn summary_to_metadata(py: Python, summary: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+    pythonize::pythonize(py, &summary_arg(py, summary)?.to_metadata())
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
+}
+
+/// A lightweight resource (no tiles, `tiles_loaded: False`) from a registry
+/// summary, as core builds it.
+///
+/// Args:
+///     summary: a summary dict, as `ResourceRegistry.get_summary` gives.
+#[pyfunction]
+fn static_resource_from_summary(py: Python, summary: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+    let resource = alizarin_core::StaticResource::from_summary(&summary_arg(py, summary)?);
+    pythonize::pythonize(py, &resource)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
+}
+
 /// Compose one resource across an ordered layer stack, in memory — the binding
 /// form of the substrate's `hydrate_layers` (no DuckDB).
 ///
@@ -2573,6 +2601,8 @@ fn alizarin(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(resource_lifecycle_state, m)?)?;
     m.add_function(wrap_pyfunction!(transition_resource_lifecycle, m)?)?;
     m.add_function(wrap_pyfunction!(canonical_static, m)?)?;
+    m.add_function(wrap_pyfunction!(summary_to_metadata, m)?)?;
+    m.add_function(wrap_pyfunction!(static_resource_from_summary, m)?)?;
     m.add_function(wrap_pyfunction!(cards_to_json_tree, m)?)?;
 
     // Streaming iterator (low memory, processes one tree at a time)
