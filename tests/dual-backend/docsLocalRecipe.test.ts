@@ -80,8 +80,8 @@ describe("docs: local testing recipe", () => {
     const org = await site.maintained_by;
     expect(String(await org.name)).toBe("City Council -- Planning & GIS Division");
 
-    // Descriptors come from the graph's descriptor function; Organisation has
-    // none, so getName() is null (on either backend) and the name is an attribute.
-    expect(await org.getName(true)).toBeNull();
+    // Organisation has no descriptor function, so getName() is the resource's
+    // stored name (on either backend).
+    expect(await org.getName(true)).toBe("City Council -- Planning & GIS Division");
   });
 });

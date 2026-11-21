@@ -1308,8 +1308,30 @@ impl ResourceInstanceWrapperCore {
     /// or none are cached, when they are built from its tiles with the graph's
     /// descriptor templates, and cached. `context` gives the graph and the
     /// extension registry, and is called only to build. Errors if no tiles
-    /// are loaded.
+    /// are loaded. A missing `name` is the resource's stored name.
     pub fn descriptors(
+        &mut self,
+        recompute: bool,
+        context: impl FnOnce() -> Result<(Arc<StaticGraph>, ExtensionTypeRegistry), String>,
+    ) -> Result<StaticResourceDescriptors, String> {
+        let mut descriptors = self.computed_descriptors(recompute, context)?;
+        // No descriptor function gave a name: the resource's stored one, which
+        // Arches keeps as the computed name. Only in what is returned; the
+        // resource's own descriptors stay as computed.
+        if descriptors.name.as_deref().is_none_or(str::is_empty) {
+            if let Some(name) = self
+                .resource_instance
+                .as_ref()
+                .map(|r| &r.name)
+                .filter(|n| !n.is_empty())
+            {
+                descriptors.name = Some(name.clone());
+            }
+        }
+        Ok(descriptors)
+    }
+
+    fn computed_descriptors(
         &mut self,
         recompute: bool,
         context: impl FnOnce() -> Result<(Arc<StaticGraph>, ExtensionTypeRegistry), String>,

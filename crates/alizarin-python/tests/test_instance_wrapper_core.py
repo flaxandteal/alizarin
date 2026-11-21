@@ -94,6 +94,22 @@ def test_to_json_populates_and_serialises_raw_values(loaded):
     assert core.get_root_pseudo() is not None
 
 
+def test_without_a_descriptor_function_the_name_is_the_stored_one():
+    # docs/example's Organisation has no descriptor function: its resources'
+    # stored names, as on WASM and NAPI (tests/dual-backend/docsLocalRecipe.test.ts).
+    example = os.path.join(os.path.dirname(__file__), "../../../docs/example")
+    graph_id = "aacd4ba3-8395-5092-870d-727143cd489a"
+    with open(os.path.join(example, "resource_models", f"{graph_id}.json")) as f:
+        register_graph(json.dumps(json.load(f)["graph"][0]))
+    PyResourceModelWrapper(graph_id)
+    with open(os.path.join(example, "business_data", f"_{graph_id}.json")) as f:
+        resource = json.load(f)["business_data"]["resources"][0]
+    assert resource["resourceinstance"]["descriptors"] == {}
+    core = RustResourceInstanceWrapperCore(graph_id)
+    core.load_tiles_from_resource(json.dumps(resource))
+    assert core.get_descriptors(True)["name"] == resource["resourceinstance"]["name"]
+
+
 def test_descriptors_and_pseudos_come_from_core(loaded):
     _, core, _, graph = loaded
     assert isinstance(core.get_descriptors(True), dict)

@@ -61,9 +61,9 @@ descriptors; `populateCachesFromJson` on a registry builds it). Business data
 without `__cache` gives stubs with no entry, so names need retrieval.
 
 Descriptors are computed by the target graph's
-[descriptor function](/docs/descriptors). A graph without one has no
-descriptors, and `getName(true)` is `null` even once retrieved; read the
-attribute that holds the name instead.
+[descriptor function](/docs/descriptors). When it gives no name (or the graph
+has none), `getName(true)` is the resource's stored `name`, which Arches keeps
+as its computed name.
 
 ## Serialising
 

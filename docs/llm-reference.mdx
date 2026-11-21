@@ -262,7 +262,7 @@ add_node,heritage_item,description,Description,string,1,E62_String,P3_has_note
 
 8. **Don't test for `undefined` in Alizarin output.** Absent values are `null` on every backend.
 
-9. **Don't expect a reference to be loaded.** A resource-instance value is a stub until an attribute is read (or `retrieve()` called), and retrieving needs the target in the registry or reachable by the client. `getName()` is `null` for a graph with no descriptor function.
+9. **Don't expect a reference to be loaded.** A resource-instance value is a stub until an attribute is read (or `retrieve()` called), and retrieving needs the target in the registry or reachable by the client. Without a cache entry, `getName()` is `null` until retrieved; `getName(true)` retrieves.
 
 ## License
 

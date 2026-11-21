@@ -70,6 +70,11 @@ entries is tracked in `PARITY-RESEARCH.md`.
   - A malformed `business_data` wrapper is reported as such (the error was
     about a bare resource's missing `resourceinstance`).
   - The loader reads about 30% faster.
+- A resource's descriptors (`getDescriptors()`, `getName()`; Python
+  `get_descriptors()`) take the resource's stored `name` when the graph's
+  descriptor function gives none, or the graph has none (it was `null`).
+  Arches keeps the computed name there. The resource's own `descriptors`
+  are unchanged, so exports are too.
 - Malformed resource descriptors (`{"name": 5}`, or the same under a
   language) are an error when a resource is read. The business-data loader
   used to drop them silently to empty.
