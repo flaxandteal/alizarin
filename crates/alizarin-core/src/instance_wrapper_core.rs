@@ -1317,7 +1317,8 @@ impl ResourceInstanceWrapperCore {
         let mut descriptors = self.computed_descriptors(recompute, context)?;
         // No descriptor function gave a name: the resource's stored one, which
         // Arches keeps as the computed name. Only in what is returned; the
-        // resource's own descriptors stay as computed.
+        // resource's own descriptors stay as computed. A template missing its
+        // tile gives its placeholder (`<Name>`), which is kept: visibly stale.
         if descriptors.name.as_deref().is_none_or(str::is_empty) {
             if let Some(name) = self
                 .resource_instance

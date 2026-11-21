@@ -110,6 +110,17 @@ def test_without_a_descriptor_function_the_name_is_the_stored_one():
     assert core.get_descriptors(True)["name"] == resource["resourceinstance"]["name"]
 
 
+def test_a_template_missing_its_tile_stays_visibly_stale(loaded):
+    # Group's descriptor template names a node the resource has no tile for:
+    # the template's placeholder, not the stored name, so the gap shows.
+    _, _, resource, graph = loaded
+    unnamed = dict(resource, tiles=resource["tiles"][1:])
+    unnamed["resourceinstance"] = dict(resource["resourceinstance"], name="Stored name")
+    core = RustResourceInstanceWrapperCore(graph["graphid"])
+    core.load_tiles_from_resource(json.dumps(unnamed))
+    assert core.get_descriptors(True)["name"] == "<Name>"
+
+
 def test_descriptors_and_pseudos_come_from_core(loaded):
     _, core, _, graph = loaded
     assert isinstance(core.get_descriptors(True), dict)

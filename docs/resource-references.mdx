@@ -61,9 +61,10 @@ descriptors; `populateCachesFromJson` on a registry builds it). Business data
 without `__cache` gives stubs with no entry, so names need retrieval.
 
 Descriptors are computed by the target graph's
-[descriptor function](/docs/descriptors). When it gives no name (or the graph
-has none), `getName(true)` is the resource's stored `name`, which Arches keeps
-as its computed name.
+[descriptor function](/docs/descriptors). When the graph has none, or it gives
+no name, `getName(true)` is the resource's stored `name`, which Arches keeps
+as its computed name. A template whose node has no tile gives its placeholder
+(`<Name>`), so the missing value shows.
 
 ## Serialising
 
