@@ -115,11 +115,8 @@ describe(`Backend consistency [${getBackend()}]`, () => {
 
     test("has .tileId property", () => {
       expect(pseudoValue).toBeDefined();
-      const tileId = pseudoValue.tileId;
-      // tileId should be a string (UUID) or null
-      if (tileId !== null && tileId !== undefined) {
-        expect(typeof tileId).toBe('string');
-      }
+      // basic_info.name is held in the resource's one basic_info tile
+      expect(pseudoValue.tileId).toBe("8225f975-813d-4705-9ada-e8cedd6fea48");
     });
 
     test("has .nodeId property", () => {
@@ -129,10 +126,7 @@ describe(`Backend consistency [${getBackend()}]`, () => {
 
     test("has .nodeAlias property", () => {
       expect(pseudoValue).toBeDefined();
-      // nodeAlias may be null for nodes without alias
-      if (pseudoValue.nodeAlias !== null && pseudoValue.nodeAlias !== undefined) {
-        expect(typeof pseudoValue.nodeAlias).toBe('string');
-      }
+      expect(pseudoValue.nodeAlias).toBe("name");
     });
 
     test("has .datatype property (string)", () => {
@@ -151,10 +145,7 @@ describe(`Backend consistency [${getBackend()}]`, () => {
 
     test("has .nodegroupId property", () => {
       expect(pseudoValue).toBeDefined();
-      // nodegroupId may be null for root nodes
-      if (pseudoValue.nodegroupId !== null && pseudoValue.nodegroupId !== undefined) {
-        expect(typeof pseudoValue.nodegroupId).toBe('string');
-      }
+      expect(pseudoValue.nodegroupId).toBe("12707705-c05e-11e9-8177-a4d18cec433a");
     });
 
     test("has .isCollector property (boolean)", () => {

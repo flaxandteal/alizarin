@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
 import { ArchesClientRemote, ArchesClientRemoteStatic, ArchesClientLocal } from '../js/client';
 import { initWasmForTests } from './wasm-init';
+import GroupJSON from './data/models/Group.json';
 
 describe('Client Layer', () => {
   beforeAll(async () => {
@@ -12,37 +13,30 @@ describe('Client Layer', () => {
     global.fetch = vi.fn();
   });
 
-  describe.skip('ArchesClientRemote', () => {
-    // These tests are skipped because they require a live remote Arches server
+  describe('ArchesClientRemote', () => {
+    // fetch is mocked; no server is needed
     it('should initialize with correct URL', () => {
       const client = new ArchesClientRemote('https://test.arches.org');
       expect(client.archesUrl).toBe('https://test.arches.org');
     });
 
     it('should fetch graph data from remote server', async () => {
-      const mockGraph = {
-        graphid: 'test-graph-id',
-        name: 'Test Graph',
-        author: 'Test Author',
-        description: 'Test Description',
-        nodes: [],
-        edges: [],
-        nodegroups: []
-      };
+      const graphText = JSON.stringify(GroupJSON);
 
       vi.mocked(global.fetch).mockResolvedValueOnce({
         ok: true,
-        json: async () => mockGraph
+        text: async () => graphText
       } as Response);
 
       const client = new ArchesClientRemote('https://test.arches.org');
-      const graph = await client.getGraphByIdOnly('test-graph-id');
+      const graph = await client.getGraphByIdOnly(GroupJSON.graph[0].graphid);
 
       // Test matches the actual endpoint used in the implementation
       expect(global.fetch).toHaveBeenCalledWith(
-        'https://test.arches.org/graphs/test-graph-id?format=arches-json&gen='
+        `https://test.arches.org/graphs/${GroupJSON.graph[0].graphid}?format=arches-json&gen=`
       );
-      expect(graph).toEqual(mockGraph);
+      expect(graph.graphid).toBe(GroupJSON.graph[0].graphid);
+      expect(graph.nodes!.length).toBe(GroupJSON.graph[0].nodes.length);
     });
 
     it('should warn when getResource is not implemented', async () => {

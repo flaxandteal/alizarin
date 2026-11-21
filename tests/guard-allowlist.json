@@ -4,18 +4,13 @@
     "crates/alizarin-python/tests/test_view_models_shared.py::test_reads_as_expected::assert-under-if::items in expected": "fine: parametrised; checks the expectations a datatype has",
     "crates/alizarin-python/tests/test_view_models_shared.py::test_reads_as_expected::assert-under-if::str in expected": "fine: parametrised; checks the expectations a datatype has",
     "ext/clm/python/tests/test_reference.py::test_batch_trees_to_tiles_marks_label_for_lookup::assert-under-if::isinstance(ref_data, list)": "fine: both branches feed the assertions that follow",
-    "tests/client.test.ts::-::skip::describe.skip('ArchesClientRemote', () => {": "D-8",
     "tests/docExamples.test.ts::-::catch-swallows::} catch {": "fine: the mock fetch answers 404",
-    "tests/dual-backend/backendConsistency.test.ts::-::expect-under-if::if (pseudoValue.nodeAlias !== null && pseudoValue.nodeAlias !== undefined) {": "D-7",
-    "tests/dual-backend/backendConsistency.test.ts::-::expect-under-if::if (pseudoValue.nodegroupId !== null && pseudoValue.nodegroupId !== undefined) {": "D-7",
-    "tests/dual-backend/backendConsistency.test.ts::-::expect-under-if::if (tileId !== null && tileId !== undefined) {": "D-7",
     "tests/dual-backend/bindingParity.test.ts::-::skip::test.skipIf((spec as any)[backend] === null)(`${name}: exactly the listed method": "fine: skips exactly the manifest's documented null entries",
     "tests/dual-backend/outputParity.test.ts::-::catch-swallows::} catch (e) {": "fine: the failure is collected and reported",
     "tests/dual-backend/outputParity.test.ts::-::catch-swallows::} catch {": "fine: a missing route is reported by the byte-for-byte test",
     "tests/dual-backend/viewModels.test.ts::-::expect-under-if::if (items !== undefined) {": "fine: parametrised; checks the expectations a datatype has",
     "tests/dual-backend/viewModels.test.ts::-::expect-under-if::if (str !== undefined) {": "fine: parametrised; checks the expectations a datatype has",
-    "tests/type-coercion.test.ts::-::expect-under-if::if (expectedDisplayValue !== undefined) {": "fine: parametrised expectation",
-    "tests/wasmResourceModelWrapper.test.ts::-::skip::test.skip(\"WASMResourceModelWrapper > getRootNode > should throw if no root foun": "D-9"
+    "tests/type-coercion.test.ts::-::expect-under-if::if (expectedDisplayValue !== undefined) {": "fine: parametrised expectation"
   },
   "skips": {},
   "typeBaselines": {

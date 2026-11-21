@@ -258,13 +258,13 @@ test("WASMResourceModelWrapper > getRootNode > should ensure alias is set", () =
   graph.root.alias = originalAlias;
 });
 
-// This test is skipped because it's testing an implementation detail that doesn't
-// work with WASM encapsulation. You cannot modify the internal Rust HashMap by
-// deleting from the JavaScript Map returned by the getter.
-test.skip("WASMResourceModelWrapper > getRootNode > should throw if no root found", () => {
-  const graph = createStaticGraph({
-    name: "Test Graph",
-    author: "Test Author",
+test("WASMResourceModelWrapper > getRootNode > should throw if no root found", () => {
+  // Core finds the root among the graph's nodes (istopnode, else no
+  // nodegroup); keep only nodes that are neither.
+  const groupModel = GroupJSON["graph"][0];
+  const graph = new StaticGraph({
+    ...groupModel,
+    nodes: groupModel.nodes.filter((node: any) => !node.istopnode && node.nodegroup_id),
   });
 
   const wrapper = new WASMResourceModelWrapper(
@@ -273,14 +273,9 @@ test.skip("WASMResourceModelWrapper > getRootNode > should throw if no root foun
     true
   );
 
-
-  // Manually remove root node to test error
-  const rootId = graph.root.nodeid;
-  wrapper.nodes!.delete(rootId);
-
   assert.throws(() => {
     wrapper.getRootNode();
-  }, /COULD NOT FIND ROOT NODE/);
+  }, /Root node not found/);
 });
 
 // ============================================================================
