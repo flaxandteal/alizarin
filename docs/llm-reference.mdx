@@ -74,6 +74,32 @@ for (const person of people) {
 }
 ```
 
+`loadGraph` takes the model's class name from the graph list (`'DigitalObject'`;
+case, spaces and punctuation are ignored, so `'Digital Object'` works) or a graph
+id. An unknown name throws with the names it knows. For files on disk, use
+`client.ArchesClientLocal`; see [Local testing](/docs/local-testing).
+
+### Pattern 1b: Follow resource references
+
+```typescript
+// A resource-instance value is a STUB: id only, `$` and `__` null.
+const site = await person.primary_site;
+site.id;                                  // the referenced resource's id
+
+// Reading any attribute retrieves it (registry first, then the client).
+const siteName = await site.name;
+const org = await site.maintained_by;     // a stub again
+console.log(String(await org.name));
+
+// Descriptors without retrieving, if the data carries __cache; else null.
+await site.getName();                     // string | null
+await site.getName(true);                 // retrieves if needed
+```
+
+The referenced resource must be in the registry (load its graph's business
+data, e.g. `await Site.all()`) or fetchable by the client. See
+[Resource references](/docs/resource-references).
+
 ### Pattern 2: Build a graph from CSV
 
 ```typescript
@@ -235,6 +261,8 @@ add_node,heritage_item,description,Description,string,1,E62_String,P3_has_note
 7. **Don't write tile data directly.** Assign to view-model fields and call `$commit()` (JS) / `commit()` (Python); the core checks, coerces and reruns derive functions. Older APIs such as `setTileDataForNode`, `toJsonFull`, `buildNodesForGraph` and `createPseudoValue` have been removed.
 
 8. **Don't test for `undefined` in Alizarin output.** Absent values are `null` on every backend.
+
+9. **Don't expect a reference to be loaded.** A resource-instance value is a stub until an attribute is read (or `retrieve()` called), and retrieving needs the target in the registry or reachable by the client. `getName()` is `null` for a graph with no descriptor function.
 
 ## License
 

@@ -72,6 +72,10 @@ await graphManager.initialize();
 const PersonModel = await graphManager.get('Person');
 ```
 
+For files on disk in Node.js (tests, scripts), use `client.ArchesClientLocal`:
+see [Local testing](/docs/local-testing). Related resources load on demand:
+see [Resource references](/docs/resource-references).
+
 ### Querying Resources
 
 ```typescript

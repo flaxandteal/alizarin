@@ -56,20 +56,22 @@ export class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStr
     this.$?.discardEdits();
   }
 
-  async getName(retrieveIfNeeded: boolean=false): Promise<string> {
-    return (await this.getDescriptors(retrieveIfNeeded))?.name;
+  // Each is null when there is none (not retrieved, or not computed), on
+  // either backend: WASM's descriptors give null, NAPI's omit the key.
+  async getName(retrieveIfNeeded: boolean=false): Promise<string | null> {
+    return (await this.getDescriptors(retrieveIfNeeded))?.name ?? null;
   }
 
-  async getSlug(retrieveIfNeeded: boolean=false): Promise<string> {
-    return (await this.getDescriptors(retrieveIfNeeded))?.slug;
+  async getSlug(retrieveIfNeeded: boolean=false): Promise<string | null> {
+    return (await this.getDescriptors(retrieveIfNeeded))?.slug ?? null;
   }
 
-  async getDescription(retrieveIfNeeded: boolean=false): Promise<string> {
-    return (await this.getDescriptors(retrieveIfNeeded))?.description;
+  async getDescription(retrieveIfNeeded: boolean=false): Promise<string | null> {
+    return (await this.getDescriptors(retrieveIfNeeded))?.description ?? null;
   }
 
-  async getMapPopup(retrieveIfNeeded: boolean=false): Promise<string> {
-    return (await this.getDescriptors(retrieveIfNeeded))?.map_popup;
+  async getMapPopup(retrieveIfNeeded: boolean=false): Promise<string | null> {
+    return (await this.getDescriptors(retrieveIfNeeded))?.map_popup ?? null;
   }
 
   async getDescriptors(retrieveIfNeeded: boolean=false): Promise<ResourceDescriptors | undefined> {

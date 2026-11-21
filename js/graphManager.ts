@@ -1372,13 +1372,14 @@ class GraphManager {
     return pruneTiles;
   }
 
-  async initialize(configurationOptions: ConfigurationOptions | undefined = undefined) {
+  /** Load the graph list. Options default as in `ConfigurationOptions`:
+   * `graphs: null` (all graphs; or a list of graph ids), `eagerLoadGraphs:
+   * false`, `defaultAllowAllNodegroups: false`. */
+  async initialize(options: Partial<ConfigurationOptions> | undefined = undefined) {
     if (this._initialized) {
       return;
     }
-    if (configurationOptions === undefined) {
-      configurationOptions = new ConfigurationOptions();
-    }
+    const configurationOptions: ConfigurationOptions = Object.assign(new ConfigurationOptions(), options);
     const graphJsons: GraphResult = await this.archesClient.getGraphs();
     this.defaultAllow = configurationOptions.defaultAllowAllNodegroups;
 
@@ -1429,12 +1430,21 @@ class GraphManager {
     );
   }
 
+  /** The error for a model name `resolveWkrm` does not know: which it does. */
+  private unknownModel(modelClassName: string): Error {
+    const known = [...this.wkrms.keys()].sort().join(', ') || 'none: has initialize() run?';
+    return Error(
+      `No graph metadata for model ${modelClassName}. Give a model's class name ` +
+      `(case and spaces aside) or its graph id; known: ${known}`,
+    );
+  }
+
   async loadGraph<RIVM extends IRIVM<RIVM>>(modelClass: ResourceInstanceViewModelConstructor<RIVM> | string, defaultAllow: boolean=true): Promise<ResourceModelWrapper<RIVM>> {
     const modelClassName = typeof modelClass == 'string' ? modelClass : modelClass.name;
 
     const wkrm = this.resolveWkrm(modelClassName);
     if (wkrm === undefined) {
-      throw Error(`Only loading graphs for which metadata is present, not ${modelClassName}`);
+      throw this.unknownModel(modelClassName);
     }
 
     const wrapper = this.graphs.get(wkrm.graphId);
@@ -1475,7 +1485,7 @@ class GraphManager {
     await this.initialize(undefined);
     const wkrm = this.resolveWkrm(modelClassName);
     if (wkrm === undefined) {
-      throw Error(`Cannot find model requested: ${modelClassName}`);
+      throw this.unknownModel(modelClassName);
     }
 
     const wrapper = this.graphs.get(wkrm.graphId);

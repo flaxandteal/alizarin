@@ -630,7 +630,8 @@ test("ResourceModelWrapper > NodeViewModel > should allow access to node propert
 function mockLayerClient(graph: any, meta: StaticGraphMeta): any {
   return {
     getGraphs: async () => ({ models: { [graph.graphid]: meta } }),
-    getGraph: async () => graph,
+    // A client returns graphs parsed, as every ArchesClient does.
+    getGraph: async () => parseStaticGraph(JSON.stringify({ graph: [graph] })),
   };
 }
 
@@ -665,7 +666,8 @@ test("get() awaits initialize() so a first get() does not race the registry (C8)
     err = e;
   }
   const msg = err instanceof Error ? err.message : String(err ?? "");
-  assert.notInclude(msg, "Cannot find model", "get() must await initialize() before the registry lookup (C8)");
+  // get() must await initialize() before the registry lookup (C8).
+  assert.isUndefined(err, msg);
 });
 
 test("get() loads a graph by a non-exact name on a cold cache (N1)", async () => {
@@ -691,10 +693,6 @@ test("get() loads a graph by a non-exact name on a cold cache (N1)", async () =>
     err = e;
   }
   const msg = err instanceof Error ? err.message : String(err ?? "");
-  assert.notInclude(
-    msg,
-    "Only loading graphs for which metadata is present",
-    "loadGraph() must resolve the same non-exact names get() does (N1)",
-  );
-  assert.notInclude(msg, "Cannot find model", "get() must resolve the normalised name (N1)");
+  // loadGraph() must resolve the same non-exact names get() does (N1).
+  assert.isUndefined(err, msg);
 });

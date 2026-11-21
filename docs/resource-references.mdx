@@ -1,0 +1,74 @@
+---
+title: Resource references
+description: How resource-instance values resolve, what a stub holds, and when the referenced resource is retrieved
+---
+
+A `resource-instance` node's value is a reference to another resource; a
+`resource-instance-list` node's is a list of them. Alizarin does not load the
+referenced resource when it reads the reference. It gives a **stub**, a
+`ResourceInstanceViewModel` that knows the target's id and nothing else yet,
+and retrieves the resource when you first need it. The same holds on the WASM
+and NAPI backends (`tests/dual-backend/docsLocalRecipe.test.ts`).
+
+## A stub
+
+```ts
+const site = await person.primary_site;
+site.id;   // the referenced resource's id
+site.$;    // null: not retrieved yet
+site.__;   // null: its model, likewise
+```
+
+For a list, `await person.members` gives a list whose items are stubs like
+this one.
+
+## Retrieval
+
+Reading any attribute of a stub retrieves the resource, then reads the
+attribute:
+
+```ts
+const name = await site.name;   // retrieves the site, then reads `name`
+site.$;                         // now its instance wrapper
+const org = await site.maintained_by;   // a stub again, one step further
+```
+
+Retrieval goes through `graphManager.getResource(id)`: the resource
+registry first, and only if the resource is not there, the client's
+`getResource`. So the data must be reachable by one of them, either loaded
+into the registry (`Model.all()`, or a registry's `loadFromBusinessDataBytes`)
+or fetchable by the client. With `ArchesClientLocal`, see
+[Local testing](/docs/local-testing#following-references).
+
+`await site.retrieve()` does the same explicitly and returns
+`[instanceWrapper, modelWrapper]`. Assigning to an attribute of a stub
+retrieves it too, then records the edit.
+
+## Without retrieving: descriptors and the cache
+
+`getName()`, `getSlug()`, `getDescription()` and `getMapPopup()` read the
+target's descriptors without retrieving it when the stub has a cache entry,
+and otherwise return `null`:
+
+```ts
+await site.getName();       // from the cache entry, or null
+await site.getName(true);   // retrieves if needed
+```
+
+The cache entry comes from the referencing resource's `__cache`, which
+prebuild tools write for each referenced resource (its id, graph and
+descriptors; `populateCachesFromJson` on a registry builds it). Business data
+without `__cache` gives stubs with no entry, so names need retrieval.
+
+Descriptors are computed by the target graph's
+[descriptor function](/docs/descriptors). A graph without one has no
+descriptors, and `getName(true)` is `null` even once retrieved; read the
+attribute that holds the name instead.
+
+## Serialising
+
+`forJson()` on a reference never retrieves it. It gives `{id, type, graphId,
+title, descriptors, meta}`: from the cache entry if there is one, else from
+the model if the resource has been retrieved, else with `type: "(unknown)"`
+and only the id. `forJson(true)` (cascade) retrieves the resource and adds it
+in full as `root`.

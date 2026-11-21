@@ -366,11 +366,15 @@ class ArchesClientLocal extends ArchesClient {
       source,
       "utf8",
     );
-    const resource: StaticResource = JSON.parse(response)
-      .business_data
-      .resources
-      .filter(resource => resource.resourceinstance.resourceinstanceid === resourceId)
-      .map(resource => createStaticResource(resource))[0];
+    // A business data file or a bare resource, read by core.
+    const resource: StaticResource | undefined = parseStaticResources(response)
+      .find(resource => resource.resourceinstance.resourceinstanceid === resourceId);
+    if (!resource) {
+      throw new Error(
+        `Resource ${resourceId} is not in ${source} (from resourceIdToFile). ` +
+        `Point resourceIdToFile at the file holding it, or load that file into the registry first.`,
+      );
+    }
     resource.__source = source;
     return resource;
   }

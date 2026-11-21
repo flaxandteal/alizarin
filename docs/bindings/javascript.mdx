@@ -60,7 +60,7 @@ Run a live version against the sample Aonach Mór heritage-risk data (press ▶)
 |-------|-------------|
 | `ArchesClientRemote` | Connects to a live Arches REST API |
 | `ArchesClientRemoteStatic` | Loads from pre-exported static JSON files |
-| `ArchesClientLocal` | Loads from local filesystem (Node.js only) |
+| `ArchesClientLocal` | Loads from local filesystem (Node.js only); see [Local testing](/docs/local-testing) |
 
 These client classes are exposed under the `client` namespace export (`import { client } from 'alizarin'`, then `new client.ArchesClientRemoteStatic(...)`), not as top-level named exports.
 
@@ -68,7 +68,7 @@ These client classes are exposed under the `client` namespace export (`import { 
 
 | Class | Description |
 |-------|-------------|
-| `GraphManager` | Central registry for graphs, resources and client. Use `.get()` / `.loadGraph()` to obtain a `ResourceModelWrapper`. |
+| `GraphManager` | Central registry for graphs, resources and client. Use `.get()` / `.loadGraph()` to obtain a `ResourceModelWrapper`; both take the model's class name from the graph list (`'DigitalObject'`, matched ignoring case, spaces and punctuation) or its graph id. |
 | `ResourceModelWrapper` | ORM wrapper: `.all()` to query resources |
 | `ResourceInstanceViewModel` | Proxy-based property access on resource instances |
 | `GraphMutator` | Fluent API for programmatic graph schema changes |

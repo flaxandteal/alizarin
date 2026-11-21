@@ -75,6 +75,23 @@ entries is tracked in `PARITY-RESEARCH.md`.
   used to drop them silently to empty.
 
 ### Fixed
+- `ResourceInstanceViewModel.getName()` / `getSlug()` / `getDescription()` /
+  `getMapPopup()` give `null` when there is no value on either backend (NAPI
+  gave `undefined`); typed `string | null`.
+- `ArchesClientLocal.getResource` on a resource not in the file
+  `resourceIdToFile` names says so (it threw a `TypeError` setting
+  `__source`), and reads a one-resource file as well as a business data file.
+- `graphManager.initialize()` takes a plain options object
+  (`{ graphs: [...] }`); `ConfigurationOptions` is not exported, so typed
+  callers could not pass any.
+- `loadGraph()` / `get()` on an unknown model name list the names known (and
+  say if `initialize()` has not run), in one message for both.
+- Docs: new [Local testing](docs/local-testing.mdx) (`ArchesClientLocal`
+  setup, the graph list's format, preloading for references) and
+  [Resource references](docs/resource-references.mdx) (stubs, retrieval,
+  descriptors and `__cache`) guides, run as written by
+  `tests/dual-backend/docsLocalRecipe.test.ts`; `loadGraph`'s naming
+  documented in the JS API and LLM reference.
 - Python CLI: `alizarin to-trees` and `alizarin convert` failed on every run
   (they passed their bindings an argument those do not take).
 - Per-language resource descriptors (Arches' `{"en": {"name": …}}`) are read

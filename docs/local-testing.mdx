@@ -1,0 +1,106 @@
+---
+title: Local testing
+description: Run the ORM against graphs and business data on disk with ArchesClientLocal
+---
+
+`ArchesClientLocal` reads graphs, resources and collections from files, in
+Node.js. It is the quickest way to test against an export without a server.
+The recipe below is run as written, on both JS backends, by
+`tests/dual-backend/docsLocalRecipe.test.ts`, against the example prebuild in
+`docs/example`.
+
+## The files
+
+A prebuild directory, as starches-builder and `alizarin` prebuild exports
+write it:
+
+```
+resource_models/_all.json            the graph list (see below)
+resource_models/<graphId>.json       one graph: {"graph": [ ... ]}
+business_data/_<graphId>.json        that graph's resources: {"business_data": {"resources": [ ... ]}}
+collections/<collectionId>.json      one RDM collection
+```
+
+The graph list is an object keyed by graph id under `models`, not an array:
+
+```json
+{
+  "models": {
+    "91e13029-1637-5fbb-ac8a-2dd0c6502cc7": {
+      "name": "Person",
+      "graphid": "91e13029-1637-5fbb-ac8a-2dd0c6502cc7"
+    }
+  }
+}
+```
+
+`name` may also be per-language (`{"en": "Person"}`). Each entry is a
+[`StaticGraphMeta`](/docs/graphs); a full graph is accepted there too. A
+`graphs.json` served to `ArchesClientRemoteStatic` has the same shape.
+
+## Setup
+
+```ts
+import { client, graphManager, staticStore, RDM } from 'alizarin';
+
+const dir = '/path/to/prebuild';
+const local = new client.ArchesClientLocal({
+  allGraphFile: () => `${dir}/resource_models/_all.json`,
+  graphIdToGraphFile: (graphId) => `${dir}/resource_models/${graphId}.json`,
+  graphIdToResourcesFiles: (graphId) => [`${dir}/business_data/_${graphId}.json`],
+  resourceIdToFile: (resourceId) => `${dir}/business_data/${resourceId}.json`,
+  collectionIdToFile: (collectionId) => `${dir}/collections/${collectionId}.json`,
+});
+
+// The same client on all three: graphs, resources, concepts.
+graphManager.archesClient = local;
+staticStore.archesClient = local;
+RDM.archesClient = local;
+
+await graphManager.initialize();
+```
+
+Every resolver is optional; the defaults are the layout above, relative to
+the working directory (`resource_models/_all.json`, and so on).
+`graphIdToResourcesFiles` may return an array, a promise of one, or an async
+generator, for graphs split over several files.
+
+`initialize()` loads every graph in the list. To load only some, pass their
+ids: `initialize({ graphs: ['91e13029-…'] })`. The default, `graphs: null`,
+means all of them.
+
+## Loading a model
+
+```ts
+const Person = await graphManager.loadGraph('Person');
+const people = await Person.all();
+```
+
+`loadGraph` (and `graphManager.get`) take the model's **class name** as in
+the graph list (`Person`, `DigitalObject`), matched ignoring case, spaces and
+punctuation, so `'person'` and `'Digital Object'` work too, or the **graph
+id**. An unknown name fails with the list of names it knows; if that list is
+empty, `initialize()` has not run.
+
+## Following references
+
+Load the business data of every graph a test touches into the registry
+first. References then resolve from memory:
+
+```ts
+for (const name of ['Person', 'Site', 'Organisation']) {
+  await (await graphManager.loadGraph(name)).all();
+}
+
+const person = await Person.find('193750d0-e4b8-527d-8dc2-cbfb4cd31e72');
+const site = await person.primary_site;          // a stub
+const org = await site.maintained_by;            // read the site, then its reference
+console.log(String(await org.name));
+```
+
+A resource that is not in the registry is fetched with `resourceIdToFile`,
+which must name the file that holds it (a business data file or one bare
+resource). With per-graph files, as above, the client cannot tell which file
+an id is in, so preloading is the reliable route; a miss says which file it
+read. See [Resource references](/docs/resource-references) for what a stub
+is and when it is retrieved.
