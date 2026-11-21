@@ -56,6 +56,20 @@ entries is tracked in `PARITY-RESEARCH.md`.
     error (it gave `[]`).
   - `new StaticTile(…)` gives a `NapiStaticTile`, as `createStaticTile` does
     (it gave the input object).
+- Business data is read by one reader in core on every path (the prebuild
+  loader, `loadFromBusinessDataBytes`, `parseStaticResources` /
+  `StaticResource.fromBusinessDataJsonString`, Python's
+  `resources_from_business_data_json`). Where they differed:
+  - **Breaking:** `parseStaticResources` gives a resource with no tiles
+    `tiles_loaded: true` (it was `false`): the file holds all its tiles. A
+    declared `tiles_loaded` is kept (the loader overrode it with `true`).
+  - `parseStaticResources` accepts a resource without `descriptors`, with
+    `metadata: null`, or a bare resource rather than the wrapper, as the
+    loader did. Any `StaticResource` read from JSON takes absent
+    `descriptors` as empty.
+  - A malformed `business_data` wrapper is reported as such (the error was
+    about a bare resource's missing `resourceinstance`).
+  - The loader reads about 30% faster.
 - Malformed resource descriptors (`{"name": 5}`, or the same under a
   language) are an error when a resource is read. The business-data loader
   used to drop them silently to empty.

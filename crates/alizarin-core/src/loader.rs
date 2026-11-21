@@ -4,8 +4,8 @@
 //! directory structure used by starches-builder.
 
 use crate::graph::{
-    StaticGraph, StaticResource, StaticResourceDescriptors, StaticResourceMetadata,
-    StaticResourceRegistry, StaticResourceSummary, StaticTile,
+    StaticGraph, StaticResource, StaticResourceDescriptors, StaticResourceRegistry,
+    StaticResourceSummary,
 };
 use crate::ontology::{OntologyConfig, OntologyValidator};
 use crate::skos::{parse_skos_to_collections, SkosCollection};
@@ -131,79 +131,14 @@ struct BusinessDataFileFull {
 #[derive(Debug, Deserialize)]
 struct BusinessDataContentFull {
     #[serde(default)]
-    resources: Vec<BusinessDataResourceFull>,
+    resources: Vec<StaticResource>,
 }
 
-/// Full resource with tiles
-#[derive(Debug, Deserialize)]
-struct BusinessDataResourceFull {
-    resourceinstance: BusinessDataResourceInstanceFull,
-    #[serde(default)]
-    tiles: Option<Vec<StaticTile>>,
-    #[serde(default)]
-    metadata: Option<HashMap<String, String>>,
-    #[serde(default, rename = "__cache")]
-    cache: Option<serde_json::Value>,
-    #[serde(default, rename = "__scopes")]
-    scopes: Option<serde_json::Value>,
-}
-
-/// Full resource instance for loading
-#[derive(Debug, Deserialize)]
-struct BusinessDataResourceInstanceFull {
-    resourceinstanceid: String,
-    graph_id: String,
-    name: String,
-    #[serde(default)]
-    descriptors: Option<StaticResourceDescriptors>,
-    #[serde(default)]
-    createdtime: Option<String>,
-    #[serde(default)]
-    lastmodified: Option<String>,
-    #[serde(default)]
-    publication_id: Option<String>,
-    #[serde(default)]
-    principaluser_id: Option<i32>,
-    #[serde(default)]
-    legacyid: Option<String>,
-    #[serde(default)]
-    graph_publication_id: Option<String>,
-    #[serde(default, alias = "resource_instance_lifecycle_state")]
-    resource_instance_lifecycle_state_id: Option<String>,
-    #[serde(default)]
-    lifecycle_state_conflict: Vec<String>,
-}
-
-impl BusinessDataResourceFull {
-    /// Convert to StaticResource
-    fn to_static_resource(&self) -> StaticResource {
-        let ri = &self.resourceinstance;
-        let descriptors = ri.descriptors.clone().unwrap_or_default();
-
-        StaticResource {
-            resourceinstance: StaticResourceMetadata {
-                resourceinstanceid: ri.resourceinstanceid.clone(),
-                graph_id: ri.graph_id.clone(),
-                name: ri.name.clone(),
-                descriptors,
-                createdtime: ri.createdtime.clone(),
-                lastmodified: ri.lastmodified.clone(),
-                publication_id: ri.publication_id.clone(),
-                principaluser_id: ri.principaluser_id,
-                legacyid: ri.legacyid.clone(),
-                graph_publication_id: ri.graph_publication_id.clone(),
-                resource_instance_lifecycle_state_id: ri
-                    .resource_instance_lifecycle_state_id
-                    .clone(),
-                lifecycle_state_conflict: ri.lifecycle_state_conflict.clone(),
-            },
-            tiles: self.tiles.clone(),
-            metadata: self.metadata.clone().unwrap_or_default(),
-            cache: self.cache.clone(),
-            scopes: self.scopes.clone(),
-            tiles_loaded: Some(true),
-        }
-    }
+/// A resource as read from a business data file: the file holds all of its
+/// tiles, so `tiles_loaded` is as declared, else true (even with no tiles).
+fn business_data_resource(mut resource: StaticResource) -> StaticResource {
+    resource.tiles_loaded.get_or_insert(true);
+    resource
 }
 
 /// Error type for loader operations
@@ -690,7 +625,7 @@ impl PrebuildLoader {
             .resources
             .into_iter()
             .filter(|r| r.resourceinstance.graph_id == graph_id)
-            .map(|r| r.to_static_resource())
+            .map(business_data_resource)
             .collect();
 
         Ok(resources)
@@ -706,21 +641,7 @@ impl PrebuildLoader {
         &self,
         path: &Path,
     ) -> Result<Vec<StaticResource>, LoaderError> {
-        let content = fs::read_to_string(path)?;
-
-        // Try the wrapper format first; fall back to a bare resource.
-        if let Ok(file_data) = serde_json::from_str::<BusinessDataFileFull>(&content) {
-            let resources: Vec<StaticResource> = file_data
-                .business_data
-                .resources
-                .into_iter()
-                .map(|r| r.to_static_resource())
-                .collect();
-            Ok(resources)
-        } else {
-            let resource: BusinessDataResourceFull = serde_json::from_str(&content)?;
-            Ok(vec![resource.to_static_resource()])
-        }
+        parse_business_data_bytes(&fs::read(path)?)
     }
 
     /// Load a full StaticResource by its resourceinstanceid
@@ -738,7 +659,7 @@ impl PrebuildLoader {
 
             for resource in file_data.business_data.resources {
                 if resource.resourceinstance.resourceinstanceid == resource_id {
-                    return Ok(resource.to_static_resource());
+                    return Ok(business_data_resource(resource));
                 }
             }
         }
@@ -1122,27 +1043,27 @@ mod tests {
 // Standalone helpers for WASM / napi callers
 // =============================================================================
 
-/// Parse a business data JSON blob (as raw bytes) into `StaticResource`s.
-/// Uses the same internal parsing types as `PrebuildLoader` so there is no
-/// duplication.
+/// Parse a business data JSON blob (as raw bytes) into `StaticResource`s:
+/// core's one reader of business data, behind `PrebuildLoader`, the
+/// registries' `loadFromBusinessDataBytes` and every binding's
+/// `parseStaticResources`. Each resource's `tiles_loaded` is as declared,
+/// else true: the file holds all of its tiles.
 ///
 /// Supports two formats:
 /// - Prebuild wrapper: `{ business_data: { resources: [...] } }`
 /// - Bare resource: `{ resourceinstance: {...}, tiles: [...], ... }`
-///
-/// This is the function WASM and napi crates call so that the heavy JSON
-/// parsing stays entirely in Rust — callers only pass in a byte buffer.
 pub fn parse_business_data_bytes(bytes: &[u8]) -> Result<Vec<StaticResource>, LoaderError> {
-    if let Ok(file_data) = serde_json::from_slice::<BusinessDataFileFull>(bytes) {
-        Ok(file_data
+    match serde_json::from_slice::<BusinessDataFileFull>(bytes) {
+        Ok(file_data) => Ok(file_data
             .business_data
             .resources
             .into_iter()
-            .map(|r| r.to_static_resource())
-            .collect())
-    } else {
-        let resource: BusinessDataResourceFull = serde_json::from_slice(bytes)?;
-        Ok(vec![resource.to_static_resource()])
+            .map(business_data_resource)
+            .collect()),
+        // A wrapper that fails to parse is reported as one, not as a bare
+        // resource missing its `resourceinstance`.
+        Err(e) if bytes.windows(15).any(|w| w == b"\"business_data\"") => Err(e.into()),
+        Err(_) => Ok(vec![parse_business_data_resource_bytes(bytes)?]),
     }
 }
 
@@ -1189,8 +1110,7 @@ impl StaticResourceRegistry {
 /// input is known to be a single resource, so it is the exact per-element parse a
 /// seek-back second pass wants.
 pub fn parse_business_data_resource_bytes(bytes: &[u8]) -> Result<StaticResource, LoaderError> {
-    let resource: BusinessDataResourceFull = serde_json::from_slice(bytes)?;
-    Ok(resource.to_static_resource())
+    Ok(business_data_resource(serde_json::from_slice(bytes)?))
 }
 
 /// Stream the resources of a `{ business_data: { resources: [...] } }` file from a

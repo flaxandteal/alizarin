@@ -9,6 +9,8 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 /// Metadata about a resource instance
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StaticResourceMetadata {
+    /// Empty when absent, as in a business data file that has none.
+    #[serde(default)]
     pub descriptors: StaticResourceDescriptors,
     pub graph_id: String,
     pub name: String,
@@ -163,7 +165,12 @@ pub struct StaticResource {
     pub resourceinstance: StaticResourceMetadata,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tiles: Option<Vec<StaticTile>>,
-    #[serde(default, serialize_with = "crate::sorted_serde::sorted_map")]
+    /// Empty when absent or `null`.
+    #[serde(
+        default,
+        serialize_with = "crate::sorted_serde::sorted_map",
+        deserialize_with = "null_as_empty"
+    )]
     pub metadata: HashMap<String, String>,
 
     // Optional cache and scopes - stored as JSON for platform independence
@@ -175,6 +182,13 @@ pub struct StaticResource {
     // Tracking flag for lazy loading
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub tiles_loaded: Option<bool>,
+}
+
+fn null_as_empty<'de, D>(deserializer: D) -> Result<HashMap<String, String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(Option::deserialize(deserializer)?.unwrap_or_default())
 }
 
 impl StaticResource {

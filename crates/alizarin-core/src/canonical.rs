@@ -8,7 +8,7 @@ use crate::graph::{
     StaticResourceDescriptors, StaticTile,
 };
 use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::Value;
 
 fn via<T: DeserializeOwned + Serialize>(json: Value) -> Result<Value, String> {
@@ -58,26 +58,9 @@ pub fn construct_static(kind: &str, json: Value) -> Result<Value, String> {
     }
 }
 
-/// The resources of a business data file (`{"business_data": {"resources":
-/// [...]}}`), each as [`construct_static_resource`] builds it.
+/// The resources of a business data file, as core's one reader of them
+/// ([`crate::parse_business_data_bytes`]) gives them.
 pub fn resources_from_business_data_json(json: &str) -> Result<Vec<StaticResource>, String> {
-    #[derive(Deserialize)]
-    struct File {
-        business_data: Content,
-    }
-    #[derive(Deserialize)]
-    struct Content {
-        resources: Vec<StaticResource>,
-    }
-    let file: File = serde_json::from_str(json)
-        .map_err(|e| format!("Failed to parse business_data JSON: {e}"))?;
-    Ok(file
-        .business_data
-        .resources
-        .into_iter()
-        .map(|mut resource| {
-            resource.infer_tiles_loaded();
-            resource
-        })
-        .collect())
+    crate::parse_business_data_bytes(json.as_bytes())
+        .map_err(|e| format!("Failed to parse business_data JSON: {e}"))
 }
