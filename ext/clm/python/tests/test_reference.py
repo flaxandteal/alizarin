@@ -721,8 +721,6 @@ class TestFullRustIntegration:
             set_global_rdm_cache, clear_global_rdm_cache,
         )
 
-        if alizarin.json_tree_to_tiles is None:
-            pytest.skip("json_tree_to_tiles not available")
 
         # Set up RDM cache with a collection matching the graph config.
         # Concept ID must be UUID-formatted (as in production) so the handler
@@ -808,11 +806,6 @@ class TestFullRustIntegration:
         import alizarin
         import alizarin_clm  # noqa: F401 - registers handler
 
-        if alizarin.json_tree_to_tiles is None:
-            pytest.skip("json_tree_to_tiles not available")
-        if alizarin.coerce_with_extension is None:
-            pytest.skip("coerce_with_extension not available")
-
         # Step 1: Set up RDM cache with labels matching the tree input
         from alizarin import (
             RustRdmCollection, RustRdmConcept, RustRdmCache,
@@ -895,9 +888,6 @@ class TestFullRustIntegration:
             set_global_rdm_cache, clear_global_rdm_cache,
         )
 
-        if alizarin.json_tree_to_tiles is None or alizarin.tiles_to_json_tree is None:
-            pytest.skip("Rust conversion functions not available")
-
         collection = RustRdmCollection("2730d609-3a8d-49dc-bf51-6ac34e80294a")
         collection.add_concept(RustRdmConcept(
             "d4e5f6a7-b8c9-0123-def0-456789abcdef",
@@ -961,12 +951,8 @@ class TestRustCoercionIntegration:
         import alizarin_clm  # noqa: F401
         import alizarin
 
-        # has_type_handler should return True if Rust extension is available
-        if alizarin.has_type_handler is not None:
-            assert alizarin.has_type_handler("reference") is True
-            assert alizarin.has_type_handler("nonexistent_type") is False
-        else:
-            pytest.skip("Rust extension not available")
+        assert alizarin.has_type_handler("reference") is True
+        assert alizarin.has_type_handler("nonexistent_type") is False
 
     def test_coerce_with_extension_single_reference(self):
         """
@@ -976,9 +962,6 @@ class TestRustCoercionIntegration:
         """
         import alizarin_clm  # noqa: F401
         import alizarin
-
-        if alizarin.coerce_with_extension is None:
-            pytest.skip("Rust extension not available")
 
         value_json = json.dumps("Item 1>1")
         config_json = json.dumps({
@@ -1007,9 +990,6 @@ class TestRustCoercionIntegration:
         import alizarin_clm  # noqa: F401
         import alizarin
 
-        if alizarin.coerce_with_extension is None:
-            pytest.skip("Rust extension not available")
-
         uuid_val = "6672d187-dfc3-4424-8c63-7a3b377b4159"
         value_json = json.dumps(uuid_val)
         config_json = json.dumps({
@@ -1036,9 +1016,6 @@ class TestRustCoercionIntegration:
         """
         import alizarin_clm  # noqa: F401
         import alizarin
-
-        if alizarin.coerce_with_extension is None:
-            pytest.skip("Rust extension not available")
 
         value_json = json.dumps(["First Item", "Second Item"])
         config_json = json.dumps({
@@ -1067,9 +1044,6 @@ class TestRustCoercionIntegration:
         import alizarin_clm  # noqa: F401
         import alizarin
 
-        if alizarin.coerce_with_extension is None:
-            pytest.skip("Rust extension not available")
-
         value_json = json.dumps({
             "labels": [
                 {
@@ -1092,9 +1066,6 @@ class TestRustCoercionIntegration:
     def test_coerce_with_missing_handler_raises_error(self):
         """Test that coercing with an unregistered type raises an error."""
         import alizarin
-
-        if alizarin.coerce_with_extension is None:
-            pytest.skip("Rust extension not available")
 
         with pytest.raises(KeyError):
             alizarin.coerce_with_extension(
@@ -1910,11 +1881,6 @@ class TestBatchTreesToTilesWithMultiValueReference:
             set_global_rdm_cache, clear_global_rdm_cache,
         )
 
-        if alizarin.batch_trees_to_tiles is None:
-            pytest.skip("batch_trees_to_tiles not available")
-        if alizarin.register_graph is None:
-            pytest.skip("register_graph not available")
-
         graph_id = alizarin.register_graph(person_graph_json)
 
         # Set up RDM cache for label resolution
@@ -1985,11 +1951,6 @@ class TestBatchTreesToTilesWithMultiValueReference:
         import alizarin
         import alizarin_clm  # noqa: F401 - registers handler
 
-        if alizarin.batch_trees_to_tiles is None:
-            pytest.skip("batch_trees_to_tiles not available")
-        if alizarin.register_graph is None:
-            pytest.skip("register_graph not available")
-
         # Register the graph (returns graph_id)
         graph_id = alizarin.register_graph(person_graph_json)
 
@@ -2024,11 +1985,6 @@ class TestBatchTreesToTilesWithMultiValueReference:
         """
         import alizarin
         import alizarin_clm  # noqa: F401 - registers handler
-
-        if alizarin.batch_trees_to_tiles is None:
-            pytest.skip("batch_trees_to_tiles not available")
-        if alizarin.register_graph is None:
-            pytest.skip("register_graph not available")
 
         # Register the graph (returns graph_id)
         graph_id = alizarin.register_graph(person_graph_json)
@@ -2095,11 +2051,6 @@ class TestBatchTreesToTilesWithMultiValueReference:
             set_global_rdm_cache, clear_global_rdm_cache,
         )
 
-        if alizarin.batch_trees_to_tiles is None:
-            pytest.skip("batch_trees_to_tiles not available")
-        if alizarin.register_graph is None:
-            pytest.skip("register_graph not available")
-
         graph_id = alizarin.register_graph(person_graph_json)
 
         concept_uuid = "e1f2a3b4-c5d6-7890-abcd-ef1234567890"
@@ -2140,9 +2091,6 @@ class TestBatchTreesToTilesWithMultiValueReference:
         import alizarin
         import alizarin_clm  # noqa: F401 - registers handler
 
-        if alizarin.coerce_with_extension is None:
-            pytest.skip("coerce_with_extension not available")
-
         # Plain string (not a UUID) - should be marked for label lookup
         label_value = json.dumps("Hotel/Inn")
 
@@ -2179,9 +2127,6 @@ class TestBatchTreesToTilesWithMultiValueReference:
         import alizarin
         import alizarin_clm  # noqa: F401 - registers handler
 
-        if alizarin.coerce_with_extension is None:
-            pytest.skip("coerce_with_extension not available")
-
         # Valid: array of UUIDs
         uuid_array = json.dumps([
             "550e8400-e29b-41d4-a716-446655440000",
@@ -2216,9 +2161,6 @@ class TestBatchTreesToTilesWithMultiValueReference:
         """
         import alizarin
         import alizarin_clm  # noqa: F401 - registers handler
-
-        if alizarin.coerce_with_extension is None:
-            pytest.skip("coerce_with_extension not available")
 
         ref_array = json.dumps([
             {

@@ -59,7 +59,7 @@ def find_concept_node(graph_data):
                         break
 
                 return (node, parent_alias)
-    return (None, None)
+    raise AssertionError("Group.json has no concept node with an rdmCollection; these tests need one")
 
 
 def create_tree_with_concept(node_alias, value, parent_alias=None, datatype=None):
@@ -228,15 +228,9 @@ def test_batch_conversion_with_rdm_cache():
     # Find a concept node in the graph
     concept_node, parent_alias = find_concept_node(graph_data)
 
-    if not concept_node:
-        pytest.skip("No concept nodes in test graph")
-
     node_alias = concept_node.get('alias')
     config = concept_node.get('config', {})
     collection_id = config.get('rdmCollection') or config.get('rdm_collection')
-
-    if not collection_id:
-        pytest.skip("Concept node has no rdmCollection config")
 
     print(f"\nTesting with concept node: {node_alias}")
     if parent_alias:
@@ -336,15 +330,9 @@ def test_batch_conversion_with_explicit_cache():
     graph_data = load_test_graph()
     concept_node, parent_alias = find_concept_node(graph_data)
 
-    if not concept_node:
-        pytest.skip("No concept nodes in test graph")
-
     node_alias = concept_node.get('alias')
     config = concept_node.get('config', {})
     collection_id = config.get('rdmCollection') or config.get('rdm_collection')
-
-    if not collection_id:
-        pytest.skip("Concept node has no rdmCollection config")
 
     # Ensure clean state
     alizarin.clear_global_rdm_cache()
@@ -418,15 +406,9 @@ def test_get_needed_collections():
     graph_data = load_test_graph()
     concept_node, parent_alias = find_concept_node(graph_data)
 
-    if not concept_node:
-        pytest.skip("No concept nodes in test graph")
-
     node_alias = concept_node.get('alias')
     config = concept_node.get('config', {})
     collection_id = config.get('rdmCollection') or config.get('rdm_collection')
-
-    if not collection_id:
-        pytest.skip("Concept node has no rdmCollection config")
 
     # Create a tree that uses this concept node
     tree = create_tree_with_concept(node_alias, "Some Label", parent_alias, datatype=concept_node['datatype'])
@@ -448,15 +430,9 @@ def test_resolve_labels_function():
     graph_data = load_test_graph()
     concept_node, parent_alias = find_concept_node(graph_data)
 
-    if not concept_node:
-        pytest.skip("No concept nodes in test graph")
-
     node_alias = concept_node.get('alias')
     config = concept_node.get('config', {})
     collection_id = config.get('rdmCollection') or config.get('rdm_collection')
-
-    if not collection_id:
-        pytest.skip("Concept node has no rdmCollection config")
 
     # Create collection
     collection = alizarin.RustRdmCollection.from_labels(
@@ -920,15 +896,9 @@ def test_skos_roundtrip():
     graph_data = load_test_graph()
     concept_node, parent_alias = find_concept_node(graph_data)
 
-    if not concept_node:
-        pytest.skip("No concept nodes in test graph")
-
     node_alias = concept_node.get('alias')
     config = concept_node.get('config', {})
     collection_id = config.get('rdmCollection') or config.get('rdm_collection')
-
-    if not collection_id:
-        pytest.skip("Concept node has no rdmCollection config")
 
     print("\n--- Part 1: Create and Serialize ---")
     print(f"Testing with concept node: {node_alias}")
@@ -1210,91 +1180,4 @@ def test_url_namespace():
 
 
 if __name__ == '__main__':
-    print("=" * 70)
-    print("RDM Collection and Batch Conversion Tests")
-    print("=" * 70)
-
-    print("\n1. Creating collection from labels...")
-    test_create_collection_from_labels()
-
-    print("\n2. Creating collection with explicit ID...")
-    test_collection_with_explicit_id()
-
-    print("\n3. Adding collection to cache...")
-    test_collection_in_cache()
-
-    print("\n4. Testing multilanguage concepts...")
-    test_collection_multilanguage()
-
-    print("\n5. Identifying needed collections...")
-    try:
-        test_get_needed_collections()
-    except pytest.skip.Exception as e:
-        print(f"  SKIPPED: {e}")
-
-    print("\n6. Testing resolve_labels function...")
-    try:
-        test_resolve_labels_function()
-    except pytest.skip.Exception as e:
-        print(f"  SKIPPED: {e}")
-
-    print("\n7. Batch conversion with global RDM cache...")
-    try:
-        test_batch_conversion_with_rdm_cache()
-    except pytest.skip.Exception as e:
-        print(f"  SKIPPED: {e}")
-
-    print("\n8. Batch conversion with explicit cache parameter...")
-    try:
-        test_batch_conversion_with_explicit_cache()
-    except pytest.skip.Exception as e:
-        print(f"  SKIPPED: {e}")
-
-    print("\n9. SKOS roundtrip (serialize → file → parse → convert)...")
-    try:
-        test_skos_roundtrip()
-    except pytest.skip.Exception as e:
-        print(f"  SKIPPED: {e}")
-
-    print("\n10. Hierarchical collection with add_child_from_label...")
-    test_hierarchical_collection()
-
-    print("\n11. Hierarchical collection with multilingual labels...")
-    test_hierarchical_collection_multilingual()
-
-    print("\n12. Hierarchical collection SKOS serialization...")
-    test_hierarchical_collection_skos_serialization()
-
-    print("\n13. Arches Collection type...")
-    test_arches_collection_type()
-
-    print("\n14. Arches Collection with hierarchy...")
-    test_arches_collection_with_hierarchy()
-
-    print("\n15. Hierarchical collection roundtrip...")
-    test_hierarchical_collection_roundtrip()
-
-    print("\n16. from_nested_labels - hierarchical dict...")
-    test_from_nested_labels()
-
-    print("\n17. from_nested_labels - flat dict...")
-    test_from_nested_labels_flat()
-
-    print("\n18. from_nested_labels - with Collection node type...")
-    test_from_nested_labels_with_node_type()
-
-    print("\n19. from_nested_labels - deep hierarchy (3 levels)...")
-    test_from_nested_labels_deep_hierarchy()
-
-    print("\n20. Deterministic SKOS XML export...")
-    test_deterministic_skos_export()
-
-    print("\n21. Deterministic simplified JSON export...")
-    test_deterministic_simplified_json_export()
-
-    print("\n22. URL namespace support...")
-    test_url_namespace()
-
-    print("\n" + "=" * 70)
-    print("All tests completed!")
-    print("=" * 70)
+    pytest.main([__file__, "-v"])

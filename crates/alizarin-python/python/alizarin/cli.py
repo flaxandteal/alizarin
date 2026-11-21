@@ -12,7 +12,7 @@ from typing import Optional
 
 import click
 
-from . import json_tree_to_tiles, batch_trees_to_tiles, batch_tiles_to_trees
+from . import batch_trees_to_tiles, batch_tiles_to_trees
 
 
 @click.group()
@@ -82,10 +82,6 @@ def convert(
     Example:
         alizarin convert -g Person.json -i people.json -o tiles.json
     """
-    if json_tree_to_tiles is None:
-        click.echo("Error: Rust extension not available. Please rebuild alizarin.", err=True)
-        sys.exit(1)
-
     # Load graph
     try:
         with open(graph, 'r', encoding='utf-8') as f:
@@ -223,12 +219,6 @@ def to_trees(
     Example:
         alizarin to-trees -g Person.json -i resources.json -o trees.json
     """
-    from . import tiles_to_json_tree
-
-    if tiles_to_json_tree is None:
-        click.echo("Error: Rust extension not available. Please rebuild alizarin.", err=True)
-        sys.exit(1)
-
     # Load graph
     try:
         with open(graph, 'r', encoding='utf-8') as f:
@@ -419,10 +409,6 @@ def build(
             --output-dir output
     """
     from . import import_prebuild, process_mutation_csvs, export_prebuild
-
-    if import_prebuild is None:
-        click.echo("Error: Rust extension not available. Please rebuild alizarin.", err=True)
-        sys.exit(1)
 
     click.echo(f"Importing base package: {pkg_dir}")
     result = import_prebuild(

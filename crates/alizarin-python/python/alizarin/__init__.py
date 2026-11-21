@@ -19,63 +19,33 @@ from typing import Any, Dict, List, Optional, TYPE_CHECKING
 # Rust Extension Import
 # =============================================================================
 
-register_graph: Optional[Any] = None
-apply_aggregate_functions_from_file: Optional[Any] = None
-fold_may_match: Optional[Any] = None
-get_graph_json: Optional[Any] = None
-get_graph_schema: Optional[Any] = None
-tiles_to_json_tree: Optional[Any] = None
-build_tree_from_tiles: Optional[Any] = None
-json_tree_to_tiles: Optional[Any] = None
-batch_trees_to_tiles: Optional[Any] = None
-batch_tiles_to_trees: Optional[Any] = None
-compose_resource_layers: Optional[Any] = None
-resource_lifecycle_state: Optional[Any] = None
-transition_resource_lifecycle: Optional[Any] = None
-build_resources_from_business_csv: Optional[Any] = None
-merge_resources: Optional[Any] = None
-batch_merge_resources: Optional[Any] = None
-streamed_merge_from_files: Optional[Any] = None
-TreeToTilesIterator: Optional[Any] = None
-ResourceRegistry: Optional[Any] = None
-resolve_labels_in_tree: Optional[Any] = None
-set_descriptor_template: Optional[Any] = None
-PyResourceModelWrapper: Optional[Any] = None
-import_prebuild: Optional[Any] = None
-export_prebuild: Optional[Any] = None
-get_registered_graph_ids: Optional[Any] = None
-
-try:
-    # Try importing from the built extension (maturin puts it in the package)
-    from . import alizarin as _alizarin_rust
-    register_graph = _alizarin_rust.register_graph
-    apply_aggregate_functions_from_file = _alizarin_rust.apply_aggregate_functions_from_file
-    fold_may_match = _alizarin_rust.fold_may_match
-    get_graph_json = _alizarin_rust.get_graph_json
-    get_graph_schema = _alizarin_rust.get_graph_schema
-    tiles_to_json_tree = _alizarin_rust.tiles_to_json_tree
-    build_tree_from_tiles = _alizarin_rust.build_tree_from_tiles
-    json_tree_to_tiles = _alizarin_rust.json_tree_to_tiles
-    batch_trees_to_tiles = _alizarin_rust.batch_trees_to_tiles
-    batch_tiles_to_trees = _alizarin_rust.batch_tiles_to_trees
-    compose_resource_layers = _alizarin_rust.compose_resource_layers
-    resource_lifecycle_state = _alizarin_rust.resource_lifecycle_state
-    transition_resource_lifecycle = _alizarin_rust.transition_resource_lifecycle
-    build_resources_from_business_csv = _alizarin_rust.build_resources_from_business_csv
-    merge_resources = _alizarin_rust.merge_resources
-    batch_merge_resources = _alizarin_rust.batch_merge_resources
-    streamed_merge_from_files = _alizarin_rust.streamed_merge_from_files
-    TreeToTilesIterator = _alizarin_rust.TreeToTilesIterator
-    ResourceRegistry = _alizarin_rust.ResourceRegistry
-    resolve_labels_in_tree = _alizarin_rust.resolve_labels_in_tree
-    set_descriptor_template = _alizarin_rust.set_descriptor_template
-    PyResourceModelWrapper = _alizarin_rust.PyResourceModelWrapper
-    import_prebuild = _alizarin_rust.import_prebuild
-    export_prebuild = _alizarin_rust.export_prebuild
-    get_registered_graph_ids = _alizarin_rust.get_registered_graph_ids
-except (ImportError, AttributeError):
-    # Rust module not yet compiled - functions will remain None
-    pass
+# The native module is required (the rest of the package imports it too).
+from . import alizarin as _alizarin_rust
+register_graph = _alizarin_rust.register_graph
+apply_aggregate_functions_from_file = _alizarin_rust.apply_aggregate_functions_from_file
+fold_may_match = _alizarin_rust.fold_may_match
+get_graph_json = _alizarin_rust.get_graph_json
+get_graph_schema = _alizarin_rust.get_graph_schema
+tiles_to_json_tree = _alizarin_rust.tiles_to_json_tree
+build_tree_from_tiles = _alizarin_rust.build_tree_from_tiles
+json_tree_to_tiles = _alizarin_rust.json_tree_to_tiles
+batch_trees_to_tiles = _alizarin_rust.batch_trees_to_tiles
+batch_tiles_to_trees = _alizarin_rust.batch_tiles_to_trees
+compose_resource_layers = _alizarin_rust.compose_resource_layers
+resource_lifecycle_state = _alizarin_rust.resource_lifecycle_state
+transition_resource_lifecycle = _alizarin_rust.transition_resource_lifecycle
+build_resources_from_business_csv = _alizarin_rust.build_resources_from_business_csv
+merge_resources = _alizarin_rust.merge_resources
+batch_merge_resources = _alizarin_rust.batch_merge_resources
+streamed_merge_from_files = _alizarin_rust.streamed_merge_from_files
+TreeToTilesIterator = _alizarin_rust.TreeToTilesIterator
+ResourceRegistry = _alizarin_rust.ResourceRegistry
+resolve_labels_in_tree = _alizarin_rust.resolve_labels_in_tree
+set_descriptor_template = _alizarin_rust.set_descriptor_template
+PyResourceModelWrapper = _alizarin_rust.PyResourceModelWrapper
+import_prebuild = _alizarin_rust.import_prebuild
+export_prebuild = _alizarin_rust.export_prebuild
+get_registered_graph_ids = _alizarin_rust.get_registered_graph_ids
 
 
 # =============================================================================
@@ -98,9 +68,6 @@ def chunked_merge_resources(
     If strict=True (default), raises ValueError on conflicting data when unifying
     cardinality-1 tiles. Identical data and gap-filling are always allowed.
     """
-    if batch_merge_resources is None:
-        raise RuntimeError("Alizarin Rust extension not loaded")
-
     if not json_strings:
         return {"resources": [], "merge_stats": {"total_input": 0, "duplicates_removed": 0}}
 

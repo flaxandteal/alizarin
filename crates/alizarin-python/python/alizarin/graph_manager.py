@@ -308,16 +308,10 @@ class GraphManager:
 
         Returns:
             graph_id: The registered graph ID
-
-        Raises:
-            RuntimeError: If Rust extension not loaded
         """
         from . import register_graph as rust_register_graph
         from .static_types import StaticGraph
         import json
-
-        if rust_register_graph is None:
-            raise RuntimeError("Alizarin Rust extension not loaded")
 
         # Convert to StaticGraph if needed
         if not isinstance(graph_dict, StaticGraph):

@@ -337,9 +337,6 @@ class TestIntegrationWithAlizarin:
         import alizarin
 
         # Check if extension mutation functions are available
-        if not hasattr(alizarin, "register_extension_mutation"):
-            pytest.skip("Extension mutation API not available")
-
         # Step 1: Register the CLM mutation handler
         alizarin.register_extension_mutation(
             "clm.reference_change_collection",
@@ -395,9 +392,6 @@ class TestIntegrationWithAlizarin:
         2. Change its collection using the CLM extension mutation
         """
         import alizarin
-
-        if not hasattr(alizarin, "register_extension_mutation"):
-            pytest.skip("Extension mutation API not available")
 
         # Ensure handler is registered
         if not alizarin.has_extension_mutation("clm.reference_change_collection"):
@@ -532,9 +526,6 @@ class TestDisplayTextWithUpdatedCollection:
         import alizarin
         import alizarin_clm  # noqa: F401 - registers handler
 
-        if alizarin.coerce_with_extension is None:
-            pytest.skip("coerce_with_extension not available")
-
         # Label string — the user-facing input format
         value_json = json.dumps("New Collection Item")
 
@@ -573,8 +564,7 @@ class TestEndToEndWorkflow:
     def person_graph(self):
         """Load Person graph with reference node."""
         graph_path = TEST_DATA_DIR / "graphs" / "resource_models" / "Person.json"
-        if not graph_path.exists():
-            pytest.skip(f"Test data not found: {graph_path}")
+        assert graph_path.exists(), f"Test data not found: {graph_path}"
         with open(graph_path) as f:
             data = json.load(f)
         return data["graph"][0]
@@ -590,12 +580,6 @@ class TestEndToEndWorkflow:
         """
         import alizarin
         import alizarin_clm  # noqa: F401
-
-        if alizarin.json_tree_to_tiles is None:
-            pytest.skip("json_tree_to_tiles not available")
-
-        if not hasattr(alizarin, "register_extension_mutation"):
-            pytest.skip("Extension mutation API not available")
 
         # Ensure handler is registered
         if not alizarin.has_extension_mutation("clm.reference_change_collection"):
@@ -712,12 +696,6 @@ class TestEndToEndWorkflow:
         """
         import alizarin
         import alizarin_clm  # noqa: F401
-
-        if alizarin.json_tree_to_tiles is None:
-            pytest.skip("json_tree_to_tiles not available")
-
-        if not hasattr(alizarin, "register_extension_mutation"):
-            pytest.skip("Extension mutation API not available")
 
         from alizarin import (
             RustRdmCollection,
