@@ -48,7 +48,7 @@ import {
   buildPrebuildExport,
 } from "../../js/backend";
 import { ResourceModelWrapper } from "../../js/graphManager";
-import { composeResourceLayers } from "../../js/csvModelLoader";
+import { composeResourceLayers, buildGraphFromModelCsvs, buildResourcesFromBusinessCsv } from "../../js/csvModelLoader";
 import { resourceLifecycleState, transitionResourceLifecycle } from "../../js/lifecycle";
 
 const DIR = path.join(__dirname, "../data/output-parity");
@@ -66,6 +66,8 @@ const ACTIVE = "f75bb034-36e3-4ab4-8167-f520cf0b4c58";
 const RETIRED = "d95d9c0e-0e2c-4450-93a3-d788b91abcc8";
 /** Fixes the ids treeToTiles gives cardinality-n tiles. */
 const TILE_NAMESPACE = "0d0d0d0d-0000-4000-8000-000000000001";
+/** The RDM namespace the CSV fixtures' graph is built in. */
+const CSV_NAMESPACE = "https://example.org/parity";
 
 /** Keys sorted at every level: for routes that return a string serialised
  * straight from a struct (field order, identical on every backend because
@@ -184,6 +186,19 @@ function routes(): [string, string, () => any][] {
     "batchTreesToTiles",
     "tiles:batch",
     () => batchTreesToTiles(`[${treeText()}]`, graph, false, true, null, false, false, null, TILE_NAMESPACE),
+  ]);
+  // A graph and its business data built from CSVs.
+  const csv = (name: string) => read(`csv/${name}`);
+  const csvGraph = () =>
+    buildGraphFromModelCsvs(csv("graph.csv"), csv("nodes.csv"), CSV_NAMESPACE, csv("collections.csv"));
+  out.push(["buildGraphFromModelCsvs", "csv:graph", csvGraph]);
+  out.push([
+    "buildResourcesFromBusinessCsv",
+    "csv:business_data",
+    () => {
+      const { graph: built, collections } = csvGraph();
+      return buildResourcesFromBusinessCsv(csv("business.csv"), built, collections, "en", true, TILE_NAMESPACE);
+    },
   ]);
   out.push([
     "buildPrebuildExport",

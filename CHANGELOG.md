@@ -107,6 +107,18 @@ entries is tracked in `PARITY-RESEARCH.md`.
   graph diff needs, and a bad argument throws (it logged and gave `null`).
   An id missing on one side and `null` on the other now counts as unset on
   both.
+- Business data from CSV (`buildResourcesFromBusinessCsv`, NAPI
+  `buildBusinessDataFromCsv`, Python `build_resources_from_business_csv`) is
+  one core function on every binding: extension types always go through the
+  extension registry (WASM and Python used none; NAPI only with an
+  `rdmCache`). Concept labels resolve against the collections, or against
+  NAPI's `rdmCache` when given, as before. An invalid graph or collections
+  argument is `Invalid graph JSON: …` / `Invalid collections JSON: …` on
+  every binding.
+- WASM: `buildGraphFromModelCsvs` returns core's serialisation (sorted keys),
+  as NAPI does.
+- Python: `build_graph_from_model_csvs` and `validate_model_csvs` exported
+  from `alizarin` (they were only in the compiled submodule).
 - **Breaking:** extension coercion returns core's `{tileData, displayValue,
   warnings}` (`warnings` always present) on NAPI (`extensionCoerce`, which
   dropped `warnings` when empty) and Python (`coerce_with_extension`, which
@@ -171,6 +183,9 @@ entries is tracked in `PARITY-RESEARCH.md`.
   returned.
 
 ### Fixed
+- A graph built from CSVs lists its collections in the order they first
+  appear in collections.csv; it was hash order, so it changed from run to
+  run.
 - A graph exports to a file named by its English name (else its
   lowest-keyed language's), as documented; it took the current language,
   so the same graph's file name changed with the UI language.

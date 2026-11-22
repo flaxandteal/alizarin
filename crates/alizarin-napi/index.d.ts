@@ -71,7 +71,7 @@ export declare function buildGraphFromCsvs(graphCsv: string, nodesCsv: string, c
  * are derived and reproducible, and each layer must use its own; omitted, they
  * are random.
  */
-export declare function buildBusinessDataFromCsv(csvData: string, graphJson: string, collectionsJson: string, defaultLanguage?: string | undefined | null, strictConcepts?: boolean | undefined | null, uuidNamespace?: string | undefined | null, rdmCache?: NapiRdmCache | undefined | null): any
+export declare function buildBusinessDataFromCsv(csvData: string, graphJson: string, collectionsJson: string, defaultLanguage?: string | undefined | null, strictConcepts?: boolean | undefined | null, uuidNamespace?: string | undefined | null, rdmCache?: NapiRdmCache | undefined | null): JsonOut
 /**
  * Compose one resource across an ordered layer stack, in memory — the binding
  * form of the substrate's `hydrate_layers` (no DuckDB). The same resource as it

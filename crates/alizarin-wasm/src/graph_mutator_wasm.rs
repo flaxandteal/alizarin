@@ -367,16 +367,9 @@ pub fn build_graph_from_model_csvs(
     );
 
     match result {
-        Ok(built) => {
-            let json = alizarin_core::GraphFromCsvs::from(built);
-            // Use JSON.parse rather than crate::js_json::to_value to ensure
-            // plain JS objects (serde_wasm_bindgen produces Map objects for
-            // serde_json::Value).
-            let json_str = serde_json::to_string(&json)
-                .map_err(|e| JsError::new(&format!("Serialization error: {}", e)))?;
-            js_sys::JSON::parse(&json_str)
-                .map_err(|_| JsError::new("Failed to parse serialized JSON"))
-        }
+        // Core's serialisation (plain objects, sorted keys), as NAPI's.
+        Ok(built) => crate::js_json::to_value(&alizarin_core::GraphFromCsvs::from(built))
+            .map_err(|e| JsError::new(&format!("Serialization error: {}", e))),
         Err(e) => Err(JsError::new(&format!("{}", e))),
     }
 }
@@ -429,34 +422,21 @@ pub fn build_resources_from_business_csv(
 ) -> Result<JsValue, JsError> {
     use alizarin_core::csv_business_data_loader;
 
-    let graph: alizarin_core::graph::StaticGraph = serde_json::from_str(graph_json)
-        .map_err(|e| JsError::new(&format!("Failed to parse graph JSON: {}", e)))?;
-
-    let collections: Vec<alizarin_core::skos::SkosCollection> =
-        serde_json::from_str(collections_json)
-            .map_err(|e| JsError::new(&format!("Failed to parse collections JSON: {}", e)))?;
-
     let options = csv_business_data_loader::BusinessDataCsvOptions {
         default_language: default_language.unwrap_or_else(|| "en".to_string()),
         strict_concepts: strict_concepts.unwrap_or(true),
-        // Forward the caller's namespace (was previously hardcoded `None`, so WASM
-        // silently ignored layer isolation that the core + NAPI already supported).
         uuid_namespace,
     };
-
-    match csv_business_data_loader::build_resources_from_business_csv(
+    // Core's, as NAPI and Python: extension types through the registry.
+    let registry = crate::extension_registry::build_extension_registry();
+    let wrapped = csv_business_data_loader::business_data_from_csv_json(
         csv_data,
-        &graph,
-        &collections,
+        graph_json,
+        collections_json,
         options,
-    ) {
-        Ok(resources) => {
-            let wrapped = csv_business_data_loader::wrap_business_data(&resources);
-            let json_str = serde_json::to_string(&wrapped)
-                .map_err(|e| JsError::new(&format!("Serialization error: {}", e)))?;
-            js_sys::JSON::parse(&json_str)
-                .map_err(|_| JsError::new("Failed to parse serialized JSON"))
-        }
-        Err(e) => Err(JsError::new(&format!("{}", e))),
-    }
+        Some(&registry),
+        None,
+    )
+    .map_err(|e| JsError::new(&e))?;
+    crate::js_json::to_value(&wrapped).map_err(|e| JsError::new(&e.to_string()))
 }

@@ -837,8 +837,9 @@ pub fn model_csvs_to_collections(
         }],
     })?;
 
-    // Group rows by collection_name
-    let mut grouped: HashMap<&str, Vec<&CollectionRow>> = HashMap::new();
+    // Group rows by collection_name, in the order collections first appear
+    // (a HashMap here made the output's order vary from run to run).
+    let mut grouped: indexmap::IndexMap<&str, Vec<&CollectionRow>> = indexmap::IndexMap::new();
     for row in &bundle.collections {
         grouped.entry(&row.collection_name).or_default().push(row);
     }

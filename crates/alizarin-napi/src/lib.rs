@@ -12,13 +12,11 @@ use napi_derive::napi;
 
 use alizarin_core::extension_type_registry::ExtensionTypeRegistry;
 use alizarin_core::graph_mutator::MutatorOptions;
-use alizarin_core::label_resolution::ConceptLookup;
 use alizarin_core::skos::SkosCollection;
 use alizarin_core::type_serialization::SerializationContext;
 use alizarin_core::{
-    build_graph_from_model_csvs, build_resources_from_business_csv,
-    build_resources_from_business_csv_with_context, wrap_business_data, StaticGraph,
-    StaticResource, StaticResourceRegistry, StaticResourceSummary,
+    build_graph_from_model_csvs, StaticGraph, StaticResource, StaticResourceRegistry,
+    StaticResourceSummary,
 };
 
 // ============================================================================
@@ -848,39 +846,27 @@ pub fn build_business_data_from_csv(
     strict_concepts: Option<bool>,
     uuid_namespace: Option<String>,
     rdm_cache: Option<&NapiRdmCache>,
-) -> Result<serde_json::Value> {
-    let graph: StaticGraph = serde_json::from_str(&graph_json)
-        .map_err(|e| napi::Error::from_reason(format!("Invalid graph JSON: {e}")))?;
-    let collections: Vec<SkosCollection> = serde_json::from_str(&collections_json)
-        .map_err(|e| napi::Error::from_reason(format!("Invalid collections JSON: {e}")))?;
-
+) -> Result<JsonOut> {
     let options = alizarin_core::csv_business_data_loader::BusinessDataCsvOptions {
         default_language: default_language.unwrap_or_else(|| "en".to_string()),
         strict_concepts: strict_concepts.unwrap_or(true),
         uuid_namespace,
     };
-
-    let reg = extension_registry();
-    let resources = if let Some(rc) = rdm_cache {
-        let ctx = SerializationContext {
-            concept_lookup: Some(rc.inner() as &dyn ConceptLookup),
-            extension_registry: Some(&reg),
-            ..SerializationContext::empty()
-        };
-        build_resources_from_business_csv_with_context(
-            &csv_data,
-            &graph,
-            &collections,
-            Some(&reg),
-            options,
-            Some(&ctx),
-        )
-    } else {
-        build_resources_from_business_csv(&csv_data, &graph, &collections, options)
-    }
-    .map_err(csv_err)?;
-
-    Ok(wrap_business_data(&resources))
+    // Core's, as WASM and Python: extension types always, concept labels
+    // against `rdmCache` when given (else the collections).
+    let registry = extension_registry();
+    let wrapped = alizarin_core::csv_business_data_loader::business_data_from_csv_json(
+        &csv_data,
+        &graph_json,
+        &collections_json,
+        options,
+        Some(&registry),
+        rdm_cache.map(|rc| std::sync::Arc::new(rc.inner().clone())),
+    )
+    .map_err(napi::Error::from_reason)?;
+    serde_json::to_value(wrapped)
+        .map(JsonOut)
+        .map_err(|e| napi::Error::from_reason(e.to_string()))
 }
 
 /// Compose one resource across an ordered layer stack, in memory — the binding

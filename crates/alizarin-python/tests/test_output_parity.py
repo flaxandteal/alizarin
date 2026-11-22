@@ -173,6 +173,31 @@ def routes():
         return {"business_data": {"resources": [items[0]["resource"]]}}
 
     out.append(("TreeToTilesIterator", "tiles:tree", iterated))
+    # A graph and its business data built from CSVs.
+    def csv(name):
+        with open(os.path.join(DATA_DIR, "csv", name), encoding="utf-8") as f:
+            return f.read()
+
+    def csv_graph():
+        return json.loads(
+            alizarin.build_graph_from_model_csvs(
+                csv("graph.csv"), csv("nodes.csv"), "https://example.org/parity", csv("collections.csv")
+            )
+        )
+
+    def csv_business_data():
+        built = csv_graph()
+        return json.loads(
+            alizarin.build_resources_from_business_csv(
+                csv("business.csv"),
+                json.dumps(built["graph"]),
+                json.dumps(built["collections"]),
+                uuid_namespace=tile_namespace,
+            )
+        )
+
+    out.append(("build_graph_from_model_csvs", "csv:graph", csv_graph))
+    out.append(("build_resources_from_business_csv", "csv:business_data", csv_business_data))
     layer_text = json.dumps(LAYER)
     out.append(("merge_resources", "merged", lambda: alizarin.merge_resources(f"[{resource_text},{layer_text}]")))
     out.append(

@@ -29,5 +29,5 @@ test("buildResourcesFromBusinessCsv throws an Error (not a string) on bad input 
   assert.instanceOf(caught, Error, "a thrown error must be a real Error instance");
   const message = (caught as Error).message;
   assert.isString(message, "Error.message must be a string, not undefined");
-  assert.include(message, "parse graph JSON", "the message should carry the failure detail");
+  assert.include(message, "Invalid graph JSON", "the message should carry the failure detail");
 });

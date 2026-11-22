@@ -36,6 +36,8 @@ compose_resource_layers = _alizarin_rust.compose_resource_layers
 resource_lifecycle_state = _alizarin_rust.resource_lifecycle_state
 transition_resource_lifecycle = _alizarin_rust.transition_resource_lifecycle
 build_resources_from_business_csv = _alizarin_rust.build_resources_from_business_csv
+build_graph_from_model_csvs = _alizarin_rust.build_graph_from_model_csvs
+validate_model_csvs = _alizarin_rust.validate_model_csvs
 merge_resources = _alizarin_rust.merge_resources
 batch_merge_resources = _alizarin_rust.batch_merge_resources
 streamed_merge_from_files = _alizarin_rust.streamed_merge_from_files
@@ -434,6 +436,8 @@ __all__ = [
     "resource_lifecycle_state",
     "transition_resource_lifecycle",
     "build_resources_from_business_csv",
+    "build_graph_from_model_csvs",
+    "validate_model_csvs",
     "batch_tiles_to_trees",
     "merge_resources",
     "batch_merge_resources",

@@ -621,37 +621,22 @@ fn build_resources_from_business_csv(
 ) -> PyResult<String> {
     use alizarin_core::csv_business_data_loader;
 
-    let graph: alizarin_core::graph::StaticGraph =
-        serde_json::from_str(graph_json).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                "Failed to parse graph JSON: {}",
-                e
-            ))
-        })?;
-
-    let collections: Vec<alizarin_core::skos::SkosCollection> =
-        serde_json::from_str(collections_json).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                "Failed to parse collections JSON: {}",
-                e
-            ))
-        })?;
-
     let options = csv_business_data_loader::BusinessDataCsvOptions {
         default_language: default_language.to_string(),
         strict_concepts,
         uuid_namespace,
     };
-
-    let resources = csv_business_data_loader::build_resources_from_business_csv(
+    // Core's, as WASM and NAPI: extension types through the registry.
+    let registry = crate::build_extension_registry();
+    let wrapped = csv_business_data_loader::business_data_from_csv_json(
         csv_data,
-        &graph,
-        &collections,
+        graph_json,
+        collections_json,
         options,
+        Some(&registry),
+        None,
     )
-    .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("{}", e)))?;
-
-    let wrapped = csv_business_data_loader::wrap_business_data(&resources);
+    .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
     serde_json::to_string(&wrapped).map_err(|e| {
         PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
             "Failed to serialize result: {}",

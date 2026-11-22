@@ -1,0 +1,6 @@
+parent_alias,alias,name,datatype,cardinality,ontology_class,parent_property,description,collection_name,required,searchable,exportable,sortorder
+,names,Names,semantic,n,http://www.cidoc-crm.org/cidoc-crm/E41_Appellation,http://www.cidoc-crm.org/cidoc-crm/P1_is_identified_by,,,,,,1
+names,name_value,Name Value,string,1,http://www.cidoc-crm.org/cidoc-crm/E33_Linguistic_Object,http://www.cidoc-crm.org/cidoc-crm/P3_has_note,,,true,true,,2
+names,name_type,Name Type,concept,1,http://www.cidoc-crm.org/cidoc-crm/E55_Type,http://www.cidoc-crm.org/cidoc-crm/P2_has_type,,Name Types,,,,3
+,birth_date,Birth Date,date,1,http://www.cidoc-crm.org/cidoc-crm/E52_Time-Span,http://www.cidoc-crm.org/cidoc-crm/P4_has_time-span,,,,,,4
+,person_type,Person Type,concept,1,http://www.cidoc-crm.org/cidoc-crm/E55_Type,http://www.cidoc-crm.org/cidoc-crm/P2_has_type,,Person Types,,,,5

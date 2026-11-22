@@ -29,6 +29,8 @@ const ACTIVE: &str = "f75bb034-36e3-4ab4-8167-f520cf0b4c58";
 const RETIRED: &str = "d95d9c0e-0e2c-4450-93a3-d788b91abcc8";
 /// Fixes the ids `tree_to_tiles` gives cardinality-n tiles.
 const TILE_NAMESPACE: &str = "0d0d0d0d-0000-4000-8000-000000000001";
+/// The RDM namespace the CSV fixtures' graph is built in.
+const CSV_NAMESPACE: &str = "https://example.org/parity";
 
 fn dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/data/output-parity")
@@ -162,6 +164,35 @@ fn outputs() -> BTreeMap<String, String> {
                 .unwrap(),
         ),
     );
+    // A graph and its business data built from CSVs (csv/): the graph with
+    // its collections, then the resources, multi-valued tile ids fixed by
+    // the tile namespace.
+    let csv = |name: &str| read(&format!("csv/{name}"));
+    let built = alizarin_core::build_graph_from_model_csvs(
+        &csv("graph.csv"),
+        &csv("nodes.csv"),
+        Some(&csv("collections.csv")),
+        CSV_NAMESPACE,
+        Default::default(),
+    )
+    .unwrap();
+    let built = alizarin_core::GraphFromCsvs::from(built);
+    put("csv:graph".into(), canonical(&built));
+    let options = alizarin_core::csv_business_data_loader::BusinessDataCsvOptions {
+        default_language: "en".into(),
+        strict_concepts: true,
+        uuid_namespace: Some(TILE_NAMESPACE.into()),
+    };
+    let business = alizarin_core::csv_business_data_loader::business_data_from_csv_json(
+        &csv("business.csv"),
+        &serde_json::to_string(&built.graph).unwrap(),
+        &serde_json::to_string(&built.collections).unwrap(),
+        options,
+        None,
+        None,
+    );
+    put("csv:business_data".into(), canonical(&business.unwrap()));
+
     // The registered graph exported as prebuild files.
     let ids = [graph.graphid.clone()];
     let export = alizarin_core::build_prebuild_export(Some(&ids), None, "http://localhost/");

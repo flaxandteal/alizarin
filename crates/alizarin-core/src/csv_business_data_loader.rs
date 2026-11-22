@@ -1076,6 +1076,43 @@ fn merge_objects(
 }
 
 /// Wrap resources in the Arches business_data format
+/// Every binding's business-data-from-CSV entry point: the graph and
+/// collections as JSON, extension types coerced through `registry`, and
+/// concept labels resolved against `concepts` when given, else against the
+/// collections. Not the global RDM cache: a lookup replaces the collections,
+/// so a cache set for something else would break the load. The resources as a
+/// business data file.
+pub fn business_data_from_csv_json(
+    csv_data: &str,
+    graph_json: &str,
+    collections_json: &str,
+    options: BusinessDataCsvOptions,
+    registry: Option<&ExtensionTypeRegistry>,
+    concepts: Option<std::sync::Arc<crate::RdmCache>>,
+) -> Result<crate::BusinessDataWrapper, String> {
+    let graph: StaticGraph =
+        serde_json::from_str(graph_json).map_err(|e| format!("Invalid graph JSON: {e}"))?;
+    let collections: Vec<SkosCollection> = serde_json::from_str(collections_json)
+        .map_err(|e| format!("Invalid collections JSON: {e}"))?;
+    let context = SerializationContext {
+        concept_lookup: concepts.as_deref().map(|c| c as &dyn ConceptLookup),
+        extension_registry: registry,
+        ..SerializationContext::empty()
+    };
+    let resources = build_resources_from_business_csv_with_context(
+        csv_data,
+        &graph,
+        &collections,
+        registry,
+        options,
+        Some(&context),
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(crate::BusinessDataWrapper {
+        business_data: crate::BusinessData { resources },
+    })
+}
+
 pub fn wrap_business_data(resources: &[StaticResource]) -> serde_json::Value {
     serde_json::json!({
         "business_data": {

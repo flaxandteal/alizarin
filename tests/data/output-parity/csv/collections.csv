@@ -1,0 +1,5 @@
+collection_name,concept_label,parent_label,sort_order
+Name Types,Preferred Name,,1
+Name Types,Alternative Name,,2
+Person Types,Historical Figure,,1
+Person Types,Fictional Character,,2
