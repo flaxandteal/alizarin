@@ -149,11 +149,6 @@ REASONS = [
     ("fn:static_resource_from_summary", {"wasm": "ecosystem: a static method on WASM's resource class, StaticResource.fromSummary"}),
     ("class:rustRdmCollection", {"wasm": "ecosystem: JS gets RDM collections as plain JSON", "napi": "ecosystem: JS gets RDM collections as plain JSON"}),
     ("class:rustRdmConcept", {"wasm": "ecosystem: JS gets RDM concepts as plain JSON", "napi": "ecosystem: JS gets RDM concepts as plain JSON"}),
-    # To remove rather than add elsewhere.
-    ("class:example*Wrapper", {"napi": "gap: macro demo (crates/alizarin-wasm/src/wasm_wrappers.rs) leaked into the WASM API; remove it",
-                               "python": "gap: macro demo (crates/alizarin-wasm/src/wasm_wrappers.rs) leaked into the WASM API; remove it"}),
-    ("class:wasmNodegroupResult", {"napi": "gap: exported but never constructed (crates/alizarin-wasm/src/pseudo_value.rs); remove it",
-                                   "python": "gap: exported but never constructed (crates/alizarin-wasm/src/pseudo_value.rs); remove it"}),
     # Function families bound unevenly.
     ("fn:coerce_with_extension", {"wasm": GAP_EXTENSIONS}),
     ("fn:coerce_*", {"napi": "gap: NAPI has no standalone coercion functions; its ORM coerces inside the instance wrapper (A-6)"}),

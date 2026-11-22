@@ -156,17 +156,6 @@ impl PseudoListInner {
     }
 }
 
-/// Result returned from nodegroup operations
-/// Contains structured hierarchy instead of flat recipes
-#[derive(Clone)]
-pub(crate) struct NodegroupResult {
-    /// Structured values with full hierarchy
-    pub values: Vec<PseudoValueInner>,
-
-    /// Implied nodegroups that need loading
-    pub implied_nodegroups: Vec<String>,
-}
-
 impl PseudoValueInner {
     /// Wrap a PseudoValueCore with WASM-specific runtime state.
     ///
@@ -581,37 +570,6 @@ impl PseudoList {
     /// Create a PseudoList from PseudoListInner (for Rust-internal use)
     pub(crate) fn from_rust(inner: PseudoListInner) -> Self {
         PseudoList { inner }
-    }
-}
-
-#[wasm_bindgen]
-pub struct WasmNodegroupResult {
-    inner: NodegroupResult,
-}
-
-#[wasm_bindgen]
-impl WasmNodegroupResult {
-    /// Get number of values
-    #[wasm_bindgen(getter, js_name = valueCount)]
-    pub fn value_count(&self) -> usize {
-        self.inner.values.len()
-    }
-
-    /// Get a value by index
-    #[wasm_bindgen(js_name = getValue, unchecked_return_type = "PseudoValue | null")]
-    pub fn get_value(&self, index: usize) -> JsValue {
-        crate::js_json::or_null(
-            self.inner
-                .values
-                .get(index)
-                .map(|v| PseudoValue::from_rust(v.clone())),
-        )
-    }
-
-    /// Get implied nodegroups
-    #[wasm_bindgen(getter, js_name = impliedNodegroups)]
-    pub fn implied_nodegroups(&self) -> Vec<String> {
-        self.inner.implied_nodegroups.clone()
     }
 }
 

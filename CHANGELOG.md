@@ -141,6 +141,12 @@ entries is tracked in `PARITY-RESEARCH.md`.
   language) are an error when a resource is read. The business-data loader
   used to drop them silently to empty.
 
+### Removed
+- WASM: `ExampleEdgeWrapper` and `ExampleNodegroupWrapper`, the
+  `wasm_wrapper!` macro's demo, which had leaked into the API; use
+  `StaticEdge` / `StaticNodegroup`. `WasmNodegroupResult`, which nothing
+  returned.
+
 ### Fixed
 - Python: `str()` of a number view model is as TypeScript's: `"7"`, not
   `"7.0"` (and `1e+21`, `NaN`, …), by core's `number_display`

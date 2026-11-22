@@ -18,7 +18,6 @@ pub mod skos_wasm;
 pub mod tracing;
 pub mod type_coercion_wasm;
 mod utils;
-pub mod wasm_wrappers;
 
 // Re-export core types for native Rust consumers
 // These are the platform-agnostic types without WASM bindings

@@ -44,78 +44,6 @@
         }
       ]
     },
-    "exampleEdgeWrapper": {
-      "wasm": "ExampleEdgeWrapper",
-      "napi": null,
-      "python": null,
-      "why": {
-        "napi": "gap: macro demo (crates/alizarin-wasm/src/wasm_wrappers.rs) leaked into the WASM API; remove it",
-        "python": "gap: macro demo (crates/alizarin-wasm/src/wasm_wrappers.rs) leaked into the WASM API; remove it"
-      },
-      "operations": [
-        {
-          "wasm": "copy",
-          "napi": null,
-          "python": null
-        },
-        {
-          "wasm": "domainnode_id",
-          "napi": null,
-          "python": null
-        },
-        {
-          "wasm": "edgeid",
-          "napi": null,
-          "python": null
-        },
-        {
-          "wasm": "name",
-          "napi": null,
-          "python": null
-        },
-        {
-          "wasm": "ontologyproperty",
-          "napi": null,
-          "python": null
-        },
-        {
-          "wasm": "rangenode_id",
-          "napi": null,
-          "python": null
-        }
-      ]
-    },
-    "exampleNodegroupWrapper": {
-      "wasm": "ExampleNodegroupWrapper",
-      "napi": null,
-      "python": null,
-      "why": {
-        "napi": "gap: macro demo (crates/alizarin-wasm/src/wasm_wrappers.rs) leaked into the WASM API; remove it",
-        "python": "gap: macro demo (crates/alizarin-wasm/src/wasm_wrappers.rs) leaked into the WASM API; remove it"
-      },
-      "operations": [
-        {
-          "wasm": "cardinality",
-          "napi": null,
-          "python": null
-        },
-        {
-          "wasm": "copy",
-          "napi": null,
-          "python": null
-        },
-        {
-          "wasm": "nodegroupid",
-          "napi": null,
-          "python": null
-        },
-        {
-          "wasm": "parentnodegroup_id",
-          "napi": null,
-          "python": null
-        }
-      ]
-    },
     "instanceWrapper": {
       "wasm": "WASMResourceInstanceWrapper",
       "napi": "NapiResourceInstanceWrapper",
@@ -3189,32 +3117,6 @@
         },
         {
           "wasm": "modelName",
-          "napi": null,
-          "python": null
-        }
-      ]
-    },
-    "wasmNodegroupResult": {
-      "wasm": "WasmNodegroupResult",
-      "napi": null,
-      "python": null,
-      "why": {
-        "napi": "gap: exported but never constructed (crates/alizarin-wasm/src/pseudo_value.rs); remove it",
-        "python": "gap: exported but never constructed (crates/alizarin-wasm/src/pseudo_value.rs); remove it"
-      },
-      "operations": [
-        {
-          "wasm": "getValue",
-          "napi": null,
-          "python": null
-        },
-        {
-          "wasm": "impliedNodegroups",
-          "napi": null,
-          "python": null
-        },
-        {
-          "wasm": "valueCount",
           "napi": null,
           "python": null
         }
