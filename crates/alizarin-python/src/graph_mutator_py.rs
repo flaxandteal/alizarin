@@ -544,19 +544,15 @@ fn build_graph_from_model_csvs(
         published_time: None,
     };
 
-    let (graph, collections) = csv_model_loader::build_graph_from_model_csvs(
+    let result: alizarin_core::GraphFromCsvs = csv_model_loader::build_graph_from_model_csvs(
         graph_csv,
         nodes_csv,
         collections_csv,
         rdm_namespace,
         options,
     )
-    .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("{}", e)))?;
-
-    let result = serde_json::json!({
-        "graph": graph,
-        "collections": collections,
-    });
+    .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("{}", e)))?
+    .into();
 
     serde_json::to_string(&result).map_err(|e| {
         PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(

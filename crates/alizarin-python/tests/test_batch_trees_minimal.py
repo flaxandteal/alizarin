@@ -299,7 +299,7 @@ def test_cross_model_with_registry():
     )
 
     enriched_groups = cache_result['resources']
-    unknown_refs = cache_result['unknown_references']
+    unknown_refs = cache_result['unknownReferences']
 
     print(f"Unknown references: {len(unknown_refs)}")
 

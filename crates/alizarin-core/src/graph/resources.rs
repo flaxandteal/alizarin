@@ -467,6 +467,16 @@ pub struct PopulateCachesResult {
     pub unknown_references: Vec<UnknownReference>,
 }
 
+/// What every binding's `populateCachesFromJson` / `populate_caches` returns:
+/// the resources with their `__cache` filled, and the references not found.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PopulateCachesOutput {
+    pub resources: Vec<StaticResource>,
+    pub unknown_references: Vec<UnknownReference>,
+    pub has_unknown: bool,
+}
+
 impl PopulateCachesResult {
     /// Check if there were any unknown references
     pub fn has_unknown_references(&self) -> bool {
@@ -836,6 +846,32 @@ impl StaticResourceRegistry {
     /// Get all resource IDs
     pub fn ids(&self) -> impl Iterator<Item = &String> {
         self.resources.keys()
+    }
+
+    /// [`Self::populate_caches`] over a JSON array of resources: the bindings'
+    /// one entry point, giving the [`PopulateCachesOutput`] each returns.
+    pub fn populate_caches_from_json(
+        &self,
+        resources_json: &str,
+        graph: &super::StaticGraph,
+        enrich_relationships: bool,
+        strict: bool,
+        recompute_descriptors: bool,
+    ) -> Result<PopulateCachesOutput, String> {
+        let mut resources: Vec<StaticResource> = serde_json::from_str(resources_json)
+            .map_err(|e| format!("Failed to parse resources: {e}"))?;
+        let result = self.populate_caches(
+            &mut resources,
+            graph,
+            enrich_relationships,
+            strict,
+            recompute_descriptors,
+        )?;
+        Ok(PopulateCachesOutput {
+            resources,
+            has_unknown: result.has_unknown_references(),
+            unknown_references: result.unknown_references,
+        })
     }
 
     /// Populate __cache on resources with summaries for referenced resources

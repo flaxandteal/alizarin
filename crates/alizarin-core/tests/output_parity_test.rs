@@ -132,6 +132,31 @@ fn outputs() -> BTreeMap<String, String> {
         .unwrap();
     put("business_data:refs".into(), canonical(&refs));
 
+    // populateCaches over the fixture resource (it references nothing), and a
+    // path resolved through the fixture graph.
+    let mut registry = alizarin_core::StaticResourceRegistry::new();
+    registry.merge_from_resources(&[resource.clone()], true, true);
+    put(
+        "populate_caches".into(),
+        canonical(
+            &registry
+                .populate_caches_from_json(
+                    &format!("[{}]", read("resource.json")),
+                    &graph,
+                    true,
+                    false,
+                    false,
+                )
+                .unwrap(),
+        ),
+    );
+    put(
+        "resolve_path:part".into(),
+        canonical(&alizarin_core::ResolvedPath::from(
+            &alizarin_core::resolve_path_in_graph(&graph, "part").unwrap(),
+        )),
+    );
+
     // Resources built from input, as the bindings' constructors build them.
     put(
         "resource:constructed".into(),

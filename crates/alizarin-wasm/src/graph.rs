@@ -1,4 +1,3 @@
-use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
@@ -2634,15 +2633,6 @@ impl StaticResource {
 #[wasm_bindgen]
 pub struct StaticResourceRegistry(CoreStaticResourceRegistry);
 
-/// Output of populate_caches for direct JS serialization (avoids serde_json::json! intermediate).
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct PopulateCachesOutput<'a> {
-    resources: &'a [CoreStaticResource],
-    unknown_references: &'a [alizarin_core::UnknownReference],
-    has_unknown: bool,
-}
-
 impl StaticResourceRegistry {
     /// Get the inner core registry (for internal Rust use)
     pub(crate) fn inner(&self) -> &CoreStaticResourceRegistry {
@@ -2935,25 +2925,16 @@ impl StaticResourceRegistry {
         strict: Option<bool>,
         recompute_descriptors: Option<bool>,
     ) -> Result<JsValue, JsValue> {
-        let mut resources: Vec<CoreStaticResource> = serde_json::from_str(resources_json)
-            .map_err(|e| JsValue::from_str(&format!("Failed to parse resources: {}", e)))?;
-
-        let result = self
+        let output = self
             .0
-            .populate_caches(
-                &mut resources,
+            .populate_caches_from_json(
+                resources_json,
                 &graph.0,
                 enrich_relationships.unwrap_or(true),
                 strict.unwrap_or(false),
                 recompute_descriptors.unwrap_or(false),
             )
             .map_err(|e| JsValue::from_str(&e))?;
-
-        let output = PopulateCachesOutput {
-            resources: &resources,
-            unknown_references: &result.unknown_references,
-            has_unknown: result.has_unknown_references(),
-        };
         crate::js_json::to_value(&output)
             .map_err(|e| JsValue::from_str(&format!("Failed to serialize result: {}", e)))
     }
@@ -2987,10 +2968,10 @@ impl StaticResourceRegistry {
             )
             .map_err(|e| JsValue::from_str(&e))?;
 
-        let output = PopulateCachesOutput {
-            resources: &core_resources,
-            unknown_references: &result.unknown_references,
+        let output = alizarin_core::PopulateCachesOutput {
             has_unknown: result.has_unknown_references(),
+            unknown_references: result.unknown_references,
+            resources: core_resources,
         };
         crate::js_json::to_value(&output)
             .map_err(|e| JsValue::from_str(&format!("Failed to serialize result: {}", e)))

@@ -115,6 +115,20 @@ def routes():
 
     out.append(("load_from_business_data_bytes", "business_data:refs", business_data_refs))
 
+    def populate_caches():
+        registry = alizarin.ResourceRegistry()
+        registry.merge_from_resources(json.dumps([RESOURCE]), True)
+        return registry.populate_caches(json.dumps([RESOURCE]), GRAPH["graphid"])
+
+    def resolve_path():
+        from alizarin.instance_wrapper import RustResourceInstanceWrapperCore
+
+        alizarin.PyResourceModelWrapper(GRAPH["graphid"])
+        return RustResourceInstanceWrapperCore(GRAPH["graphid"]).resolve_path("part")
+
+    out.append(("ResourceRegistry.populate_caches", "populate_caches", populate_caches))
+    out.append(("resolve_path", "resolve_path:part", resolve_path))
+
     # Built from input, as the WASM constructors and NAPI's createStatic* build them.
     for node in GRAPH["nodes"]:
         out.append(

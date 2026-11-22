@@ -1061,11 +1061,8 @@ impl NapiResourceInstanceWrapper {
             .inner
             .resolve_path(&path, &*model)
             .map_err(|e| napi::Error::from_reason(e.to_string()))?;
-        Ok(serde_json::json!({
-            "nodegroupId": info.nodegroup_id,
-            "isSingle": info.is_single,
-            "targetNodeId": info.target_node.nodeid,
-        }))
+        serde_json::to_value(alizarin_core::ResolvedPath::from(&info))
+            .map_err(|e| napi::Error::from_reason(e.to_string()))
     }
 
     /// Resolve a dot-separated path and return a PseudoList.

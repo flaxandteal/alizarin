@@ -1033,9 +1033,10 @@ impl ResourceRegistry {
     ///     enrich_relationships: If True, add ontologyProperty to tile data
     ///
     /// Returns:
-    ///     Dict with:
+    ///     Dict with, as on WASM and NAPI:
     ///     - resources: Updated resources with __cache populated
-    ///     - unknown_references: List of {source_resource_id, node_id, node_alias, referenced_id}
+    ///     - unknownReferences: List of {source_resource_id, node_id, node_alias, referenced_id}
+    ///     - hasUnknown: whether there are any
     #[pyo3(signature = (resources_json, graph_id, enrich_relationships=true, strict=false, recompute_descriptors=false))]
     fn populate_caches(
         &self,
@@ -1046,31 +1047,17 @@ impl ResourceRegistry {
         strict: bool,
         recompute_descriptors: bool,
     ) -> PyResult<PyObject> {
-        let mut resources: Vec<AlizarinStaticResource> = serde_json::from_str(resources_json)
-            .map_err(|e| {
-                PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                    "Failed to parse resources: {}",
-                    e
-                ))
-            })?;
-
         let graph = get_registered_graph(graph_id)?;
-        let result = self
+        let output = self
             .inner
-            .populate_caches(
-                &mut resources,
+            .populate_caches_from_json(
+                resources_json,
                 &graph,
                 enrich_relationships,
                 strict,
                 recompute_descriptors,
             )
             .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
-
-        let output = serde_json::json!({
-            "resources": resources,
-            "unknown_references": result.unknown_references,
-            "has_unknown": result.has_unknown_references(),
-        });
 
         pythonize::pythonize(py, &output).map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(

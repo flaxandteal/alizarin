@@ -943,6 +943,20 @@ pub fn model_csvs_to_collections(
     Ok(collections)
 }
 
+/// What every binding's `buildGraphFromCsvs` / `build_graph_from_model_csvs`
+/// returns: [`build_graph_from_model_csvs`]'s graph and collections.
+#[derive(Debug, serde::Serialize)]
+pub struct GraphFromCsvs {
+    pub graph: StaticGraph,
+    pub collections: Vec<SkosCollection>,
+}
+
+impl From<(StaticGraph, Vec<SkosCollection>)> for GraphFromCsvs {
+    fn from((graph, collections): (StaticGraph, Vec<SkosCollection>)) -> Self {
+        GraphFromCsvs { graph, collections }
+    }
+}
+
 /// Build a graph and collections from the 3-CSV format.
 ///
 /// This is the main entry point. It parses, validates, converts to

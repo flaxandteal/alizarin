@@ -70,6 +70,11 @@ entries is tracked in `PARITY-RESEARCH.md`.
   - A malformed `business_data` wrapper is reported as such (the error was
     about a bare resource's missing `resourceinstance`).
   - The loader reads about 30% faster.
+- **Breaking (Python):** `ResourceRegistry.populate_caches` returns
+  `unknownReferences` / `hasUnknown` (were `unknown_references` /
+  `has_unknown`), and `resolve_path` returns `nodegroupId` / `isSingle` /
+  `targetNodeId` (were snake_case): core now builds both outputs, as WASM and
+  NAPI already named them. Rename the keys you read.
 - Python: the static types' `from_dict` read their input through core
   (`construct_static`), as WASM's constructors and NAPI's `createStatic*` do,
   instead of parsing it themselves. **Breaking**, where Python's own parse

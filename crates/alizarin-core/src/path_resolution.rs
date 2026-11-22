@@ -111,6 +111,26 @@ pub struct PathResolutionInfo {
     pub is_single: bool,
 }
 
+/// What every binding's `resolvePath` / `resolve_path` returns: enough to
+/// load just the target's nodegroup before reading values at the path.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolvedPath {
+    pub nodegroup_id: String,
+    pub is_single: bool,
+    pub target_node_id: String,
+}
+
+impl From<&PathResolutionInfo> for ResolvedPath {
+    fn from(info: &PathResolutionInfo) -> Self {
+        ResolvedPath {
+            nodegroup_id: info.nodegroup_id.clone(),
+            is_single: info.is_single,
+            target_node_id: info.target_node.nodeid.clone(),
+        }
+    }
+}
+
 // =============================================================================
 // Path resolution algorithm
 // =============================================================================

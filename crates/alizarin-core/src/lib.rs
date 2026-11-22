@@ -101,6 +101,7 @@ pub use graph::{
     NodeValueWrite,
     PendingNode,
     // Resource registry for relationship resolution
+    PopulateCachesOutput,
     PopulateCachesResult,
     PruneError,
     RegisteredFunction,
@@ -281,7 +282,7 @@ pub use graph_model_access::GraphModelAccess;
 
 // Path resolution (dot-separated path → nodegroup tiles)
 pub use path_resolution::{
-    resolve_path_in_graph, resolve_path_segments, PathError, PathResolutionInfo,
+    resolve_path_in_graph, resolve_path_segments, PathError, PathResolutionInfo, ResolvedPath,
 };
 
 // Tile source trait (pluggable tile backends)
@@ -437,7 +438,8 @@ pub use extension_type_registry::{
 pub use csv_model_loader::{
     build_graph_from_model_csvs, model_csvs_to_collections, model_csvs_to_instructions,
     parse_model_csvs, validate_model_csvs, validate_model_csvs_from_strings, CollectionRow,
-    CsvModelDiagnostic, CsvModelError, DiagnosticLevel, GraphRow, ModelCsvBundle, NodeRow,
+    CsvModelDiagnostic, CsvModelError, DiagnosticLevel, GraphFromCsvs, GraphRow, ModelCsvBundle,
+    NodeRow,
 };
 
 // CSV business data loader

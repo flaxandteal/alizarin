@@ -1057,12 +1057,8 @@ impl WASMResourceInstanceWrapper {
                 .map_err(|e| JsValue::from_str(&e.to_string()))
         })?;
 
-        Ok(crate::js_json::to_value(&serde_json::json!({
-            "nodegroupId": info.nodegroup_id,
-            "isSingle": info.is_single,
-            "targetNodeId": info.target_node.nodeid,
-        }))
-        .unwrap())
+        crate::js_json::to_value(&alizarin_core::ResolvedPath::from(&info))
+            .map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
     /// Resolve a dot-separated path through the graph model and return a PseudoList.

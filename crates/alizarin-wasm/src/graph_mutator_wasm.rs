@@ -367,11 +367,8 @@ pub fn build_graph_from_model_csvs(
     );
 
     match result {
-        Ok((graph, collections)) => {
-            let json = serde_json::json!({
-                "graph": graph,
-                "collections": collections,
-            });
+        Ok(built) => {
+            let json = alizarin_core::GraphFromCsvs::from(built);
             // Use JSON.parse rather than crate::js_json::to_value to ensure
             // plain JS objects (serde_wasm_bindgen produces Map objects for
             // serde_json::Value).

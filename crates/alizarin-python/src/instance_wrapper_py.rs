@@ -539,24 +539,16 @@ impl PyResourceInstanceWrapperCore {
 
     /// Resolve a dot-separated path to its target node metadata without needing tiles.
     ///
-    /// Returns a dict with { nodegroup_id, is_single, target_node_id } — enough
-    /// for the caller to lazy-load just that nodegroup's tiles.
-    fn resolve_path(&self, path: &str) -> PyResult<pyo3::Py<pyo3::types::PyDict>> {
+    /// Returns a dict with { nodegroupId, isSingle, targetNodeId }, as on WASM
+    /// and NAPI — enough for the caller to lazy-load just that nodegroup's tiles.
+    fn resolve_path(&self, py: Python, path: &str) -> PyResult<PyObject> {
         let model = self.model()?;
-        let model = &*model;
-
         let info = self
             .inner
-            .resolve_path(path, model)
+            .resolve_path(path, &*model)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
-
-        pyo3::Python::with_gil(|py| {
-            let dict = pyo3::types::PyDict::new_bound(py);
-            dict.set_item("nodegroup_id", &info.nodegroup_id)?;
-            dict.set_item("is_single", info.is_single)?;
-            dict.set_item("target_node_id", &info.target_node.nodeid)?;
-            Ok(dict.into())
-        })
+        pythonize::pythonize(py, &alizarin_core::ResolvedPath::from(&info))
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
     }
 
     /// Drop everything loaded for this resource: its tiles, the pseudo cache

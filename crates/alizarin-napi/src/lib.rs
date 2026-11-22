@@ -727,26 +727,17 @@ impl NapiStaticResourceRegistry {
         strict: Option<bool>,
         recompute_descriptors: Option<bool>,
     ) -> Result<serde_json::Value> {
-        let mut resources: Vec<StaticResource> = serde_json::from_str(&resources_json)
-            .map_err(|e| napi::Error::from_reason(format!("Failed to parse resources: {}", e)))?;
-
-        let result = self
+        let output = self
             .inner
-            .populate_caches(
-                &mut resources,
+            .populate_caches_from_json(
+                &resources_json,
                 &graph.inner,
                 enrich_relationships.unwrap_or(true),
                 strict.unwrap_or(false),
                 recompute_descriptors.unwrap_or(false),
             )
             .map_err(napi::Error::from_reason)?;
-
-        let output = serde_json::json!({
-            "resources": resources,
-            "unknownReferences": result.unknown_references,
-            "hasUnknown": result.has_unknown_references(),
-        });
-        Ok(output)
+        serde_json::to_value(output).map_err(|e| napi::Error::from_reason(e.to_string()))
     }
 }
 
@@ -819,7 +810,7 @@ pub fn build_graph_from_csvs(
     collections_csv: Option<String>,
     rdm_namespace: String,
 ) -> Result<serde_json::Value> {
-    let (graph, collections) = build_graph_from_model_csvs(
+    let built = build_graph_from_model_csvs(
         &graph_csv,
         &nodes_csv,
         collections_csv.as_deref(),
@@ -827,16 +818,8 @@ pub fn build_graph_from_csvs(
         MutatorOptions::default(),
     )
     .map_err(csv_err)?;
-
-    let graph_json =
-        serde_json::to_value(&graph).map_err(|e| napi::Error::from_reason(e.to_string()))?;
-    let collections_json =
-        serde_json::to_value(&collections).map_err(|e| napi::Error::from_reason(e.to_string()))?;
-
-    Ok(serde_json::json!({
-        "graph": graph_json,
-        "collections": collections_json,
-    }))
+    serde_json::to_value(alizarin_core::GraphFromCsvs::from(built))
+        .map_err(|e| napi::Error::from_reason(e.to_string()))
 }
 
 /// Build StaticResources from a business data CSV, given a graph JSON string

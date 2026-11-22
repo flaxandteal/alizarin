@@ -184,6 +184,12 @@ function routes(): [string, string, () => any][] {
   out.push(["createStaticResource", "resource:constructed", () => createStaticResource(resourceFixture)]);
   out.push(["parseStaticResources", "business_data:resources", () => parseStaticResources(read("business-data.json"))]);
   out.push([
+    "registry.populateCachesFromJson",
+    "populate_caches",
+    () => (globalThis as any).__parityRegistry.populateCachesFromJson(`[${resourceText}]`, graph, true, false, false),
+  ]);
+  out.push(["resolvePath", "resolve_path:part", () => createInstanceWrapperForModel(graph.graphid).resolvePath("part")]);
+  out.push([
     "registry.loadFromBusinessDataBytes",
     "business_data:refs",
     () => createResourceRegistry().loadFromBusinessDataBytes(fs.readFileSync(path.join(DIR, "business-data.json")), true, true),

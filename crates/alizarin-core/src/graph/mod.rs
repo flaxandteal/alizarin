@@ -70,9 +70,10 @@ pub use prune::{build_backedges, find_root_node, prune_graph, PruneError};
 pub use resources::{
     batch_merge_resources, compose_resource_across_layers, compose_resource_layers_from_json,
     merge_resources, parse_resources_from_json_str, unify_cardinality_one_tiles, BatchMergeResult,
-    ComposedResource, MergeAccumulator, MergeResult, PopulateCachesResult, RelatedResourceEntry,
-    ResourceCache, ResourceEntry, StaticResource, StaticResourceMetadata, StaticResourceReference,
-    StaticResourceRegistry, StaticResourceSummary, TileMergeMode, UnknownReference,
+    ComposedResource, MergeAccumulator, MergeResult, PopulateCachesOutput, PopulateCachesResult,
+    RelatedResourceEntry, ResourceCache, ResourceEntry, StaticResource, StaticResourceMetadata,
+    StaticResourceReference, StaticResourceRegistry, StaticResourceSummary, TileMergeMode,
+    UnknownReference,
 };
 pub use static_graph::{GraphWrapper, StaticGraph};
 pub use tile::{
