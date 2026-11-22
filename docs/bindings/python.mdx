@@ -44,16 +44,22 @@ tiles = alizarin.json_tree_to_tiles(
 
 The ORM reads and edits resources as in JS/TS: values are edited by assignment (checked against the graph immediately) and applied with `commit()`, which returns the tile changes for you to persist.
 
+Resources live in the manager's resource registry (`gm.registry`, core's). Load a whole [prebuild directory](/docs/prebuild) (its graphs, collections and business data), or register graphs and resources one by one:
+
 ```python
 from alizarin.graph_manager import GraphManager
 from alizarin.view_models import viewContext
 
 gm = GraphManager()
-gm.register_graph(graph_dict)
-gm.register_resource(resource_dict)
-viewContext.graphManager = gm
+gm.load_prebuild("/path/to/prebuild")      # graphs/, reference_data/, business_data/
+# or: gm.register_graph(graph_dict); gm.register_resource(resource_dict)
+viewContext.graphManager = gm               # references resolve through it
 
-place = await gm.getResource(resource_id, lazy=False)   # inside an async function
+Place = gm.load_graph("Place")              # class name (case and spaces aside) or graph id
+places = await Place.all()                  # inside an async function
+place = await gm.getResource(resource_id, lazy=False)
+site = await place.located_at               # a reference: a stub until read
+print(str(await site.name))                 # read from the registry
 place.title = "Baile"          # a plain string sets the current language's value
 delta = place.commit()         # {"upserted": [...tiles], "removed": [...tile ids]}; or place.discard()
 ```

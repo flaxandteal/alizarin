@@ -443,6 +443,31 @@ impl NapiStaticResourceRegistry {
         Ok(())
     }
 
+    /// Load every business data file under a prebuild's `business_data/`
+    /// (recursively, in path order), as `loadFromBusinessDataBytes` loads one,
+    /// and return all their refs in that order. As Python's
+    /// `load_prebuild_business_data`; WASM has no filesystem.
+    #[napi]
+    pub fn load_prebuild_business_data(
+        &mut self,
+        prebuild_dir: String,
+        store_full: Option<bool>,
+        include_caches: Option<bool>,
+    ) -> Result<Vec<serde_json::Value>> {
+        let refs = self
+            .inner
+            .load_prebuild_business_data(
+                &prebuild_dir,
+                store_full.unwrap_or(true),
+                include_caches.unwrap_or(true),
+            )
+            .map_err(loader_err)?;
+        refs.iter()
+            .map(serde_json::to_value)
+            .collect::<std::result::Result<_, _>>()
+            .map_err(|e| napi::Error::from_reason(e.to_string()))
+    }
+
     /// Load a business_data file from raw bytes (Buffer), parse entirely in Rust,
     /// merge into this registry, and return lightweight refs.
     ///

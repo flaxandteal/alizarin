@@ -7,6 +7,8 @@ Graph and resource storage is handled by the Rust registry.
 
 from __future__ import annotations
 
+import json
+import re
 from typing import (
     Any,
     Awaitable,
@@ -38,6 +40,12 @@ if TYPE_CHECKING:
 
 RIVM = TypeVar("RIVM", bound="IRIVM")
 T = TypeVar("T")
+
+
+def _normalize_model_name(name: str) -> str:
+    """A model name compared case, spaces and punctuation aside, as
+    TypeScript's normalizeModelName."""
+    return re.sub(r"[^a-z0-9]", "", name.lower())
 
 
 # =============================================================================
@@ -276,22 +284,26 @@ class WKRM:
 
 class GraphManager:
     """
-    Thin coordinator for managing graphs and resources.
+    Thin coordinator for managing graphs and resources, as TypeScript's
+    GraphManager with its StaticStore.
 
     Does NOT duplicate core functionality - just wires together:
-    - Rust register_graph() for graph storage
-    - Python dict for resource lookup (temporary test fixture storage)
-    - ResourceModelWrapper for model management
+    - core's graph registry (register_graph, load_prebuild)
+    - core's resource registry (`registry`), which getResource and
+      ResourceModelWrapper.all read and references resolve against
+    - ResourceModelWrapper for model management (load_graph)
 
-    Matches TypeScript GraphManager interface (graphManager.ts:1152-1298)
-    but delegates all heavy lifting to existing Rust/Python layers.
+    Resources get in by register_resource, load_prebuild (a prebuild
+    directory's graphs, collections and business data), or the registry's own
+    loaders (`registry.load_from_business_data_bytes`).
     """
 
     def __init__(self):
         """Initialize GraphManager with minimal state."""
-        # Resource storage (temporary, for test fixtures)
-        # In production, resources come from staticStore/archesClient
-        self._resources: Dict[str, Any] = {}
+        from . import ResourceRegistry
+
+        # Every resource this manager knows, held by core.
+        self.registry = ResourceRegistry()
         # Track registered graph IDs
         self._graph_ids: List[str] = []
         # Model wrappers cache
@@ -311,7 +323,6 @@ class GraphManager:
         """
         from . import register_graph as rust_register_graph
         from .static_types import StaticGraph
-        import json
 
         # Convert to StaticGraph if needed
         if not isinstance(graph_dict, StaticGraph):
@@ -329,10 +340,7 @@ class GraphManager:
 
     def register_resource(self, resource_dict: Dict[str, Any]) -> str:
         """
-        Store a resource for later retrieval (test fixture helper).
-
-        In production, resources would be loaded from staticStore/archesClient.
-        This is just a simple dict for test fixtures.
+        Add one resource to the registry.
 
         Args:
             resource_dict: Resource data (dict or StaticResource)
@@ -348,9 +356,78 @@ class GraphManager:
         else:
             resource = resource_dict
 
-        resource_id = resource.resourceinstance.resourceinstanceid
-        self._resources[resource_id] = resource
-        return resource_id
+        self.registry.merge_from_resources(json.dumps([resource.to_dict()]), True)
+        return resource.resourceinstance.resourceinstanceid
+
+    def load_prebuild(self, prebuild_dir: str, base_uri: str = "http://localhost/") -> Dict[str, Any]:
+        """
+        Load a prebuild directory (the Arches package layout: graphs/,
+        reference_data/, business_data/; see docs/prebuild.mdx): register its
+        graphs, add its collections to the global RDM cache, and load its
+        business data into the registry.
+
+        Args:
+            prebuild_dir: The directory.
+            base_uri: The RDM namespace, for ids and SKOS XML.
+
+        Returns:
+            {"graph_ids": [...], "collection_ids": [...], "resource_ids": [...]}
+        """
+        from . import import_prebuild
+
+        imported = import_prebuild(prebuild_dir, base_uri)
+        for graph_id in imported["graph_ids"]:
+            if graph_id not in self._graph_ids:
+                self._graph_ids.append(graph_id)
+        refs = self.registry.load_prebuild_business_data(prebuild_dir)
+        return {
+            "graph_ids": list(imported["graph_ids"]),
+            "collection_ids": list(imported["collection_ids"]),
+            "resource_ids": [ref["resourceinstanceid"] for ref in refs],
+        }
+
+    def load_graph(self, model: str) -> Any:
+        """
+        The ResourceModelWrapper for a registered graph, by its model class
+        name (as WKRM.model_class_name: "DigitalObject"; case, spaces and
+        punctuation aside, so "Digital Object" too) or its graph id, as
+        TypeScript's graphManager.loadGraph.
+
+        Raises:
+            KeyError: naming the models known, if none matches.
+        """
+        from .model_wrapper import ResourceModelWrapper
+
+        known = {self._model_class_name(gid): gid for gid in self._graph_ids}
+        graph_id: Optional[str]
+        if model in self._graph_ids:
+            graph_id = model
+        else:
+            target = _normalize_model_name(model)
+            graph_id = next(
+                (gid for name, gid in known.items() if _normalize_model_name(name) == target),
+                None,
+            )
+        if graph_id is None:
+            names = ", ".join(sorted(known)) or "none: register a graph or load a prebuild first"
+            raise KeyError(
+                f"No graph for model {model}. Give a model's class name "
+                f"(case and spaces aside) or its graph id; known: {names}"
+            )
+        if graph_id not in self._models:
+            self._models[graph_id] = ResourceModelWrapper.from_graph_id(graph_id)
+        return self._models[graph_id]
+
+    def _model_class_name(self, graph_id: str) -> str:
+        """A registered graph's model class name, as WKRM gives it."""
+        from . import get_graph_json
+        from .static_types import StaticGraph, from_core
+
+        graph = self._graphs.get(graph_id)
+        if graph is None:
+            graph = from_core(StaticGraph, json.loads(get_graph_json(graph_id)))
+            self._graphs[graph_id] = graph
+        return WKRM.from_meta(graph.meta).model_class_name
 
     async def getResource(
         self,
@@ -376,10 +453,15 @@ class GraphManager:
         """
         from .model_wrapper import ResourceModelWrapper
 
-        # Look up resource (from temp storage)
-        resource = self._resources.get(resource_id)
-        if not resource:
-            raise ValueError(f"Cannot traverse resource relationships without a GraphManager. Resource not found: {resource_id}")
+        from .static_types import StaticResource, from_core
+
+        found = self.registry.get_full(resource_id)
+        if found is None:
+            raise ValueError(
+                f"Resource not found: {resource_id}. Register it (register_resource) "
+                f"or load its business data (load_prebuild, registry.load_from_business_data_bytes)."
+            )
+        resource = from_core(StaticResource, found)
 
         # Get graph ID
         graph_id = resource.resourceinstance.graph_id
@@ -401,10 +483,11 @@ class GraphManager:
         ResourceInstanceViewModels of model (the store behind
         ResourceModelWrapper.all, as staticStore.loadAll is in TypeScript).
         """
-        graph_id = model.graph.graphid
+        from .static_types import StaticResource, from_core
+
         resources = [
-            resource for resource in self._resources.values()
-            if resource.resourceinstance.graph_id == graph_id
+            from_core(StaticResource, found)
+            for found in self.registry.get_all_full_for_graph(model.graph.graphid)
         ]
         if limit:
             resources = resources[:limit]

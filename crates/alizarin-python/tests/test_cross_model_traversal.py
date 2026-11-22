@@ -224,8 +224,8 @@ def test_graph_manager_has_resources(graph_manager):
     """
     Test that GraphManager has the test resources registered.
     """
-    assert graph_manager._test_group_id in graph_manager._resources
-    assert graph_manager._test_person_id in graph_manager._resources
+    assert graph_manager.registry.has_full(graph_manager._test_group_id)
+    assert graph_manager.registry.has_full(graph_manager._test_person_id)
 
 
 @pytest.mark.asyncio

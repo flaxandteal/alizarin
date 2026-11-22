@@ -59,6 +59,28 @@ fn a_malformed_wrapper_is_reported_as_the_wrapper() {
 }
 
 #[test]
+fn a_prebuilds_business_data_loads_recursively_in_path_order() {
+    let dir = std::env::temp_dir().join(format!("alizarin-prebuild-{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("business_data/nested")).unwrap();
+    let write = |path: &str, id: &str| {
+        std::fs::write(dir.join(path), file(json!([resource(id)]))).unwrap();
+    };
+    write("business_data/b.json", "b");
+    write("business_data/nested/a.json", "a");
+    std::fs::write(dir.join("business_data/not-json.txt"), "ignored").unwrap();
+
+    let mut registry = alizarin_core::StaticResourceRegistry::new();
+    let refs = registry
+        .load_prebuild_business_data(dir.to_str().unwrap(), true, true)
+        .unwrap();
+    std::fs::remove_dir_all(&dir).unwrap();
+
+    let ids: Vec<_> = refs.iter().map(|r| r.resourceinstanceid.as_str()).collect();
+    assert_eq!(ids, ["b", "a"]); // b.json sorts before nested/a.json
+    assert!(registry.get_full("a").is_some());
+}
+
+#[test]
 fn every_entry_point_reads_alike() {
     let bytes = file(json!([resource("a")]));
     let by_bytes = parse_business_data_bytes(&bytes).unwrap();

@@ -885,6 +885,25 @@ impl ResourceRegistry {
     /// Returns:
     ///     List of `{"resourceinstanceid", "graph_id", "isPublic"}` dicts, where
     ///     `isPublic` is whether the resource's `__scopes` include "public"
+    /// Load every business data file under a prebuild's `business_data/`
+    /// (recursively, in path order), as `load_from_business_data_bytes`
+    /// loads one, and return all their refs in that order.
+    #[pyo3(signature = (prebuild_dir, store_full=true, include_caches=true))]
+    fn load_prebuild_business_data(
+        &mut self,
+        py: Python,
+        prebuild_dir: &str,
+        store_full: bool,
+        include_caches: bool,
+    ) -> PyResult<PyObject> {
+        let refs = self
+            .inner
+            .load_prebuild_business_data(prebuild_dir, store_full, include_caches)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
+        pythonize::pythonize(py, &refs)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
+    }
+
     #[pyo3(signature = (data, store_full=true, include_caches=true))]
     fn load_from_business_data_bytes(
         &mut self,

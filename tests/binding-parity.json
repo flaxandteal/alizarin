@@ -1511,6 +1511,14 @@
           "python": "load_from_business_data_bytes"
         },
         {
+          "wasm": null,
+          "napi": "loadPrebuildBusinessData",
+          "python": "load_prebuild_business_data",
+          "why": {
+            "wasm": "ecosystem: WASM has no filesystem"
+          }
+        },
+        {
           "wasm": "markAggregatePending",
           "napi": "markAggregatePending",
           "python": "mark_aggregate_pending"

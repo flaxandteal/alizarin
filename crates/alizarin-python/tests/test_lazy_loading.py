@@ -126,8 +126,8 @@ async def test_a_multi_valued_child_is_a_list_lazily_and_eagerly(setup):
 @pytest.mark.asyncio
 async def test_without_a_loader_the_resources_own_tiles_are_fetched(setup):
     gm, resource_id = setup(group_tiles)
-    full = gm._resources[resource_id]
     group = await gm.getResource(resource_id, lazy=True)
+    full = group._i.resource
 
     # Start again from nothing loaded, keeping the resource's tiles to fall
     # back on.

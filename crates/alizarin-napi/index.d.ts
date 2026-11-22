@@ -739,6 +739,13 @@ export declare class NapiStaticResourceRegistry {
   /** Add a single resource summary given as a JS object. */
   insert(summary: any): void
   /**
+   * Load every business data file under a prebuild's `business_data/`
+   * (recursively, in path order), as `loadFromBusinessDataBytes` loads one,
+   * and return all their refs in that order. As Python's
+   * `load_prebuild_business_data`; WASM has no filesystem.
+   */
+  loadPrebuildBusinessData(prebuildDir: string, storeFull?: boolean | undefined | null, includeCaches?: boolean | undefined | null): Array<any>
+  /**
    * Load a business_data file from raw bytes (Buffer), parse entirely in Rust,
    * merge into this registry, and return lightweight refs.
    *

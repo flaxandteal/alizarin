@@ -8,6 +8,14 @@ entries is tracked in `PARITY-RESEARCH.md`.
 ## Unreleased
 
 ### Added
+- Python: `GraphManager.load_prebuild(dir, base_uri)` loads a prebuild
+  directory's graphs, collections and business data, and
+  `GraphManager.load_graph(name_or_id)` finds a model by class name (case
+  and spaces aside) or graph id, as TypeScript's `loadGraph`. The manager's
+  resources are held by core's registry (`gm.registry`), which references
+  resolve against. Core: `StaticResourceRegistry::load_prebuild_business_data`;
+  NAPI: `registry.loadPrebuildBusinessData(dir)`; Python:
+  `ResourceRegistry.load_prebuild_business_data(dir)`.
 - NAPI: `treeToTiles`, `batchTreesToTiles`, `mergeResources`,
   `batchMergeResources`, with WASM's arguments. TypeScript: the same four
   exported from `alizarin`, on either backend. Core now does all of each

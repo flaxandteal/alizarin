@@ -11,8 +11,10 @@ The recipe below is run as written, on both JS backends, by
 
 ## The files
 
-A prebuild directory, as starches-builder and `alizarin` prebuild exports
-write it:
+The static layout `ArchesClientRemoteStatic` serves and `ArchesClientLocal`
+reads by default (not the Arches package layout of a
+[prebuild directory](/docs/prebuild), with `graphs/` and `reference_data/`,
+which Python's `GraphManager.load_prebuild` reads):
 
 ```
 resource_models/_all.json            the graph list (see below)

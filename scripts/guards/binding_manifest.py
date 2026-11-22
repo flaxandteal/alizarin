@@ -200,6 +200,7 @@ REASONS = [
     ("op:pseudoNode.*", {"python": "gap: Python's PseudoNode exposes the other node fields only through `node` (A-7)"}),
     ("op:rdmCache.*", {"wasm": "gap: RdmCache's methods differ per binding (A-7)", "napi": "gap: RdmCache's methods differ per binding (A-7)",
                        "python": "gap: RdmCache's methods differ per binding (A-7)"}),
+    ("op:resourceRegistry.load_prebuild_business_data", {"wasm": "ecosystem: WASM has no filesystem"}),
     ("op:resourceRegistry.*", {"wasm": "gap: the resource registry's methods differ per binding (A-7)",
                                "napi": "gap: the resource registry's methods differ per binding (A-7)",
                                "python": "gap: the resource registry's methods differ per binding (A-7)"}),

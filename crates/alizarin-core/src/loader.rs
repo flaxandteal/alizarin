@@ -1102,6 +1102,26 @@ impl StaticResourceRegistry {
         self.merge_from_resources(&resources, store_full, include_caches);
         Ok(refs)
     }
+
+    /// Every business data file under a prebuild's `business_data/`
+    /// (recursively, in path order), each loaded as
+    /// [`Self::load_from_business_data_bytes`] loads one. The refs of all of
+    /// them, in that order.
+    pub fn load_prebuild_business_data(
+        &mut self,
+        prebuild_dir: &str,
+        store_full: bool,
+        include_caches: bool,
+    ) -> Result<Vec<BusinessDataRef>, LoaderError> {
+        let mut files = PrebuildLoader::new(prebuild_dir)?.find_business_data_files()?;
+        files.sort();
+        let mut refs = Vec::new();
+        for file in files {
+            let bytes = fs::read(&file)?;
+            refs.extend(self.load_from_business_data_bytes(&bytes, store_full, include_caches)?);
+        }
+        Ok(refs)
+    }
 }
 
 /// Parse ONE resource element (a bare `{ resourceinstance, tiles, ... }` object,
