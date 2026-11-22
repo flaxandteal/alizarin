@@ -1306,101 +1306,13 @@ impl RdmCollection {
     ///     with open(f"{collection.id}.json", "w") as f:
     ///         f.write(json_str)
     fn to_simplified_json(&self) -> PyResult<String> {
-        let mut concepts_map = serde_json::Map::new();
-
-        // Build concept tree for top-level concepts only
-        // Sort by ID for deterministic output
-        let mut top_concepts: Vec<_> = self.inner.get_top_concepts();
-        top_concepts.sort_by_key(|c| &c.id);
-        for concept in top_concepts {
-            let concept_json = self.concept_to_simplified_json(concept);
-            concepts_map.insert(concept.id.clone(), concept_json);
-        }
-
-        // Build collection prefLabels
-        let mut pref_labels = serde_json::Map::new();
-        let mut empty_label = serde_json::Map::new();
-        empty_label.insert(
-            "value".to_string(),
-            serde_json::Value::String(
-                self.inner
-                    .name
-                    .clone()
-                    .unwrap_or_else(|| self.inner.id.clone()),
-            ),
-        );
-        pref_labels.insert("".to_string(), serde_json::Value::Object(empty_label));
-
-        let result = serde_json::json!({
-            "id": self.inner.id,
-            "prefLabels": pref_labels,
-            "concepts": concepts_map
-        });
-
-        serde_json::to_string_pretty(&result).map_err(|e| {
+        // Core's format.
+        serde_json::to_string_pretty(&self.inner.to_simplified_json()).map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
                 "Failed to serialize to JSON: {}",
                 e
             ))
         })
-    }
-}
-
-impl RdmCollection {
-    /// Helper to convert a concept to simplified JSON format (recursive for children)
-    fn concept_to_simplified_json(&self, concept: &CoreRdmConcept) -> serde_json::Value {
-        let mut pref_labels = serde_json::Map::new();
-        // Sort languages for deterministic output
-        let mut sorted_labels: Vec<_> = concept.pref_label.iter().collect();
-        sorted_labels.sort_by_key(|(lang, _)| *lang);
-        for (lang, rdm_value) in sorted_labels {
-            // Use the existing value ID from RdmValue, or generate one
-            let value_id = if rdm_value.id.is_empty() || rdm_value.id == "__pending__" {
-                alizarin_core::rdm_namespace::generate_value_uuid(
-                    &concept.id,
-                    &rdm_value.value,
-                    lang,
-                )
-                .to_string()
-            } else {
-                rdm_value.id.clone()
-            };
-            let mut label_obj = serde_json::Map::new();
-            label_obj.insert("id".to_string(), serde_json::Value::String(value_id));
-            label_obj.insert(
-                "value".to_string(),
-                serde_json::Value::String(rdm_value.value.clone()),
-            );
-            pref_labels.insert(lang.clone(), serde_json::Value::Object(label_obj));
-        }
-
-        let mut concept_obj = serde_json::json!({
-            "id": concept.id,
-            "prefLabels": pref_labels,
-            "source": serde_json::Value::Null,
-            "sortOrder": serde_json::Value::Null
-        });
-
-        // Add children if any
-        if !concept.narrower.is_empty() {
-            // Sort children by ID for deterministic output
-            let mut sorted_narrower: Vec<_> = concept.narrower.iter().collect();
-            sorted_narrower.sort();
-            let children: Vec<serde_json::Value> = sorted_narrower
-                .iter()
-                .filter_map(|child_id| self.inner.get_concept(child_id))
-                .map(|child| self.concept_to_simplified_json(child))
-                .collect();
-
-            if !children.is_empty() {
-                concept_obj
-                    .as_object_mut()
-                    .unwrap()
-                    .insert("children".to_string(), serde_json::Value::Array(children));
-            }
-        }
-
-        concept_obj
     }
 }
 

@@ -554,12 +554,16 @@ fn build_graph_from_model_csvs(
     .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("{}", e)))?
     .into();
 
-    serde_json::to_string(&result).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-            "Failed to serialize result: {}",
-            e
-        ))
-    })
+    // Through a Value, so keys are sorted, as the other bindings give them
+    // (the collections' maps would otherwise come out in hash order).
+    serde_json::to_value(&result)
+        .and_then(|value| serde_json::to_string(&value))
+        .map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to serialize result: {}",
+                e
+            ))
+        })
 }
 
 /// Validate 3-CSV model files without building.
@@ -637,12 +641,15 @@ fn build_resources_from_business_csv(
         None,
     )
     .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
-    serde_json::to_string(&wrapped).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-            "Failed to serialize result: {}",
-            e
-        ))
-    })
+    // Through a Value, so keys are sorted, as the other bindings give them.
+    serde_json::to_value(&wrapped)
+        .and_then(|value| serde_json::to_string(&value))
+        .map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to serialize result: {}",
+                e
+            ))
+        })
 }
 
 /// Register graph mutator functions with the Python module

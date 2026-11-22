@@ -310,6 +310,65 @@ impl RdmCollection {
         self.concepts.get(concept_id)
     }
 
+    /// The collection in the simplified collection JSON format
+    /// (`{id, prefLabels, concepts: {id: {id, prefLabels, source, sortOrder,
+    /// children?}}}`), deterministically ordered: Python's
+    /// `RustRdmCollection.to_simplified_json`.
+    pub fn to_simplified_json(&self) -> serde_json::Value {
+        let mut concepts_map = serde_json::Map::new();
+        // Top-level concepts only, sorted by id for deterministic output.
+        let mut top_concepts: Vec<_> = self.get_top_concepts();
+        top_concepts.sort_by_key(|c| &c.id);
+        for concept in top_concepts {
+            concepts_map.insert(concept.id.clone(), self.concept_to_simplified_json(concept));
+        }
+        let name = self.name.clone().unwrap_or_else(|| self.id.clone());
+        serde_json::json!({
+            "id": self.id,
+            "prefLabels": { "": { "value": name } },
+            "concepts": concepts_map
+        })
+    }
+
+    /// One concept, and its children recursively, for [`Self::to_simplified_json`].
+    fn concept_to_simplified_json(&self, concept: &RdmConcept) -> serde_json::Value {
+        let mut pref_labels = serde_json::Map::new();
+        // Languages sorted for deterministic output.
+        let mut sorted_labels: Vec<_> = concept.pref_label.iter().collect();
+        sorted_labels.sort_by_key(|(lang, _)| *lang);
+        for (lang, rdm_value) in sorted_labels {
+            // The value's own id, or one generated if it has none yet.
+            let value_id = if rdm_value.id.is_empty() || rdm_value.id == "__pending__" {
+                crate::rdm_namespace::generate_value_uuid(&concept.id, &rdm_value.value, lang)
+                    .to_string()
+            } else {
+                rdm_value.id.clone()
+            };
+            pref_labels.insert(
+                lang.clone(),
+                serde_json::json!({ "id": value_id, "value": rdm_value.value }),
+            );
+        }
+        let mut concept_obj = serde_json::json!({
+            "id": concept.id,
+            "prefLabels": pref_labels,
+            "source": serde_json::Value::Null,
+            "sortOrder": serde_json::Value::Null
+        });
+        // Children sorted by id for deterministic output.
+        let mut sorted_narrower: Vec<_> = concept.narrower.iter().collect();
+        sorted_narrower.sort();
+        let children: Vec<serde_json::Value> = sorted_narrower
+            .iter()
+            .filter_map(|child_id| self.get_concept(child_id))
+            .map(|child| self.concept_to_simplified_json(child))
+            .collect();
+        if !children.is_empty() {
+            concept_obj["children"] = serde_json::Value::Array(children);
+        }
+        concept_obj
+    }
+
     /// Get a mutable concept by ID
     pub fn get_concept_mut(&mut self, concept_id: &str) -> Option<&mut RdmConcept> {
         self.concepts.get_mut(concept_id)
