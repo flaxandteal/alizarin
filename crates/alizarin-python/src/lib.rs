@@ -181,14 +181,10 @@ fn render_display_with_extension(
 
 // Import core types and functions directly (no WASM dependency needed)
 use alizarin_core::{
-    batch_merge_resources as core_batch_merge_resources,
     // Semantic child matching
     matches_semantic_child as core_matches_semantic_child,
-    merge_resources as core_merge_resources,
-    parse_resources_from_json_str as core_parse_resources,
     // Label resolution
     resolve_labels as core_resolve_labels,
-    snake_to_camel,
     // Graph model access
     GraphModelAccess,
     MergeAccumulator,
@@ -338,11 +334,7 @@ fn json_tree_to_tiles(
     scopes: Option<String>,
     tile_namespace: Option<String>,
 ) -> PyResult<PyObject> {
-    let mut tree: serde_json::Value = serde_json::from_str(&tree_json).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse tree: {}", e))
-    })?;
-
-    let scopes_value: Option<serde_json::Value> = scopes
+    let scopes: Option<serde_json::Value> = scopes
         .map(|s| serde_json::from_str(&s))
         .transpose()
         .map_err(|e| {
@@ -351,72 +343,25 @@ fn json_tree_to_tiles(
                 e
             ))
         })?;
-
     let graph = get_registered_graph(&graph_id)?;
-
-    let ext_registry = build_extension_registry();
-    let ext_registry_ref = if ext_registry.is_empty() {
-        None
-    } else {
-        Some(&ext_registry)
-    };
-
-    // The global cache shared, not copied (get_global_rdm_cache copies it).
-    let core_cache_arc: Option<Arc<CoreRdmCache>> = rdm_cache
-        .map(|c| Arc::new(c.inner().clone()))
-        .or_else(alizarin_core::get_global_rdm_cache_arc);
-
-    let mut alias_map = build_alias_to_collection_from_graph(&graph, ext_registry_ref);
-    if from_camel {
-        let camel_entries: Vec<_> = alias_map
-            .iter()
-            .map(|(k, v)| (snake_to_camel(k), v.clone()))
-            .collect();
-        for (k, v) in camel_entries {
-            alias_map.insert(k, v);
-        }
-    }
-    let label_lookup = if !alias_map.is_empty() {
-        core_cache_arc
-            .as_ref()
-            .map(|cache| (&alias_map, cache.as_ref()))
-    } else {
-        None
-    };
-
-    // Add resourceinstanceid (convert_single_tree handles graph_id)
-    if let serde_json::Value::Object(ref mut map) = tree {
-        map.insert(
-            "resourceinstanceid".to_string(),
-            serde_json::Value::String(resource_id.clone()),
-        );
-    }
-
-    let id_key_ref = id_key.as_deref();
-    let mut resource = alizarin_core::convert_single_tree(
-        &tree,
-        &graph,
-        &graph_id,
-        id_key_ref,
+    let opts = alizarin_core::TreeToTilesOptions {
+        resource_id: Some(&resource_id),
+        id_key: id_key.as_deref(),
         from_camel,
         strict,
-        false,
-        ext_registry_ref,
-        label_lookup,
-        true,
-        tile_namespace.as_deref(),
+        random_ids: false,
+        scopes: scopes.as_ref(),
+        tile_namespace: tile_namespace.as_deref(),
+    };
+    let ext_registry = build_extension_registry();
+    let output = alizarin_core::tree_to_tiles_from_json(
+        &tree_json,
+        &graph,
+        &opts,
+        Some(&ext_registry),
+        rdm_cache.map(|c| Arc::new(c.inner().clone())),
     )
     .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
-
-    if let Some(ref scopes_val) = scopes_value {
-        resource.scopes = Some(scopes_val.clone());
-    }
-
-    let output = serde_json::json!({
-        "business_data": {
-            "resources": [resource]
-        }
-    });
 
     pythonize::pythonize(py, &output).map_err(|e| {
         PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
@@ -463,12 +408,7 @@ fn batch_trees_to_tiles(
     skip_extensions: bool,
     tile_namespace: Option<String>,
 ) -> PyResult<PyObject> {
-    let trees: Vec<serde_json::Value> = serde_json::from_str(&trees_json).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse trees: {}", e))
-    })?;
-
-    // Parse scopes if provided
-    let scopes_value: Option<serde_json::Value> = scopes
+    let scopes: Option<serde_json::Value> = scopes
         .map(|s| serde_json::from_str(&s))
         .transpose()
         .map_err(|e| {
@@ -477,51 +417,7 @@ fn batch_trees_to_tiles(
                 e
             ))
         })?;
-
-    // Validate id_keys length if provided
-    if let Some(ref keys) = id_keys {
-        if keys.len() != trees.len() {
-            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                "id_keys length ({}) must match trees length ({})",
-                keys.len(),
-                trees.len()
-            )));
-        }
-    }
-
-    // Get graph from registry
     let graph = get_registered_graph(&graph_id)?;
-
-    let ext_registry = if !skip_extensions {
-        Some(build_extension_registry())
-    } else {
-        None
-    };
-
-    let mut alias_map = build_alias_to_collection_from_graph(&graph, ext_registry.as_ref());
-    let label_cache: Option<Arc<CoreRdmCache>> = if alias_map.is_empty() {
-        None
-    } else {
-        // Cheap Arc handle to the global cache — no per-batch deep copy.
-        alizarin_core::get_global_rdm_cache_arc()
-    };
-    if from_camel {
-        let camel_entries: Vec<_> = alias_map
-            .iter()
-            .map(|(k, v)| (snake_to_camel(k), v.clone()))
-            .collect();
-        for (k, v) in camel_entries {
-            alias_map.insert(k, v);
-        }
-    }
-    let label_lookup = label_cache
-        .as_ref()
-        .map(|cache| (&alias_map, cache.as_ref()));
-
-    // The batch loop, scopes, error partitioning, strict handling, and
-    // slug-uniqueness now live in core (`batch_convert_trees`) so Python and
-    // WASM share one implementation and can't drift on flags like
-    // `resolve_markers`. Parallelism is core's (via the `parallel` feature).
     let opts = alizarin_core::BatchOptions {
         graph_id: &graph_id,
         from_camel,
@@ -529,34 +425,18 @@ fn batch_trees_to_tiles(
         random_ids,
         resolve_markers,
         id_keys: id_keys.as_deref(),
-        scopes: scopes_value.as_ref(),
+        scopes: scopes.as_ref(),
         tile_namespace: tile_namespace.as_deref(),
     };
-    let outcome = alizarin_core::batch_convert_trees(
-        &trees,
+    let ext_registry = (!skip_extensions).then(build_extension_registry);
+    let output = alizarin_core::batch_trees_to_tiles_from_json(
+        &trees_json,
         &graph,
-        ext_registry.as_ref(),
-        label_lookup,
         &opts,
+        ext_registry.as_ref(),
+        None,
     )
     .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
-
-    let resources: Vec<serde_json::Value> = outcome
-        .resources
-        .iter()
-        .map(|r| serde_json::to_value(r).unwrap_or(serde_json::Value::Null))
-        .collect();
-
-    // Return BusinessDataWrapper format with errors and advisory warnings alongside
-    let output = serde_json::json!({
-        "business_data": {
-            "resources": resources
-        },
-        "errors": outcome.errors,
-        "error_count": outcome.errors.len(),
-        "warnings": outcome.warnings,
-        "warning_count": outcome.warnings.len()
-    });
 
     pythonize::pythonize(py, &output).map_err(|e| {
         PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
@@ -2032,29 +1912,14 @@ fn get_graph_schema(py: Python, graph_id: String) -> PyResult<PyObject> {
 #[pyfunction]
 #[pyo3(signature = (resources_json,))]
 fn merge_resources(py: Python, resources_json: String) -> PyResult<PyObject> {
-    let resources: Vec<AlizarinStaticResource> =
-        serde_json::from_str(&resources_json).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                "Failed to parse resources: {}",
-                e
-            ))
-        })?;
-
-    match core_merge_resources(resources) {
-        Ok(result) => {
-            let output = serde_json::json!({
-                "resource": result.resource,
-                "warnings": result.warnings
-            });
-            pythonize::pythonize(py, &output).map_err(|e| {
-                PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                    "Failed to convert to Python: {}",
-                    e
-                ))
-            })
-        }
-        Err(e) => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(e)),
-    }
+    let result = alizarin_core::merge_resources_from_json(&resources_json)
+        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
+    pythonize::pythonize(py, &result).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+            "Failed to convert to Python: {}",
+            e
+        ))
+    })
 }
 
 /// Batch merge resources from multiple JSON strings
@@ -2083,15 +1948,12 @@ fn batch_merge_resources(
     recompute_descriptors: bool,
     strict: bool,
 ) -> PyResult<PyObject> {
-    let mut resource_batches: Vec<Vec<AlizarinStaticResource>> = Vec::new();
-    for (i, batch_str) in batches_json.iter().enumerate() {
-        let batch = core_parse_resources(batch_str).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Batch {}: {}", i, e))
-        })?;
-        resource_batches.push(batch);
-    }
-
-    let result = core_batch_merge_resources(resource_batches, recompute_descriptors, strict);
+    let result = alizarin_core::batch_merge_resources_from_json(
+        &batches_json,
+        recompute_descriptors,
+        strict,
+    )
+    .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
     batch_merge_result_to_py(py, result)
 }
 
@@ -2209,11 +2071,8 @@ fn batch_merge_result_to_py(
         ));
     }
 
-    let output = serde_json::json!({
-        "resources": result.resources,
-        "warnings": result.warnings
-    });
-    pythonize::pythonize(py, &output).map_err(|e| {
+    // Core's serialisation: {resources, warnings} (no error, as checked above).
+    pythonize::pythonize(py, &result).map_err(|e| {
         PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
             "Failed to convert to Python: {}",
             e

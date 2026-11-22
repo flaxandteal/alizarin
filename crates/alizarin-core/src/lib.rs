@@ -65,6 +65,7 @@ pub use graph::{
     apply_stored_derive_functions,
     apply_stored_derive_functions_to_resources,
     batch_merge_resources,
+    batch_merge_resources_from_json,
     build_backedges,
     canonical_tile_id,
     compare_nodes,
@@ -77,6 +78,7 @@ pub use graph::{
     mark_aggregate_pending,
     mark_aggregate_pending_in_registry,
     merge_resources,
+    merge_resources_from_json,
     multi_tile_id,
     parse_resources_from_json_str,
     // Graph pruning
@@ -251,13 +253,14 @@ pub use card_traversal::{
 
 // JSON conversion (tiles <-> tree)
 pub use json_conversion::{
-    batch_convert_trees, batch_tiles_to_trees_from_json, build_tree_from_tiles,
-    convert_single_tree, create_static_resource, resolve_extension_markers, resource_for_tree,
-    resource_graph_id, resource_tiles_to_tree, resource_tiles_to_tree_with_context, tiles_to_tree,
-    tiles_to_tree_from_json, tiles_to_tree_from_json_registered, tree_to_tiles,
+    batch_convert_trees, batch_tiles_to_trees_from_json, batch_trees_to_tiles_from_json,
+    build_tree_from_tiles, convert_single_tree, create_static_resource, resolve_extension_markers,
+    resource_for_tree, resource_graph_id, resource_tiles_to_tree,
+    resource_tiles_to_tree_with_context, tiles_to_tree, tiles_to_tree_from_json,
+    tiles_to_tree_from_json_registered, tree_to_tiles, tree_to_tiles_from_json,
     tree_to_tiles_with_namespace, tree_to_tiles_with_options, validate_business_data, BatchOptions,
-    BatchOutcome, BatchTreesOutcome, BusinessData, BusinessDataWrapper, ValidationDiagnostic,
-    ValidationMode,
+    BatchOutcome, BatchTreesOutcome, BatchTreesToTiles, BusinessData, BusinessDataWrapper,
+    TreeToTilesOptions, ValidationDiagnostic, ValidationMode,
 };
 
 // Pseudo value core types (for JSON conversion)

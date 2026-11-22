@@ -636,6 +636,42 @@ export function applyGraphMutations(graph: any, mutationsJson: string): any {
 }
 
 /**
+ * Trees to tiles, and resource merging, by core on either backend; the
+ * arguments are WASM's (graph: the active backend's StaticGraph). Each
+ * returns core's JSON: `{business_data: {resources}}`; batch adds `errors`,
+ * `error_count`, `warnings`, `warning_count`; merges give `{resource,
+ * warnings}` / `{resources, warnings}`.
+ */
+export function treeToTiles(
+  treeJson: string, graph: any, fromCamel: boolean, strict: boolean,
+  idKey?: string | null, randomIds?: boolean | null, tileNamespace?: string | null,
+): any {
+  const module = _backend === 'napi' ? getNapiModule() : getWasmModule();
+  return module.treeToTiles(treeJson, graph, fromCamel, strict, idKey, randomIds, tileNamespace);
+}
+
+export function batchTreesToTiles(
+  treesJson: string, graph: any, fromCamel: boolean, strict: boolean,
+  idKeysJson?: string | null, randomIds?: boolean | null, resolveMarkers?: boolean | null,
+  scopesJson?: string | null, tileNamespace?: string | null,
+): any {
+  const module = _backend === 'napi' ? getNapiModule() : getWasmModule();
+  return module.batchTreesToTiles(
+    treesJson, graph, fromCamel, strict, idKeysJson, randomIds, resolveMarkers, scopesJson, tileNamespace,
+  );
+}
+
+export function mergeResources(resourcesJson: string): any {
+  const module = _backend === 'napi' ? getNapiModule() : getWasmModule();
+  return module.mergeResources(resourcesJson);
+}
+
+export function batchMergeResources(batchesJson: string, recomputeDescriptors?: boolean, strict?: boolean): any {
+  const module = _backend === 'napi' ? getNapiModule() : getWasmModule();
+  return module.batchMergeResources(batchesJson, recomputeDescriptors, strict);
+}
+
+/**
  * Whether two nodes (StaticNodes or plain, possibly partial, objects) are the
  * same apart from their ids, by core on either backend: `"same"`,
  * `"same_ids_partial"`, `"nodeid_conflict"`, `"nodegroup_id_conflict"`,

@@ -27,6 +27,8 @@ use std::path::PathBuf;
 /// Arches' Standard lifecycle, as in `graph.json`.
 const ACTIVE: &str = "f75bb034-36e3-4ab4-8167-f520cf0b4c58";
 const RETIRED: &str = "d95d9c0e-0e2c-4450-93a3-d788b91abcc8";
+/// Fixes the ids `tree_to_tiles` gives cardinality-n tiles.
+const TILE_NAMESPACE: &str = "0d0d0d0d-0000-4000-8000-000000000001";
 
 fn dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/data/output-parity")
@@ -124,6 +126,45 @@ fn outputs() -> BTreeMap<String, String> {
                 .unwrap(),
         ),
     );
+
+    // Trees back to tiles, with a tile namespace so the ids are fixed, and
+    // resources merged: the fixture with its layer copy (the same id).
+    let tree =
+        serde_json::to_string(&tiles_to_tree_from_json(&resource_json, &graph).unwrap()).unwrap();
+    let single = alizarin_core::TreeToTilesOptions {
+        strict: true,
+        tile_namespace: Some(TILE_NAMESPACE),
+        ..Default::default()
+    };
+    let tiles = alizarin_core::tree_to_tiles_from_json(&tree, &graph, &single, None, None);
+    put("tiles:tree".into(), canonical(&tiles.unwrap()));
+    let batch = alizarin_core::BatchOptions {
+        graph_id: &graph.graphid,
+        from_camel: false,
+        strict: true,
+        random_ids: false,
+        resolve_markers: false,
+        id_keys: None,
+        scopes: None,
+        tile_namespace: Some(TILE_NAMESPACE),
+    };
+    let trees = format!("[{tree}]");
+    let tiles = alizarin_core::batch_trees_to_tiles_from_json(&trees, &graph, &batch, None, None);
+    put("tiles:batch".into(), canonical(&tiles.unwrap()));
+    let layer_json = read("resource-layer.json");
+    // Batch merging unifies single-valued tiles by the registered graph, as
+    // each binding has it registered.
+    alizarin_core::registry::register_graph(&graph.graphid, std::sync::Arc::new(graph.clone()));
+    put(
+        "merged".into(),
+        canonical(
+            &alizarin_core::merge_resources_from_json(&format!("[{resource_json},{layer_json}]"))
+                .unwrap(),
+        ),
+    );
+    let batches = [resource_json.clone(), layer_json];
+    let merged = alizarin_core::batch_merge_resources_from_json(&batches, false, false);
+    put("merged:batch".into(), canonical(&merged.unwrap()));
 
     // A business data file loaded into a registry: one ref per resource, and
     // whether its `__scopes` make it public.

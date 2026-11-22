@@ -41,6 +41,10 @@ import {
   tilesToTree,
   cardsToTree,
   batchTilesToTrees,
+  treeToTiles,
+  batchTreesToTiles,
+  mergeResources,
+  batchMergeResources,
 } from "../../js/backend";
 import { ResourceModelWrapper } from "../../js/graphManager";
 import { composeResourceLayers } from "../../js/csvModelLoader";
@@ -59,6 +63,8 @@ const RESOURCE_ID = resourceFixture.resourceinstance.resourceinstanceid;
 /** Arches' Standard lifecycle, as in graph.json. */
 const ACTIVE = "f75bb034-36e3-4ab4-8167-f520cf0b4c58";
 const RETIRED = "d95d9c0e-0e2c-4450-93a3-d788b91abcc8";
+/** Fixes the ids treeToTiles gives cardinality-n tiles. */
+const TILE_NAMESPACE = "0d0d0d0d-0000-4000-8000-000000000001";
 
 /** Keys sorted at every level: for routes that return a string serialised
  * straight from a struct (field order, identical on every backend because
@@ -170,6 +176,21 @@ function routes(): [string, string, () => any][] {
   out.push(["tilesToTree", "tree", () => tilesToTree(resourceText, graph)]);
   out.push(["cardsToTree", "tree:cards", () => cardsToTree(resourceText, graph)]);
   out.push(["batchTilesToTrees", "trees:batch", () => batchTilesToTrees(`[${resourceText}]`, graph, true)]);
+  // Trees back to tiles (a tile namespace fixes the ids), and merging.
+  const treeText = () => JSON.stringify(tilesToTree(resourceText, graph));
+  out.push(["treeToTiles", "tiles:tree", () => treeToTiles(treeText(), graph, false, true, null, false, TILE_NAMESPACE)]);
+  out.push([
+    "batchTreesToTiles",
+    "tiles:batch",
+    () => batchTreesToTiles(`[${treeText()}]`, graph, false, true, null, false, false, null, TILE_NAMESPACE),
+  ]);
+  const layerText = JSON.stringify(layerFixture);
+  out.push(["mergeResources", "merged", () => mergeResources(`[${resourceText},${layerText}]`)]);
+  out.push([
+    "batchMergeResources",
+    "merged:batch",
+    () => batchMergeResources(JSON.stringify([resourceText, layerText]), false, false),
+  ]);
   // The factories: core builds each, on either backend.
   graphFixture.nodes.forEach((n: any) => out.push([`createStaticNode(${n.alias})`, `node:${n.alias}`, () => createStaticNode(n)]));
   graphFixture.nodegroups.forEach((g: any) =>

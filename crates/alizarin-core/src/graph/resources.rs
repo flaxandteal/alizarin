@@ -1743,6 +1743,36 @@ pub fn parse_resources_from_json_str(json_str: &str) -> Result<Vec<StaticResourc
     }
 }
 
+/// [`merge_resources`] over a JSON array of resources: every binding's
+/// `mergeResources` / `merge_resources`.
+pub fn merge_resources_from_json(resources_json: &str) -> Result<MergeResult, String> {
+    let resources: Vec<StaticResource> = serde_json::from_str(resources_json)
+        .map_err(|e| format!("Failed to parse resources: {e}"))?;
+    merge_resources(resources)
+}
+
+/// [`batch_merge_resources`] over batches each in any form
+/// [`parse_resources_from_json_str`] reads: every binding's
+/// `batchMergeResources` / `batch_merge_resources`. A strict abort is an error.
+pub fn batch_merge_resources_from_json(
+    batches: &[String],
+    recompute_descriptors: bool,
+    strict: bool,
+) -> Result<BatchMergeResult, String> {
+    let resource_batches = batches
+        .iter()
+        .enumerate()
+        .map(|(i, batch)| {
+            parse_resources_from_json_str(batch).map_err(|e| format!("Batch {i}: {e}"))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let result = batch_merge_resources(resource_batches, recompute_descriptors, strict);
+    match result.error {
+        Some(error) => Err(error),
+        None => Ok(result),
+    }
+}
+
 /// Stateful accumulator for memory-efficient incremental resource merging.
 ///
 /// Accepts resources in chunks (as JSON strings or pre-parsed), merges them

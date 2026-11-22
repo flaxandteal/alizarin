@@ -3288,11 +3288,8 @@
     },
     "batch_merge_resources": {
       "wasm": "batchMergeResources",
-      "napi": null,
-      "python": "batch_merge_resources",
-      "why": {
-        "napi": "gap: B-9 follow-up, trees to tiles and resource merging are core functions not yet bound on NAPI (they need its extension registry)"
-      }
+      "napi": "batchMergeResources",
+      "python": "batch_merge_resources"
     },
     "batch_tiles_to_trees": {
       "wasm": "batchTilesToTrees",
@@ -3301,11 +3298,8 @@
     },
     "batch_trees_to_tiles": {
       "wasm": "batchTreesToTiles",
-      "napi": null,
-      "python": "batch_trees_to_tiles",
-      "why": {
-        "napi": "gap: B-9 follow-up, trees to tiles and resource merging are core functions not yet bound on NAPI (they need its extension registry)"
-      }
+      "napi": "batchTreesToTiles",
+      "python": "batch_trees_to_tiles"
     },
     "build_alias_to_collection_map": {
       "wasm": "buildAliasToCollectionMap",
@@ -3935,11 +3929,8 @@
     },
     "merge_resources": {
       "wasm": "mergeResources",
-      "napi": null,
-      "python": "merge_resources",
-      "why": {
-        "napi": "gap: B-9 follow-up, trees to tiles and resource merging are core functions not yet bound on NAPI (they need its extension registry)"
-      }
+      "napi": "mergeResources",
+      "python": "merge_resources"
     },
     "new_wasmresource_instance_wrapper_for_model": {
       "wasm": "newWASMResourceInstanceWrapperForModel",
@@ -4171,11 +4162,8 @@
     },
     "tree_to_tiles": {
       "wasm": "treeToTiles",
-      "napi": null,
-      "python": "json_tree_to_tiles",
-      "why": {
-        "napi": "gap: B-9 follow-up, trees to tiles and resource merging are core functions not yet bound on NAPI (they need its extension registry)"
-      }
+      "napi": "treeToTiles",
+      "python": "json_tree_to_tiles"
     },
     "unregister_extension_handler": {
       "wasm": "unregisterExtensionHandler",

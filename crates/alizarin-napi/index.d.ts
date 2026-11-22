@@ -162,6 +162,31 @@ export declare function summaryToMetadata(summary: any): any
  */
 export declare function constructStatic(kind: string, value: any): JsonOut
 /**
+ * One alias-keyed tree to a resource, as `{business_data: {resources: [...]}}`:
+ * core's `tree_to_tiles_from_json`, as WASM's `treeToTiles` (same arguments)
+ * and Python's `json_tree_to_tiles`.
+ */
+export declare function treeToTiles(treeJson: string, graph: NapiStaticGraph, fromCamel: boolean, strict: boolean, idKey?: string | undefined | null, randomIds?: boolean | undefined | null, tileNamespace?: string | undefined | null): JsonOut
+/**
+ * Many alias-keyed trees to resources: core's `batch_trees_to_tiles_from_json`,
+ * as WASM's `batchTreesToTiles` (same arguments) and Python's
+ * `batch_trees_to_tiles`. Returns `{business_data, errors, error_count,
+ * warnings, warning_count}`.
+ */
+export declare function batchTreesToTiles(treesJson: string, graph: NapiStaticGraph, fromCamel: boolean, strict: boolean, idKeysJson?: string | undefined | null, randomIds?: boolean | undefined | null, resolveMarkers?: boolean | undefined | null, scopesJson?: string | undefined | null, tileNamespace?: string | undefined | null): JsonOut
+/**
+ * Resources with one resourceinstanceid merged into one, as `{resource,
+ * warnings}`: core's `merge_resources_from_json`, as WASM's `mergeResources`.
+ */
+export declare function mergeResources(resourcesJson: string): JsonOut
+/**
+ * Batches of resources (each an array, one resource, or a business data
+ * file, as JSON strings, in a JSON array) merged per resourceinstanceid, as
+ * `{resources, warnings}`: core's `batch_merge_resources_from_json`, as WASM's
+ * `batchMergeResources` (same arguments).
+ */
+export declare function batchMergeResources(batchesJson: string, recomputeDescriptors?: boolean | undefined | null, strict?: boolean | undefined | null): JsonOut
+/**
  * Whether two nodes (whole or partial objects) are the same apart from their
  * ids: core's `compare_nodes`, as WASM's `StaticNode.compare`. One of
  * `"same"`, `"same_ids_partial"`, `"nodeid_conflict"`,

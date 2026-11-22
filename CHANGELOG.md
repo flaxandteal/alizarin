@@ -8,6 +8,12 @@ entries is tracked in `PARITY-RESEARCH.md`.
 ## Unreleased
 
 ### Added
+- NAPI: `treeToTiles`, `batchTreesToTiles`, `mergeResources`,
+  `batchMergeResources`, with WASM's arguments. TypeScript: the same four
+  exported from `alizarin`, on either backend. Core now does all of each
+  (`tree_to_tiles_from_json`, `batch_trees_to_tiles_from_json`,
+  `merge_resources_from_json`, `batch_merge_resources_from_json`); WASM and
+  Python wrap them.
 - NAPI: `compareNodes(a, b)`; Python: `compare_nodes(a, b)`; TypeScript:
   `compareNodes` from `alizarin`, on either backend. Whether two nodes are
   the same apart from their ids, as WASM's `StaticNode.compare`.
@@ -73,6 +79,18 @@ entries is tracked in `PARITY-RESEARCH.md`.
   - A malformed `business_data` wrapper is reported as such (the error was
     about a bare resource's missing `resourceinstance`).
   - The loader reads about 30% faster.
+- Trees to tiles on WASM, where it differed from Python (now one rule in
+  core):
+  - concept labels in a tree resolve to ids against the global RDM cache
+    when one is set (`setGlobalRdmCache`), as in Python; they were left as
+    given.
+  - `batchTreesToTiles(…, fromCamel: true)` matches camelCase aliases, as
+    `treeToTiles` and Python do, instead of rewriting every key in the trees
+    to snake_case first.
+  - `batchTreesToTiles` always returns `warnings` (it was dropped when
+    empty), and now `warning_count`, as Python.
+  - a malformed batch in `batchMergeResources` gives core's message
+    (`Batch 2: …`), as Python.
 - **Breaking:** `StaticNode.compare(a, b)` (WASM) returns a name, not a
   number: `"same"` (was `2`, and `true` for one object twice),
   `"same_ids_partial"` (`1`), `"nodeid_conflict"` (`-1`),

@@ -1,24 +1,7 @@
 use std::ops::Deref;
 
 use crate::graph::StaticGraph;
-use alizarin_core::{
-    batch_merge_resources, merge_resources, transform_keys_to_snake, StaticResource,
-};
 use serde_json::Value;
-
-#[derive(serde::Serialize)]
-struct BatchBusinessData {
-    resources: Vec<StaticResource>,
-}
-
-#[derive(serde::Serialize)]
-struct BatchResult<'a> {
-    business_data: BatchBusinessData,
-    errors: &'a [String],
-    error_count: usize,
-    #[serde(skip_serializing_if = "<[String]>::is_empty")]
-    warnings: &'a [String],
-}
 
 /// Batch conversion functions for WASM - parallel processing
 ///
@@ -52,33 +35,18 @@ pub fn tree_to_tiles_enhanced(
     random_ids: Option<bool>,
     tile_namespace: Option<String>,
 ) -> Result<JsValue, JsError> {
-    let tree: Value = serde_json::from_str(tree_json)
-        .map_err(|e| JsError::new(&format!("Failed to parse tree: {}", e)))?;
-
-    let graph_id = graph.graph_id();
-    let ext_registry = crate::extension_registry::build_extension_registry();
-
-    let resource = alizarin_core::convert_single_tree::<alizarin_core::RdmCache>(
-        &tree,
-        graph,
-        graph_id,
-        id_key.as_deref(),
+    let opts = alizarin_core::TreeToTilesOptions {
+        id_key: id_key.as_deref(),
         from_camel,
         strict,
-        random_ids.unwrap_or(true),
-        Some(&ext_registry),
-        None,
-        true,
-        tile_namespace.as_deref(),
-    )
-    .map_err(|e| JsError::new(&e))?;
-
-    let wrapper = alizarin_core::BusinessDataWrapper {
-        business_data: alizarin_core::BusinessData {
-            resources: vec![resource],
-        },
+        random_ids: random_ids.unwrap_or(true),
+        tile_namespace: tile_namespace.as_deref(),
+        ..Default::default()
     };
-
+    let ext_registry = crate::extension_registry::build_extension_registry();
+    let wrapper =
+        alizarin_core::tree_to_tiles_from_json(tree_json, graph, &opts, Some(&ext_registry), None)
+            .map_err(|e| JsError::new(&e))?;
     crate::js_json::to_value(&wrapper)
         .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e)))
 }
@@ -137,8 +105,8 @@ pub fn cards_to_tree(resource_json: &str, graph: &StaticGraph) -> Result<JsValue
 ///         ids, as for `treeToTiles`.
 ///
 /// Returns:
-///     {business_data: {resources: [...]}, errors: [...], error_count, warnings: [...]}
-///     (warnings is omitted when empty).
+///     {business_data: {resources: [...]}, errors, error_count, warnings, warning_count}
+///     (core's `BatchTreesToTiles`, as on NAPI and Python).
 #[wasm_bindgen(js_name = batchTreesToTiles)]
 #[allow(clippy::too_many_arguments)]
 pub fn batch_trees_to_tiles(
@@ -152,76 +120,33 @@ pub fn batch_trees_to_tiles(
     scopes_json: Option<String>,
     tile_namespace: Option<String>,
 ) -> Result<JsValue, JsError> {
-    // Parse trees from JSON
-    let mut trees: Vec<Value> = serde_json::from_str(trees_json)
-        .map_err(|e| JsError::new(&format!("Failed to parse trees: {}", e)))?;
-
-    // Parse id_keys if provided
     let id_keys: Option<Vec<String>> = id_keys_json
         .map(|json| serde_json::from_str(&json))
         .transpose()
         .map_err(|e| JsError::new(&format!("Failed to parse id_keys: {}", e)))?;
-
-    // Validate id_keys length matches trees length
-    if let Some(ref keys) = id_keys {
-        if keys.len() != trees.len() {
-            return Err(JsError::new(&format!(
-                "id_keys length ({}) must match trees length ({})",
-                keys.len(),
-                trees.len()
-            )));
-        }
-    }
-
-    // WASM handles camelCase by transforming tree keys up front, then converting
-    // with from_camel = false (its long-standing behaviour).
-    if from_camel {
-        for tree in trees.iter_mut() {
-            *tree = transform_keys_to_snake(tree.clone());
-        }
-    }
-
-    let scopes_value: Option<Value> = scopes_json
+    let scopes: Option<Value> = scopes_json
         .map(|s| serde_json::from_str(&s))
         .transpose()
         .map_err(|e| JsError::new(&format!("Failed to parse scopes: {}", e)))?;
-
-    let ext_registry = crate::extension_registry::build_extension_registry();
-    let graph_id = graph.graph_id();
-
-    // The batch loop, scopes, error partitioning, strict handling, and
-    // slug-uniqueness live in core (`batch_convert_trees`) — shared with Python,
-    // so WASM now supports resolve_markers/scopes and can't drift. WASM is
-    // single-threaded, so core's sequential branch runs (`parallel` feature off).
     let opts = alizarin_core::BatchOptions {
-        graph_id,
-        from_camel: false,
+        graph_id: graph.graph_id(),
+        from_camel,
         strict,
         random_ids: random_ids.unwrap_or(false),
         resolve_markers: resolve_markers.unwrap_or(false),
         id_keys: id_keys.as_deref(),
-        scopes: scopes_value.as_ref(),
+        scopes: scopes.as_ref(),
         tile_namespace: tile_namespace.as_deref(),
     };
-    let outcome = alizarin_core::batch_convert_trees::<alizarin_core::RdmCache>(
-        &trees,
+    let ext_registry = crate::extension_registry::build_extension_registry();
+    let output = alizarin_core::batch_trees_to_tiles_from_json(
+        trees_json,
         graph,
+        &opts,
         Some(&ext_registry),
         None,
-        &opts,
     )
     .map_err(|e| JsError::new(&e))?;
-
-    // Serialize directly to JS — no intermediate serde_json::Value
-    let output = BatchResult {
-        business_data: BatchBusinessData {
-            resources: outcome.resources,
-        },
-        errors: &outcome.errors,
-        error_count: outcome.errors.len(),
-        warnings: &outcome.warnings,
-    };
-
     crate::js_json::to_value(&output)
         .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e)))
 }
@@ -260,14 +185,10 @@ pub fn batch_tiles_to_trees(
 ///     {resource: StaticResource, warnings: string[]}
 #[wasm_bindgen(js_name = mergeResources)]
 pub fn merge_resources_wasm(resources_json: &str) -> Result<JsValue, JsError> {
-    let resources: Vec<StaticResource> = serde_json::from_str(resources_json)
-        .map_err(|e| JsError::new(&format!("Failed to parse resources: {}", e)))?;
-
-    match merge_resources(resources) {
-        Ok(result) => crate::js_json::to_value(&result)
-            .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e))),
-        Err(e) => Err(JsError::new(&e)),
-    }
+    let result =
+        alizarin_core::merge_resources_from_json(resources_json).map_err(|e| JsError::new(&e))?;
+    crate::js_json::to_value(&result)
+        .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e)))
 }
 
 /// Batch merge resources from multiple JSON strings
@@ -292,77 +213,14 @@ pub fn batch_merge_resources_wasm(
     recompute_descriptors: Option<bool>,
     strict: Option<bool>,
 ) -> Result<JsValue, JsError> {
-    // Parse the outer array of JSON strings
-    let batch_strings: Vec<String> = serde_json::from_str(batches_json)
+    let batches: Vec<String> = serde_json::from_str(batches_json)
         .map_err(|e| JsError::new(&format!("Failed to parse batches array: {}", e)))?;
-
-    // Parse each batch string into Vec<StaticResource>
-    let mut resource_batches: Vec<Vec<StaticResource>> = Vec::new();
-    for (i, batch_str) in batch_strings.iter().enumerate() {
-        // Try to parse as JSON value first to determine format
-        let value: Value = serde_json::from_str(batch_str)
-            .map_err(|e| JsError::new(&format!("Failed to parse batch {}: {}", i, e)))?;
-
-        let batch: Vec<StaticResource> = match &value {
-            // Array of resources
-            Value::Array(_) => serde_json::from_value(value).map_err(|e| {
-                JsError::new(&format!(
-                    "Batch {}: Failed to parse as resource array: {}",
-                    i, e
-                ))
-            })?,
-            // Object - could be BusinessDataWrapper or single resource
-            Value::Object(map) => {
-                if let Some(bd) = map.get("business_data") {
-                    // BusinessDataWrapper format
-                    if let Some(resources) = bd.get("resources") {
-                        serde_json::from_value(resources.clone()).map_err(|e| {
-                            JsError::new(&format!(
-                                "Batch {}: Failed to parse business_data.resources: {}",
-                                i, e
-                            ))
-                        })?
-                    } else {
-                        return Err(JsError::new(&format!(
-                            "Batch {}: business_data missing 'resources' field",
-                            i
-                        )));
-                    }
-                } else if map.contains_key("resourceinstance") {
-                    // Single StaticResource
-                    let resource: StaticResource = serde_json::from_value(value).map_err(|e| {
-                        JsError::new(&format!(
-                            "Batch {}: Failed to parse as single resource: {}",
-                            i, e
-                        ))
-                    })?;
-                    vec![resource]
-                } else {
-                    return Err(JsError::new(&format!("Batch {}: Unrecognized format - expected array, BusinessDataWrapper, or StaticResource", i)));
-                }
-            }
-            _ => {
-                return Err(JsError::new(&format!(
-                    "Batch {}: Expected array or object",
-                    i
-                )));
-            }
-        };
-
-        resource_batches.push(batch);
-    }
-
-    let strict = strict.unwrap_or(true);
-    let result = batch_merge_resources(
-        resource_batches,
+    let result = alizarin_core::batch_merge_resources_from_json(
+        &batches,
         recompute_descriptors.unwrap_or(false),
-        strict,
-    );
-
-    if let Some(ref error) = result.error {
-        return Err(JsError::new(error));
-    }
-
+        strict.unwrap_or(true),
+    )
+    .map_err(|e| JsError::new(&e))?;
     crate::js_json::to_value(&result)
         .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e)))
 }

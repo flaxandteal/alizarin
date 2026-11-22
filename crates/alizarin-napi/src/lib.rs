@@ -1183,6 +1183,121 @@ pub fn construct_static(
         .map_err(napi::Error::from_reason)
 }
 
+/// One alias-keyed tree to a resource, as `{business_data: {resources: [...]}}`:
+/// core's `tree_to_tiles_from_json`, as WASM's `treeToTiles` (same arguments)
+/// and Python's `json_tree_to_tiles`.
+#[napi]
+pub fn tree_to_tiles(
+    tree_json: String,
+    graph: &NapiStaticGraph,
+    from_camel: bool,
+    strict: bool,
+    id_key: Option<String>,
+    random_ids: Option<bool>,
+    tile_namespace: Option<String>,
+) -> Result<JsonOut> {
+    let opts = alizarin_core::TreeToTilesOptions {
+        id_key: id_key.as_deref(),
+        from_camel,
+        strict,
+        random_ids: random_ids.unwrap_or(true),
+        tile_namespace: tile_namespace.as_deref(),
+        ..Default::default()
+    };
+    let ext = extension_registry();
+    let wrapper =
+        alizarin_core::tree_to_tiles_from_json(&tree_json, &graph.inner, &opts, Some(&ext), None)
+            .map_err(napi::Error::from_reason)?;
+    serde_json::to_value(wrapper)
+        .map(JsonOut)
+        .map_err(|e| napi::Error::from_reason(e.to_string()))
+}
+
+/// Many alias-keyed trees to resources: core's `batch_trees_to_tiles_from_json`,
+/// as WASM's `batchTreesToTiles` (same arguments) and Python's
+/// `batch_trees_to_tiles`. Returns `{business_data, errors, error_count,
+/// warnings, warning_count}`.
+#[napi]
+#[allow(clippy::too_many_arguments)]
+pub fn batch_trees_to_tiles(
+    trees_json: String,
+    graph: &NapiStaticGraph,
+    from_camel: bool,
+    strict: bool,
+    id_keys_json: Option<String>,
+    random_ids: Option<bool>,
+    resolve_markers: Option<bool>,
+    scopes_json: Option<String>,
+    tile_namespace: Option<String>,
+) -> Result<JsonOut> {
+    let parse = |s: Option<String>, what: &str| -> Result<Option<serde_json::Value>> {
+        s.map(|s| serde_json::from_str(&s))
+            .transpose()
+            .map_err(|e| napi::Error::from_reason(format!("Failed to parse {what}: {e}")))
+    };
+    let id_keys: Option<Vec<String>> = parse(id_keys_json, "id_keys")?
+        .map(serde_json::from_value)
+        .transpose()
+        .map_err(|e| napi::Error::from_reason(format!("Failed to parse id_keys: {e}")))?;
+    let scopes = parse(scopes_json, "scopes")?;
+    let opts = alizarin_core::BatchOptions {
+        graph_id: &graph.inner.graphid,
+        from_camel,
+        strict,
+        random_ids: random_ids.unwrap_or(false),
+        resolve_markers: resolve_markers.unwrap_or(false),
+        id_keys: id_keys.as_deref(),
+        scopes: scopes.as_ref(),
+        tile_namespace: tile_namespace.as_deref(),
+    };
+    let ext = extension_registry();
+    let output = alizarin_core::batch_trees_to_tiles_from_json(
+        &trees_json,
+        &graph.inner,
+        &opts,
+        Some(&ext),
+        None,
+    )
+    .map_err(napi::Error::from_reason)?;
+    serde_json::to_value(output)
+        .map(JsonOut)
+        .map_err(|e| napi::Error::from_reason(e.to_string()))
+}
+
+/// Resources with one resourceinstanceid merged into one, as `{resource,
+/// warnings}`: core's `merge_resources_from_json`, as WASM's `mergeResources`.
+#[napi]
+pub fn merge_resources(resources_json: String) -> Result<JsonOut> {
+    let result = alizarin_core::merge_resources_from_json(&resources_json)
+        .map_err(napi::Error::from_reason)?;
+    serde_json::to_value(result)
+        .map(JsonOut)
+        .map_err(|e| napi::Error::from_reason(e.to_string()))
+}
+
+/// Batches of resources (each an array, one resource, or a business data
+/// file, as JSON strings, in a JSON array) merged per resourceinstanceid, as
+/// `{resources, warnings}`: core's `batch_merge_resources_from_json`, as WASM's
+/// `batchMergeResources` (same arguments).
+#[napi]
+pub fn batch_merge_resources(
+    batches_json: String,
+    recompute_descriptors: Option<bool>,
+    strict: Option<bool>,
+) -> Result<JsonOut> {
+    let batches: Vec<String> = serde_json::from_str(&batches_json)
+        .map_err(|e| napi::Error::from_reason(format!("Failed to parse batches array: {e}")))?;
+    let result = alizarin_core::batch_merge_resources_from_json(
+        &batches,
+        recompute_descriptors.unwrap_or(false),
+        strict.unwrap_or(true),
+    )
+    .map_err(napi::Error::from_reason)?;
+    serde_json::to_value(result)
+        .map(JsonOut)
+        .map_err(|e| napi::Error::from_reason(e.to_string()))
+}
+
 /// Whether two nodes (whole or partial objects) are the same apart from their
 /// ids: core's `compare_nodes`, as WASM's `StaticNode.compare`. One of
 /// `"same"`, `"same_ids_partial"`, `"nodeid_conflict"`,

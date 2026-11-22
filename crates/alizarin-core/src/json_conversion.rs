@@ -1933,6 +1933,121 @@ pub fn batch_convert_trees<L: crate::label_resolution::ConceptLookup + Sync>(
     })
 }
 
+/// What lets tree conversion resolve concept labels to ids: the graph's
+/// resolvable aliases (with their camelCase forms when `from_camel`), and
+/// `cache`, else the global RDM cache. `None` if either is missing.
+fn label_resolution(
+    graph: &StaticGraph,
+    ext_registry: Option<&ExtensionTypeRegistry>,
+    from_camel: bool,
+    cache: Option<Arc<crate::RdmCache>>,
+) -> Option<(HashMap<String, String>, Arc<crate::RdmCache>)> {
+    let mut aliases = crate::label_resolution::alias_to_collection_for_graph(graph, ext_registry);
+    if aliases.is_empty() {
+        return None;
+    }
+    let cache = cache.or_else(crate::registry::get_global_rdm_cache_arc)?;
+    if from_camel {
+        let camel: Vec<_> = aliases
+            .iter()
+            .map(|(k, v)| (snake_to_camel(k), v.clone()))
+            .collect();
+        aliases.extend(camel);
+    }
+    Some((aliases, cache))
+}
+
+/// Options for [`tree_to_tiles_from_json`]: [`convert_single_tree`]'s, plus
+/// the resource's id (when the tree lacks one) and scopes.
+#[derive(Debug, Default)]
+pub struct TreeToTilesOptions<'a> {
+    pub resource_id: Option<&'a str>,
+    pub id_key: Option<&'a str>,
+    pub from_camel: bool,
+    pub strict: bool,
+    pub random_ids: bool,
+    pub scopes: Option<&'a Value>,
+    pub tile_namespace: Option<&'a str>,
+}
+
+/// One alias-keyed tree to a resource, as a business data file: every
+/// binding's `treeToTiles` / `json_tree_to_tiles`. Concept labels resolve
+/// against `cache` (else the global RDM cache), and extension markers through
+/// `ext_registry`.
+pub fn tree_to_tiles_from_json(
+    tree_json: &str,
+    graph: &StaticGraph,
+    opts: &TreeToTilesOptions,
+    ext_registry: Option<&ExtensionTypeRegistry>,
+    cache: Option<Arc<crate::RdmCache>>,
+) -> Result<BusinessDataWrapper, String> {
+    let mut tree: Value =
+        serde_json::from_str(tree_json).map_err(|e| format!("Failed to parse tree: {e}"))?;
+    if let (Some(id), Value::Object(map)) = (opts.resource_id, &mut tree) {
+        map.insert("resourceinstanceid".into(), Value::String(id.into()));
+    }
+    let labels = label_resolution(graph, ext_registry, opts.from_camel, cache);
+    let lookup = labels.as_ref().map(|(a, c)| (a, c.as_ref()));
+    let mut resource = convert_single_tree(
+        &tree,
+        graph,
+        &graph.graphid,
+        opts.id_key,
+        opts.from_camel,
+        opts.strict,
+        opts.random_ids,
+        ext_registry,
+        lookup,
+        true,
+        opts.tile_namespace,
+    )?;
+    if let Some(scopes) = opts.scopes {
+        resource.scopes = Some(scopes.clone());
+    }
+    Ok(BusinessDataWrapper {
+        business_data: BusinessData {
+            resources: vec![resource],
+        },
+    })
+}
+
+/// What every binding's `batchTreesToTiles` / `batch_trees_to_tiles`
+/// returns: the resources as a business data file, the per-tree errors (in
+/// non-strict mode) and the advisory warnings, with their counts.
+#[derive(Debug, Serialize)]
+pub struct BatchTreesToTiles {
+    pub business_data: BusinessData,
+    pub errors: Vec<String>,
+    pub error_count: usize,
+    pub warnings: Vec<String>,
+    pub warning_count: usize,
+}
+
+/// [`batch_convert_trees`] over a JSON array of trees, with labels resolved
+/// as in [`tree_to_tiles_from_json`]: every binding's batch entry point.
+pub fn batch_trees_to_tiles_from_json(
+    trees_json: &str,
+    graph: &StaticGraph,
+    opts: &BatchOptions,
+    ext_registry: Option<&ExtensionTypeRegistry>,
+    cache: Option<Arc<crate::RdmCache>>,
+) -> Result<BatchTreesToTiles, String> {
+    let trees: Vec<Value> =
+        serde_json::from_str(trees_json).map_err(|e| format!("Failed to parse trees: {e}"))?;
+    let labels = label_resolution(graph, ext_registry, opts.from_camel, cache);
+    let lookup = labels.as_ref().map(|(a, c)| (a, c.as_ref()));
+    let outcome = batch_convert_trees(&trees, graph, ext_registry, lookup, opts)?;
+    Ok(BatchTreesToTiles {
+        error_count: outcome.errors.len(),
+        warning_count: outcome.warnings.len(),
+        business_data: BusinessData {
+            resources: outcome.resources,
+        },
+        errors: outcome.errors,
+        warnings: outcome.warnings,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

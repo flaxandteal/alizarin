@@ -101,7 +101,6 @@ ECO_DATACLASS = "ecosystem: Python dataclasses in python/alizarin/static_types.p
 GAP_RDM_GLOBAL = "gap: the global RDM cache functions differ per binding (A-6)"
 GAP_NAMESPACE = "gap: H-3, RDM namespaces and deterministic UUIDs must agree across bindings"
 GAP_EXTENSIONS = "gap: the extension registry functions differ per binding (A-6, G)"
-GAP_TREES = "gap: B-9 follow-up, trees to tiles and resource merging are core functions not yet bound on NAPI (they need its extension registry)"
 
 # Why a binding lacks something (PARITY-RESEARCH.md A-6/A-7). Keys are
 # "fn:<canonical>", "class:<key>" or "op:<class key>.<canonical>", with fnmatch
@@ -171,9 +170,6 @@ REASONS = [
                                   "napi": "gap: bare tiles to a tree (core's, against its graph registry) is bound only in Python"}),
     ("fn:resolve_labels_in_tree", {"wasm": "gap: resolving a tree's labels before conversion (core's) is bound only in Python",
                                    "napi": "gap: resolving a tree's labels before conversion (core's) is bound only in Python"}),
-    ("fn:*_tree*", {"wasm": GAP_TREES, "napi": GAP_TREES, "python": GAP_TREES}),
-    ("fn:*tiles*", {"wasm": GAP_TREES, "napi": GAP_TREES, "python": GAP_TREES}),
-    ("fn:*merge_resources", {"napi": GAP_TREES}),
     ("fn:matches_semantic_child", {"wasm": "gap: core's semantic-child match is bound only in Python",
                                    "napi": "gap: core's semantic-child match is bound only in Python"}),
     ("class:rustSemanticChildResult", {"wasm": "gap: core's semantic-child match is bound only in Python",

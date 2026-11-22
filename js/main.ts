@@ -13,7 +13,7 @@ import * as viewModels from "./viewModels";
 import * as renderers from "./renderers";
 import * as nodeConfig from "./nodeConfig";
 import { initWasm, setWasmURL, ensureWasmRdmCache, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, registerExtensionHandler, registerDeriveProvider, hasDeriveProvider } from "./_wasm";
-import { setBackend, setNapiModule, setWasmModule, getBackend, autoDetectBackend, createResourceRegistry, getMemoryUsage, formatMemoryUsage, parseStaticGraph, foldMayMatch, setRdmNamespace, getRdmNamespaceRaw, tilesToTree, cardsToTree, batchTilesToTrees, compareNodes } from "./backend";
+import { setBackend, setNapiModule, setWasmModule, getBackend, autoDetectBackend, createResourceRegistry, getMemoryUsage, formatMemoryUsage, parseStaticGraph, foldMayMatch, setRdmNamespace, getRdmNamespaceRaw, tilesToTree, cardsToTree, batchTilesToTrees, compareNodes, treeToTiles, batchTreesToTiles, mergeResources, batchMergeResources } from "./backend";
 import type { BackendType, MemoryUsage, RegistryStats } from "./backend";
 import { resetTimingStats, getTimingStats, logTimingStats } from "./semantic";
 import * as tracing from "./tracing";
@@ -141,6 +141,11 @@ export {
   tilesToTree,
   cardsToTree,
   batchTilesToTrees,
+  // Trees to tiles, and resource merging (core, on either backend)
+  treeToTiles,
+  batchTreesToTiles,
+  mergeResources,
+  batchMergeResources,
   // Whether two nodes are the same apart from ids (core, on either backend)
   compareNodes,
   // Memory diagnostics

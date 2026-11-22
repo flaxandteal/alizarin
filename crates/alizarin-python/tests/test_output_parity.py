@@ -144,6 +144,37 @@ def routes():
             lambda: alizarin.resources_from_business_data_json(business_data_text),
         )
     )
+    # Trees back to tiles (a tile namespace fixes the ids), and merging.
+    tile_namespace = "0d0d0d0d-0000-4000-8000-000000000001"
+    resource_id = RESOURCE["resourceinstance"]["resourceinstanceid"]
+    tree_text = lambda: json.dumps(alizarin.tiles_to_json_tree(resource_text))  # noqa: E731
+    out.append(
+        (
+            "json_tree_to_tiles",
+            "tiles:tree",
+            lambda: alizarin.json_tree_to_tiles(
+                tree_text(), resource_id, GRAPH["graphid"], strict=True, tile_namespace=tile_namespace
+            ),
+        )
+    )
+    out.append(
+        (
+            "batch_trees_to_tiles",
+            "tiles:batch",
+            lambda: alizarin.batch_trees_to_tiles(
+                f"[{tree_text()}]", GRAPH["graphid"], strict=True, resolve_markers=False, tile_namespace=tile_namespace
+            ),
+        )
+    )
+    layer_text = json.dumps(LAYER)
+    out.append(("merge_resources", "merged", lambda: alizarin.merge_resources(f"[{resource_text},{layer_text}]")))
+    out.append(
+        (
+            "batch_merge_resources",
+            "merged:batch",
+            lambda: alizarin.batch_merge_resources([resource_text, layer_text], False, False),
+        )
+    )
     out.append(("summary_to_metadata", "resource.summary.metadata", lambda: alizarin.summary_to_metadata(summary())))
     out.append(
         ("static_resource_from_summary", "resource.from_summary", lambda: alizarin.static_resource_from_summary(summary()))
