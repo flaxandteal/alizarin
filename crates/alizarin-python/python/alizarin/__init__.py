@@ -356,6 +356,7 @@ is_valid_uuid = _alizarin_rust.is_valid_uuid
 summary_to_metadata = _alizarin_rust.summary_to_metadata
 static_resource_from_summary = _alizarin_rust.static_resource_from_summary
 construct_static = _alizarin_rust.construct_static
+compare_nodes = _alizarin_rust.compare_nodes
 resources_from_business_data_json = _alizarin_rust.resources_from_business_data_json
 
 # =============================================================================
@@ -566,6 +567,7 @@ __all__ = [
     "summary_to_metadata",
     "static_resource_from_summary",
     "construct_static",
+    "compare_nodes",
     "resources_from_business_data_json",
     # Graph Mutation API
     "apply_mutations_from_json",

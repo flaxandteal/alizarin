@@ -141,6 +141,7 @@ REASONS = [
     ("fn:construct_static", {"wasm": "ecosystem: WASM's static classes' constructors (new StaticNode(...)) build through core"}),
     ("fn:resources_from_business_data_json",
      {"wasm": "ecosystem: a static method on WASM's resource class, StaticResource.fromBusinessDataJsonString"}),
+    ("fn:compare_nodes", {"wasm": "ecosystem: a static method on WASM's node class, StaticNode.compare"}),
     ("fn:summary_to_metadata", {"wasm": "ecosystem: a method on WASM's summary class, StaticResourceSummary.toMetadata"}),
     ("fn:static_resource_from_summary", {"wasm": "ecosystem: a static method on WASM's resource class, StaticResource.fromSummary"}),
     ("class:rustRdmCollection", {"wasm": "ecosystem: JS gets RDM collections as plain JSON", "napi": "ecosystem: JS gets RDM collections as plain JSON"}),

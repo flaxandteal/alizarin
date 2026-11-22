@@ -1183,6 +1183,20 @@ pub fn construct_static(
         .map_err(napi::Error::from_reason)
 }
 
+/// Whether two nodes (whole or partial objects) are the same apart from their
+/// ids: core's `compare_nodes`, as WASM's `StaticNode.compare`. One of
+/// `"same"`, `"same_ids_partial"`, `"nodeid_conflict"`,
+/// `"nodegroup_id_conflict"`, `"graph_id_conflict"`, `"different"`.
+#[napi]
+pub fn compare_nodes(
+    #[napi(ts_arg_type = "any")] a: JsonArg,
+    #[napi(ts_arg_type = "any")] b: JsonArg,
+) -> String {
+    alizarin_core::compare_nodes(&a.0, &b.0)
+        .as_str()
+        .to_string()
+}
+
 /// The resources of a business data JSON string, as core builds them: the
 /// WASM `StaticResource.fromBusinessDataJsonString`.
 #[napi]

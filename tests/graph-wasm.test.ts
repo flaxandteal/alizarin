@@ -188,45 +188,45 @@ describe('WASM Graph Module', () => {
     });
 
     describe('compare', () => {
-      it('should return true for identical objects', () => {
+      it('gives same for an object and itself', () => {
         const nodeData = createTestNode();
         const result = StaticNode.compare(nodeData, nodeData);
-        expect(result).toBe(2); // Same values, not same reference
+        expect(result).toBe('same');
       });
 
-      it('should return 2 for identical nodes with same IDs', () => {
+      it('gives same for identical nodes with the same ids', () => {
         const nodeData1 = createTestNode();
         const nodeData2 = { ...createTestNode() };
-        
+
         const result = StaticNode.compare(nodeData1, nodeData2);
-        expect(result).toBe(2);
+        expect(result).toBe('same');
       });
 
-      it('should return -1 for identical nodes except nodeid', () => {
+      it('gives nodeid_conflict for identical nodes except nodeid', () => {
         const nodeData1 = createTestNode();
         const nodeData2 = createTestNode({ nodeid: 'node-456' });
-        
+
         const result = StaticNode.compare(nodeData1, nodeData2);
-        expect(result).toBe(-1);
+        expect(result).toBe('nodeid_conflict');
       });
 
-      it('should return -2 for identical nodes except nodegroup_id', () => {
+      it('gives nodegroup_id_conflict for identical nodes except nodegroup_id', () => {
         const nodeData1 = createTestNode();
         const nodeData2 = createTestNode({ nodegroup_id: 'ng-2' });
-        
+
         const result = StaticNode.compare(nodeData1, nodeData2);
-        expect(result).toBe(-2);
+        expect(result).toBe('nodegroup_id_conflict');
       });
 
-      it('should return -3 for identical nodes except graph_id', () => {
+      it('gives graph_id_conflict for identical nodes except graph_id', () => {
         const nodeData1 = createTestNode();
         const nodeData2 = createTestNode({ graph_id: 'test-graph-456' });
-        
+
         const result = StaticNode.compare(nodeData1, nodeData2);
-        expect(result).toBe(-3);
+        expect(result).toBe('graph_id_conflict');
       });
 
-      it('should return false for different nodes', () => {
+      it('gives different for different nodes', () => {
         const nodeData1 = createTestNode();
         const nodeData2 = createTestNode({ 
           name: 'Different Node',
@@ -234,10 +234,10 @@ describe('WASM Graph Module', () => {
         });
         
         const result = StaticNode.compare(nodeData1, nodeData2);
-        expect(result).toBe(false);
+        expect(result).toBe('different');
       });
 
-      it('should return 1 for identical nodes with falsey IDs', () => {
+      it('gives same for identical nodes whose ids are all unset', () => {
         const nodeData1 = createTestNode({ 
           nodeid: '',
           nodegroup_id: null,
@@ -250,7 +250,7 @@ describe('WASM Graph Module', () => {
         });
         
         const result = StaticNode.compare(nodeData1, nodeData2);
-        expect(result).toBe(2); // Empty string IDs are treated as equal
+        expect(result).toBe('same'); // unset on both sides: equal
       });
     });
   });

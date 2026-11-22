@@ -636,6 +636,19 @@ export function applyGraphMutations(graph: any, mutationsJson: string): any {
 }
 
 /**
+ * Whether two nodes (StaticNodes or plain, possibly partial, objects) are the
+ * same apart from their ids, by core on either backend: `"same"`,
+ * `"same_ids_partial"`, `"nodeid_conflict"`, `"nodegroup_id_conflict"`,
+ * `"graph_id_conflict"` or `"different"`.
+ */
+export function compareNodes(a: any, b: any): string {
+  if (_backend === 'napi') {
+    return getNapiModule().compareNodes(a, b);
+  }
+  return getWasmModule().StaticNode.compare(a, b);
+}
+
+/**
  * Parse a business_data JSON string into StaticResource[], by core on either
  * backend (WASM classes, or NAPI's plain objects).
  */

@@ -26,6 +26,7 @@ mod graph_lookup;
 mod layered_graph;
 mod lifecycle;
 mod meta;
+mod node_compare;
 mod nodes;
 mod prune;
 mod resources;
@@ -65,6 +66,7 @@ pub use lifecycle::{
     TransitionResult, MAX_LIFECYCLE_STATES,
 };
 pub use meta::StaticGraphMeta;
+pub use node_compare::{compare_nodes, compare_nodes_from_json, NodeComparison};
 pub use nodes::{StaticEdge, StaticNode, StaticNodegroup};
 pub use prune::{build_backedges, find_root_node, prune_graph, PruneError};
 pub use resources::{

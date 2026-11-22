@@ -8,6 +8,9 @@ entries is tracked in `PARITY-RESEARCH.md`.
 ## Unreleased
 
 ### Added
+- NAPI: `compareNodes(a, b)`; Python: `compare_nodes(a, b)`; TypeScript:
+  `compareNodes` from `alizarin`, on either backend. Whether two nodes are
+  the same apart from their ids, as WASM's `StaticNode.compare`.
 - NAPI: `setRdmNamespace`, `getRdmNamespace`, `getRdmNamespaceRaw`,
   `hasRdmNamespace`, `clearRdmNamespace`, as on WASM. Python:
   `get_rdm_namespace_raw`. TypeScript: `setRdmNamespace` and
@@ -70,6 +73,14 @@ entries is tracked in `PARITY-RESEARCH.md`.
   - A malformed `business_data` wrapper is reported as such (the error was
     about a bare resource's missing `resourceinstance`).
   - The loader reads about 30% faster.
+- **Breaking:** `StaticNode.compare(a, b)` (WASM) returns a name, not a
+  number: `"same"` (was `2`, and `true` for one object twice),
+  `"same_ids_partial"` (`1`), `"nodeid_conflict"` (`-1`),
+  `"nodegroup_id_conflict"` (`-2`), `"graph_id_conflict"` (`-3`),
+  `"different"` (`false`). The rule is now core's, the per-node equality a
+  graph diff needs, and a bad argument throws (it logged and gave `null`).
+  An id missing on one side and `null` on the other now counts as unset on
+  both.
 - **Breaking (Python):** `ResourceRegistry.populate_caches` returns
   `unknownReferences` / `hasUnknown` (were `unknown_references` /
   `has_unknown`), and `resolve_path` returns `nodegroupId` / `isSingle` /

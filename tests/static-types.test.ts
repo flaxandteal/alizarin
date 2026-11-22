@@ -538,10 +538,8 @@ describe('Static Types', () => {
       const node1 = new StaticNode(nodeData1);
       const node2 = new StaticNode(nodeData2);
       
-      const result = StaticNode.compare(node1, node2);
-      expect(typeof result).toBe('number');
-      expect(result).toBeGreaterThanOrEqual(-1);
-      expect(result).toBeLessThanOrEqual(2);
+      // The same node but for its id.
+      expect(StaticNode.compare(node1, node2)).toBe('nodeid_conflict');
     });
   });
 

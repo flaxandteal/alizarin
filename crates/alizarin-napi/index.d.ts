@@ -162,6 +162,13 @@ export declare function summaryToMetadata(summary: any): any
  */
 export declare function constructStatic(kind: string, value: any): JsonOut
 /**
+ * Whether two nodes (whole or partial objects) are the same apart from their
+ * ids: core's `compare_nodes`, as WASM's `StaticNode.compare`. One of
+ * `"same"`, `"same_ids_partial"`, `"nodeid_conflict"`,
+ * `"nodegroup_id_conflict"`, `"graph_id_conflict"`, `"different"`.
+ */
+export declare function compareNodes(a: any, b: any): string
+/**
  * The resources of a business data JSON string, as core builds them: the
  * WASM `StaticResource.fromBusinessDataJsonString`.
  */

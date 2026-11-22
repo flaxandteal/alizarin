@@ -600,6 +600,17 @@ fn construct_static(py: Python, kind: &str, value: &Bound<'_, PyAny>) -> PyResul
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
 
+/// Whether two nodes (whole or partial dicts) are the same apart from their
+/// ids: core's `compare_nodes`, as WASM's `StaticNode.compare` and NAPI's
+/// `compareNodes`. One of "same", "same_ids_partial", "nodeid_conflict",
+/// "nodegroup_id_conflict", "graph_id_conflict", "different".
+#[pyfunction]
+fn compare_nodes(py: Python, a: &Bound<'_, PyAny>, b: &Bound<'_, PyAny>) -> PyResult<String> {
+    let a = python_json::python_to_json(py, a)?;
+    let b = python_json::python_to_json(py, b)?;
+    Ok(alizarin_core::compare_nodes(&a, &b).as_str().to_string())
+}
+
 /// The resources of a business data file (`{"business_data": {"resources":
 /// [...]}}`), each as `construct_static("resource", ...)` builds it.
 #[pyfunction]
@@ -2388,6 +2399,7 @@ fn alizarin(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(transition_resource_lifecycle, m)?)?;
     m.add_function(wrap_pyfunction!(canonical_static, m)?)?;
     m.add_function(wrap_pyfunction!(construct_static, m)?)?;
+    m.add_function(wrap_pyfunction!(compare_nodes, m)?)?;
     m.add_function(wrap_pyfunction!(resources_from_business_data_json, m)?)?;
     m.add_function(wrap_pyfunction!(summary_to_metadata, m)?)?;
     m.add_function(wrap_pyfunction!(static_resource_from_summary, m)?)?;

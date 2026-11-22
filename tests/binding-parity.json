@@ -3535,6 +3535,14 @@
       "napi": "collectionsToSkosXml",
       "python": "skos_collections_to_xml"
     },
+    "compare_nodes": {
+      "wasm": null,
+      "napi": "compareNodes",
+      "python": "compare_nodes",
+      "why": {
+        "wasm": "ecosystem: a static method on WASM's node class, StaticNode.compare"
+      }
+    },
     "compose_collections_from_csv_in_global_cache": {
       "wasm": null,
       "napi": null,

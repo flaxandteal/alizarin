@@ -67,6 +67,8 @@ pub use graph::{
     batch_merge_resources,
     build_backedges,
     canonical_tile_id,
+    compare_nodes,
+    compare_nodes_from_json,
     default_functions_registry,
     derive_functions,
     derived_tile_id,
@@ -98,6 +100,7 @@ pub use graph::{
     // Resource merging
     MergeAccumulator,
     MergeResult,
+    NodeComparison,
     NodeValueWrite,
     PendingNode,
     // Resource registry for relationship resolution

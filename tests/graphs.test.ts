@@ -50,7 +50,7 @@ describe("testing graph", () => {
       assert(StaticNode.compare(
         outputGraph.nodes[0],
         outputGraph.root
-      ) === 2);
+      ) === 'same');
       assert(StaticNode.compare(
         outputGraph.nodes[1],
         {
@@ -71,7 +71,7 @@ describe("testing graph", () => {
           ontologyclass: 'http://www.w3.org/2000/01/rdf-schema#Literal',
           sourcebranchpublication_id: undefined  // Changed from null to undefined (Rust None -> JS undefined)
         }
-      ) === 1);
+      ) === 'same_ids_partial');
       assert(outputGraph.edges.length === 1);
       assert(
         outputGraph.edges[0].domainnode_id === outputGraph.nodes[0].nodeid &&
@@ -117,7 +117,7 @@ describe("testing graph", () => {
       assert(StaticNode.compare(
         outputGraph.nodes[0],
         outputGraph.root
-      ) === 2);
+      ) === 'same');
       assert(StaticNode.compare(
         outputGraph.nodes[1],
         {
@@ -140,7 +140,7 @@ describe("testing graph", () => {
           ontologyclass: 'http://www.w3.org/2000/01/rdf-schema#Literal',
           sourcebranchpublication_id: undefined  // Changed from null to undefined
         }
-      ) === 1);
+      ) === 'same_ids_partial');
       assert(outputGraph.edges.length === 1);
       assert(
         outputGraph.edges[0].domainnode_id === outputGraph.nodes[0].nodeid &&
