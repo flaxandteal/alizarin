@@ -1,0 +1,25 @@
+{
+  "_doc": "Read, edit and commit a resource through the ORM: assigned values read back as given until the commit, which coerces them in core. The fixture is tests/data/view-models (one node per datatype). See tests/data/scenarios/README.md.",
+  "fixture": "view-models",
+  "steps": [
+    { "read": "string", "forJson": "Ráth", "str": "Ráth" },
+    { "assign": "string", "value": "Dún" },
+    { "pending": "string", "value": "Dún" },
+    { "assign": "number", "value": 7 },
+    { "pending": "number", "value": 7 },
+    { "assign": "boolean", "value": false },
+    {
+      "commit": {
+        "upserted": {
+          "string": { "en": { "value": "Dún", "direction": "ltr" }, "ga": { "value": "Ráth Mór", "direction": "ltr" } },
+          "number": 7,
+          "boolean": false
+        },
+        "removed": []
+      }
+    },
+    { "read": "string", "forJson": "Dún", "str": "Dún" },
+    { "read": "number", "forJson": 7, "str": "7" },
+    { "read": "boolean", "forJson": false }
+  ]
+}

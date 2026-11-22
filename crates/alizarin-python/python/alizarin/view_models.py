@@ -42,6 +42,7 @@ if TYPE_CHECKING:
 
 # Import SemanticViewModel from its own module
 from .semantic import SemanticViewModel
+from .alizarin import number_display
 
 # Type variable for generic ViewModels
 T = TypeVar('T')
@@ -1359,7 +1360,8 @@ class NumberViewModel(float):
         self.__parentPseudo: Optional['PseudoValue'] = None
 
     def __str__(self) -> str:
-        return str(float(self))
+        # Core's display, as TypeScript's String(n): "7", not "7.0".
+        return number_display(float(self))
 
     def describeField(self) -> Optional[Any]:
         return self.__parentPseudo.describe_field() if self.__parentPseudo else None

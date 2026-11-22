@@ -134,6 +134,10 @@ entries is tracked in `PARITY-RESEARCH.md`.
   used to drop them silently to empty.
 
 ### Fixed
+- Python: `str()` of a number view model is as TypeScript's: `"7"`, not
+  `"7.0"` (and `1e+21`, `NaN`, …), by core's `number_display`
+  (ECMAScript's Number::toString, from the `ryu-js` crate), exported from
+  `alizarin`.
 - `ResourceInstanceViewModel.getName()` / `getSlug()` / `getDescription()` /
   `getMapPopup()` give `null` when there is no value on either backend (NAPI
   gave `undefined`); typed `string | null`.

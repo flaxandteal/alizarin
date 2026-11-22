@@ -5,6 +5,26 @@
 
 use serde_json::Value;
 
+/// A number as JavaScript's `String(n)` shows it (ECMAScript's
+/// Number::toString): `7`, not `7.0`; `1e+21`; `NaN`. The display every
+/// binding's number view model gives (TypeScript's is JavaScript's own).
+///
+/// ```
+/// use alizarin_core::string_utils::number_display;
+///
+/// assert_eq!(number_display(7.0), "7");
+/// assert_eq!(number_display(42.5), "42.5");
+/// assert_eq!(number_display(1e21), "1e+21");
+/// assert_eq!(number_display(1e-7), "1e-7");
+/// assert_eq!(number_display(0.1 + 0.2), "0.30000000000000004");
+/// assert_eq!(number_display(-0.0), "0");
+/// assert_eq!(number_display(f64::NAN), "NaN");
+/// assert_eq!(number_display(f64::NEG_INFINITY), "-Infinity");
+/// ```
+pub fn number_display(n: f64) -> String {
+    ryu_js::Buffer::new().format(n).to_string()
+}
+
 /// Convert a snake_case string to camelCase.
 ///
 /// # Examples

@@ -140,6 +140,8 @@ REASONS = [
     ("fn:construct_static", {"wasm": "ecosystem: WASM's static classes' constructors (new StaticNode(...)) build through core"}),
     ("fn:resources_from_business_data_json",
      {"wasm": "ecosystem: a static method on WASM's resource class, StaticResource.fromBusinessDataJsonString"}),
+    ("fn:number_display", {"wasm": "ecosystem: JavaScript's own String(n), which core's display matches",
+                           "napi": "ecosystem: JavaScript's own String(n), which core's display matches"}),
     ("fn:compare_nodes", {"wasm": "ecosystem: a static method on WASM's node class, StaticNode.compare"}),
     ("fn:summary_to_metadata", {"wasm": "ecosystem: a method on WASM's summary class, StaticResourceSummary.toMetadata"}),
     ("fn:static_resource_from_summary", {"wasm": "ecosystem: a static method on WASM's resource class, StaticResource.fromSummary"}),

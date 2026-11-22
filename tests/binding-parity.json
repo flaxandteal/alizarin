@@ -3958,6 +3958,15 @@
         "python": "ecosystem: WASM factory used by js/backend.ts; Python constructs its wrapper class directly"
       }
     },
+    "number_display": {
+      "wasm": null,
+      "napi": null,
+      "python": "number_display",
+      "why": {
+        "wasm": "ecosystem: JavaScript's own String(n), which core's display matches",
+        "napi": "ecosystem: JavaScript's own String(n), which core's display matches"
+      }
+    },
     "parse_rdm_namespace": {
       "wasm": "parseRdmNamespace",
       "napi": null,

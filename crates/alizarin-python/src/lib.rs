@@ -480,6 +480,13 @@ fn construct_static(py: Python, kind: &str, value: &Bound<'_, PyAny>) -> PyResul
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
 
+/// A number as JavaScript's `String(n)` shows it (`7`, not `7.0`; `1e+21`):
+/// core's, so number view models display alike on every backend.
+#[pyfunction]
+fn number_display(n: f64) -> String {
+    alizarin_core::string_utils::number_display(n)
+}
+
 /// Whether two nodes (whole or partial dicts) are the same apart from their
 /// ids: core's `compare_nodes`, as WASM's `StaticNode.compare` and NAPI's
 /// `compareNodes`. One of "same", "same_ids_partial", "nodeid_conflict",
@@ -2278,6 +2285,7 @@ fn alizarin(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(canonical_static, m)?)?;
     m.add_function(wrap_pyfunction!(construct_static, m)?)?;
     m.add_function(wrap_pyfunction!(compare_nodes, m)?)?;
+    m.add_function(wrap_pyfunction!(number_display, m)?)?;
     m.add_function(wrap_pyfunction!(resources_from_business_data_json, m)?)?;
     m.add_function(wrap_pyfunction!(summary_to_metadata, m)?)?;
     m.add_function(wrap_pyfunction!(static_resource_from_summary, m)?)?;

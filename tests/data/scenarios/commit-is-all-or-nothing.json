@@ -1,0 +1,13 @@
+{
+  "_doc": "A commit with one value core cannot coerce fails whole: nothing it held is applied, and its edits are dropped. An edit the graph rules out fails where it is made. See tests/data/scenarios/README.md.",
+  "fixture": "view-models",
+  "steps": [
+    { "assign_fails": "probe", "value": "x", "error": "probe" },
+    { "assign": "string", "value": "Dún" },
+    { "assign": "number", "value": "not a number" },
+    { "commit_fails": "number" },
+    { "read": "string", "forJson": "Ráth" },
+    { "read": "number", "forJson": 42.5 },
+    { "commit": { "upserted": {}, "removed": [] } }
+  ]
+}

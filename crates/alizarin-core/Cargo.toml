@@ -36,5 +36,7 @@ oxiri = "0.2"
 regex-lite = "0.1"
 csv = "1.3"
 chrono = "0.4"
+# ECMAScript's Number::toString, so a number displays as JS shows it
+ryu-js = "1"
 
 [dev-dependencies]
