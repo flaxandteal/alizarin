@@ -20,8 +20,10 @@ use crate::StaticGraph;
 // Types
 // ============================================================================
 
-/// A single file to be written, as a relative path + content string.
-#[derive(Debug, Clone)]
+/// A single file to be written, as a relative path + content string. Every
+/// JS binding returns it as `{relativePath, content}`.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ExportFile {
     /// Relative path within the pkg directory (e.g. "graphs/resource_models/MyModel.json")
     pub relative_path: String,
@@ -34,7 +36,10 @@ pub struct ExportFile {
 /// This is the platform-agnostic output of the data-building layer.
 /// WASM consumers use this directly; NAPI/Python consumers pass it
 /// to [`fs_writer::write_to_directory`].
-#[derive(Debug, Clone, Default)]
+/// Every JS binding's `buildPrebuildExport` returns it as `{graphFiles,
+/// referenceDataFiles, businessDataFiles}`.
+#[derive(Debug, Clone, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PrebuildExportData {
     pub graph_files: Vec<ExportFile>,
     pub reference_data_files: Vec<ExportFile>,
@@ -108,10 +113,12 @@ fn wrap_graph_json(graph: &StaticGraph) -> Result<serde_json::Value, ExportError
 
 /// Determine the filename for a graph based on its display name.
 ///
-/// Uses the English name (or graphid as fallback), sanitized for filesystem use.
-/// Matches the behaviour of the quartz-graphs `run.py` exporter.
+/// Uses the English name (else the lowest-keyed language's, else the
+/// graphid), sanitized for filesystem use, whatever the current language: the
+/// same graph always exports to the same file. Matches the behaviour of the
+/// quartz-graphs `run.py` exporter.
 fn graph_filename(graph: &StaticGraph) -> String {
-    let name = graph.display_name();
+    let name = graph.name.get("en");
     let name = if name.is_empty() {
         graph.graphid.clone()
     } else {

@@ -133,6 +133,32 @@ To get linting up and running, this uses `typescript-eslint`. Currently, this ha
 temporary allowed limit of 46 warnings, and sets several errors to warnings. This
 is temporary and will be progressively reduced.
 
+### Dead code review
+
+WASM exports nothing in this repository references (`js/`, `tests/`,
+`ext/*/js/src`, `docs/`), as of the 2.0 parity work. Each is public API, most
+with NAPI or Python counterparts in `tests/binding-parity.json`, so none is
+known dead; they are candidates to review, not to remove unchecked:
+
+- Global RDM cache: `addCollectionToGlobalRdmCache`, `addToGlobalRdmCacheFromSkosXml`,
+  `clearGlobalRdmCache`, `globalRdmGetCollectionIds`, `globalRdmGetParentId`,
+  `globalRdmHasCollection`, `globalRdmLookupLabel`, `hasGlobalRdmCache`,
+  `removeFromGlobalRdmCache`, `setGlobalRdmCache`
+- Coercion: `coerceBoolean`, `coerceConceptList`, `coerceEdtf`, `coerceGeoJson`,
+  `coerceNonLocalizedString`, `coerceUrl`
+- Ids: `generateCollectionUuid`, `generateConceptUuid`, `generateUuidV5`,
+  `generateValueUuid`, `parseRdmNamespace`
+- Extensions: `applyMutationsWithExtensions`, `getRegisteredExtensionHandlers`,
+  `getRegisteredExtensionMutations`, `hasExtensionMutation`,
+  `registerExtensionMutation`, `unregisterExtensionHandler`,
+  `unregisterExtensionMutation`
+- Labels: `labelsToDeterministicString`, `resolveLabelsWithLookup`
+- Other: `buildPrebuildExport`, `getRegisteredGraphIds`, `WasmPopulateResult`
+  (returned by `populate()`), `WasmSpan` (the tracing API's span)
+
+Regenerate the list by checking each `export function` / `export class` in
+`pkg/alizarin.d.ts` for references in those directories.
+
 ### License
 
 Currently, and you should assume for the foreseeable future,

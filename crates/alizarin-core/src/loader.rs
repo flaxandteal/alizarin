@@ -1274,6 +1274,30 @@ pub struct ImportPrebuildResult {
     pub ontology_configs: Vec<OntologyConfig>,
 }
 
+/// What every binding's `importPrebuild` / `import_prebuild` returns: an
+/// [`ImportPrebuildResult`] as JSON (its validators are objects, not data;
+/// Python returns its first alongside, as `ontologyValidator`).
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportPrebuildSummary<'a> {
+    pub graph_ids: &'a [String],
+    pub collection_ids: &'a [String],
+    pub collections: &'a [SkosCollection],
+    pub ontology_configs: &'a [OntologyConfig],
+}
+
+impl ImportPrebuildResult {
+    /// The result as every binding returns it.
+    pub fn summary(&self) -> ImportPrebuildSummary<'_> {
+        ImportPrebuildSummary {
+            graph_ids: &self.graph_ids,
+            collection_ids: &self.collection_ids,
+            collections: &self.collections,
+            ontology_configs: &self.ontology_configs,
+        }
+    }
+}
+
 /// Load SKOS XML/JSON collections from an arbitrary directory.
 ///
 /// Scans `dir` for `*.xml` and `*.json` files (non-recursive). XML files are

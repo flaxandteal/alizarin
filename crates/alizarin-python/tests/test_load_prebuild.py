@@ -39,6 +39,16 @@ def gm(prebuild):
     viewContext.graphManager = None
 
 
+def test_import_prebuild_gives_cores_summary(prebuild):
+    # As NAPI's importPrebuild (tests/dual-backend/prebuildImport.test.ts),
+    # with Python's validator alongside.
+    import alizarin
+
+    result = alizarin.import_prebuild(prebuild, "http://localhost/")
+    assert sorted(result) == ["collectionIds", "collections", "graphIds", "ontologyConfigs", "ontologyValidator"]
+    assert len(result["graphIds"]) == 6
+
+
 def test_load_graph_takes_a_class_name_a_display_name_or_an_id(gm):
     person = gm.load_graph("Person")
     assert gm.load_graph("person") is person

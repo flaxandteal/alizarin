@@ -636,6 +636,19 @@ export function applyGraphMutations(graph: any, mutationsJson: string): any {
 }
 
 /**
+ * Registered graphs (all, or `graphIds`) as prebuild files, by core on either
+ * backend: `{graphFiles, referenceDataFiles, businessDataFiles}`, each a list
+ * of `{relativePath, content}`.
+ */
+export function buildPrebuildExport(baseUri: string, graphIds?: string[] | null): any {
+  if (_backend === 'napi') {
+    const napi = getNapiModule();
+    return new napi.NapiPrebuildExporter().buildExportData(graphIds ?? null, baseUri);
+  }
+  return getWasmModule().buildPrebuildExport(baseUri, graphIds ?? null);
+}
+
+/**
  * How the ORM names a field, and a field's group, by core on either backend:
  * `"<model> - <node name>"` / `"<model> - <nodegroup name>"`, the node name
  * alone without a model, a list's in brackets.

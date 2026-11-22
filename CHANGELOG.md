@@ -107,6 +107,17 @@ entries is tracked in `PARITY-RESEARCH.md`.
   graph diff needs, and a bad argument throws (it logged and gave `null`).
   An id missing on one side and `null` on the other now counts as unset on
   both.
+- **Breaking:** `importPrebuild` / `import_prebuild` return core's summary,
+  `{graphIds, collectionIds, collections, ontologyConfigs}`, on NAPI and
+  Python (Python's were `graph_ids`, `collection_ids`; it keeps its
+  validator, as `ontologyValidator`). NAPI's takes the extra reference-data
+  and ontology directories, as Python's did.
+- **Breaking:** prebuild export data is core's on WASM and NAPI:
+  `{graphFiles, referenceDataFiles, businessDataFiles}` of `{relativePath,
+  content}` (NAPI's `buildExportData` gave `{files, graphFileCount,
+  referenceDataFileCount}`). WASM's `buildPrebuildExport` takes `graphIds`,
+  as NAPI's did. TypeScript: `buildPrebuildExport(baseUri, graphIds?)` from
+  `alizarin`, on either backend.
 - **Breaking (Python):** view models' `describeField()` /
   `describeFieldGroup()` (and pseudos' `describe_field` /
   `describe_field_group`) name a field as TypeScript does: `"<model> - <node
@@ -148,6 +159,9 @@ entries is tracked in `PARITY-RESEARCH.md`.
   returned.
 
 ### Fixed
+- A graph exports to a file named by its English name (else its
+  lowest-keyed language's), as documented; it took the current language,
+  so the same graph's file name changed with the UI language.
 - Python: `str()` of a number view model is as TypeScript's: `"7"`, not
   `"7.0"` (and `1e+21`, `NaN`, …), by core's `number_display`
   (ECMAScript's Number::toString, from the `ryu-js` crate), exported from

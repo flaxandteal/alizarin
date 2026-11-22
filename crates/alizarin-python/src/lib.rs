@@ -2225,10 +2225,13 @@ fn export_prebuild(
 ///     base_uri: Base URI for SKOS XML parsing (default: "http://localhost:8000/")
 ///
 /// Returns:
-///     dict with keys:
-///         graph_ids (list[str]): IDs of registered graphs
-///         collection_ids (list[str]): IDs of loaded collections
-///         ontology_validator (OntologyValidator | None): validator if ontologies were found
+///     dict with keys, as NAPI's importPrebuild (core's):
+///         graphIds (list[str]): IDs of registered graphs
+///         collectionIds (list[str]): IDs of loaded collections
+///         collections (list[dict]): the collections
+///         ontologyConfigs (list[dict]): the ontology configs
+///     and, Python's alone:
+///         ontologyValidator (OntologyValidator | None): validator if ontologies were found
 #[pyfunction]
 #[pyo3(signature = (prebuild_dir, base_uri="http://localhost:8000/", extra_reference_data_dirs=None, extra_ontology_dirs=None))]
 fn import_prebuild(
@@ -2253,16 +2256,17 @@ fn import_prebuild(
     )
     .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
 
+    // Core's summary, as NAPI's importPrebuild, with the first ontology
+    // validator alongside (an object, not data).
+    let summary = pythonize::pythonize(py, &result.summary())
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
+    let dict = summary.downcast_bound::<pyo3::types::PyDict>(py)?.clone();
     let ontology_validator: Option<graph_mutator_py::PyOntologyValidator> = result
         .ontology_validators
         .into_iter()
         .next()
         .map(graph_mutator_py::PyOntologyValidator::from_inner);
-
-    let dict = pyo3::types::PyDict::new_bound(py);
-    dict.set_item("graph_ids", result.graph_ids)?;
-    dict.set_item("collection_ids", result.collection_ids)?;
-    dict.set_item("ontology_validator", ontology_validator.into_py(py))?;
+    dict.set_item("ontologyValidator", ontology_validator.into_py(py))?;
     Ok(dict.into())
 }
 

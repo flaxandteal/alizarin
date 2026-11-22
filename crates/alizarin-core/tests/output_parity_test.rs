@@ -162,6 +162,11 @@ fn outputs() -> BTreeMap<String, String> {
                 .unwrap(),
         ),
     );
+    // The registered graph exported as prebuild files.
+    let ids = [graph.graphid.clone()];
+    let export = alizarin_core::build_prebuild_export(Some(&ids), None, "http://localhost/");
+    put("export:prebuild".into(), canonical(&export.unwrap()));
+
     let batches = [resource_json.clone(), layer_json];
     let merged = alizarin_core::batch_merge_resources_from_json(&batches, false, false);
     put("merged:batch".into(), canonical(&merged.unwrap()));

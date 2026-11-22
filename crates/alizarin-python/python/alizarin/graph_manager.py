@@ -376,13 +376,13 @@ class GraphManager:
         from . import import_prebuild
 
         imported = import_prebuild(prebuild_dir, base_uri)
-        for graph_id in imported["graph_ids"]:
+        for graph_id in imported["graphIds"]:
             if graph_id not in self._graph_ids:
                 self._graph_ids.append(graph_id)
         refs = self.registry.load_prebuild_business_data(prebuild_dir)
         return {
-            "graph_ids": list(imported["graph_ids"]),
-            "collection_ids": list(imported["collection_ids"]),
+            "graph_ids": list(imported["graphIds"]),
+            "collection_ids": list(imported["collectionIds"]),
             "resource_ids": [ref["resourceinstanceid"] for ref in refs],
         }
 

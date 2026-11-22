@@ -160,35 +160,18 @@ impl NapiPrebuildExporter {
             .map_err(exporter_err)
     }
 
-    /// Build complete export data as JSON (without writing to filesystem).
-    ///
-    /// Returns an object with `files` array of `{relativePath, content}` entries.
+    /// Build complete export data as JSON (without writing to filesystem):
+    /// core's `{graphFiles, referenceDataFiles, businessDataFiles}`, each a
+    /// list of `{relativePath, content}`, as WASM's `buildPrebuildExport`.
     #[napi]
     pub fn build_export_data(
         &self,
         graph_ids: Option<Vec<String>>,
         base_uri: String,
     ) -> Result<serde_json::Value> {
-        let ids = graph_ids.as_deref();
-        let data =
-            alizarin_core::build_prebuild_export(ids, None, &base_uri).map_err(exporter_err)?;
-
-        let files: Vec<serde_json::Value> = data
-            .all_files()
-            .iter()
-            .map(|f| {
-                serde_json::json!({
-                    "relativePath": f.relative_path,
-                    "content": f.content,
-                })
-            })
-            .collect();
-
-        Ok(serde_json::json!({
-            "files": files,
-            "graphFileCount": data.graph_files.len(),
-            "referenceDataFileCount": data.reference_data_files.len(),
-        }))
+        let data = alizarin_core::build_prebuild_export(graph_ids.as_deref(), None, &base_uri)
+            .map_err(exporter_err)?;
+        serde_json::to_value(data).map_err(|e| napi::Error::from_reason(e.to_string()))
     }
 
     /// Get IDs of all registered graphs.
@@ -1479,24 +1462,27 @@ pub fn get_default_config_keys() -> Vec<String> {
 /// 2. Parses SKOS XML from reference_data/collections/ into the global RDM cache
 /// 3. Loads ontology configs from ontologies/ (if present)
 ///
-/// Returns `{ graphIds, collectionIds, collections, ontologyConfigs }`.
+/// Returns `{ graphIds, collectionIds, collections, ontologyConfigs }` (core's
+/// `ImportPrebuildSummary`, as Python's `import_prebuild`). Resources are not
+/// loaded: use a registry's `loadPrebuildBusinessData`.
 #[napi(js_name = "importPrebuild")]
-pub fn import_prebuild(prebuild_dir: String, base_uri: String) -> Result<serde_json::Value> {
-    let result =
-        alizarin_core::import_prebuild(&prebuild_dir, &base_uri, None, None).map_err(loader_err)?;
-
-    let collections_json = serde_json::to_value(&result.collections)
-        .map_err(|e| napi::Error::from_reason(e.to_string()))?;
-    let ontology_configs: Vec<serde_json::Value> = result
-        .ontology_configs
-        .iter()
-        .filter_map(|c| serde_json::to_value(c).ok())
-        .collect();
-
-    Ok(serde_json::json!({
-        "graphIds": result.graph_ids,
-        "collectionIds": result.collection_ids,
-        "collections": collections_json,
-        "ontologyConfigs": ontology_configs,
-    }))
+pub fn import_prebuild(
+    prebuild_dir: String,
+    base_uri: String,
+    extra_reference_data_dirs: Option<Vec<String>>,
+    extra_ontology_dirs: Option<Vec<String>>,
+) -> Result<serde_json::Value> {
+    fn strs(dirs: &Option<Vec<String>>) -> Option<Vec<&str>> {
+        dirs.as_ref()
+            .map(|v| v.iter().map(String::as_str).collect())
+    }
+    let (reference, ontology) = (strs(&extra_reference_data_dirs), strs(&extra_ontology_dirs));
+    let result = alizarin_core::import_prebuild(
+        &prebuild_dir,
+        &base_uri,
+        reference.as_deref(),
+        ontology.as_deref(),
+    )
+    .map_err(loader_err)?;
+    serde_json::to_value(result.summary()).map_err(|e| napi::Error::from_reason(e.to_string()))
 }

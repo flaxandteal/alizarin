@@ -45,6 +45,7 @@ import {
   batchTreesToTiles,
   mergeResources,
   batchMergeResources,
+  buildPrebuildExport,
 } from "../../js/backend";
 import { ResourceModelWrapper } from "../../js/graphManager";
 import { composeResourceLayers } from "../../js/csvModelLoader";
@@ -183,6 +184,11 @@ function routes(): [string, string, () => any][] {
     "batchTreesToTiles",
     "tiles:batch",
     () => batchTreesToTiles(`[${treeText()}]`, graph, false, true, null, false, false, null, TILE_NAMESPACE),
+  ]);
+  out.push([
+    "buildPrebuildExport",
+    "export:prebuild",
+    () => buildPrebuildExport("http://localhost/", [graph.graphid]),
   ]);
   const layerText = JSON.stringify(layerFixture);
   out.push(["mergeResources", "merged", () => mergeResources(`[${resourceText},${layerText}]`)]);

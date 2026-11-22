@@ -5,20 +5,9 @@
 
 use wasm_bindgen::prelude::*;
 
-/// Convert an ExportFile to a JS object `{relativePath, content}`.
-fn export_file_to_js(file: &alizarin_core::ExportFile) -> JsValue {
-    let obj = js_sys::Object::new();
-    let _ = js_sys::Reflect::set(
-        &obj,
-        &JsValue::from_str("relativePath"),
-        &JsValue::from_str(&file.relative_path),
-    );
-    let _ = js_sys::Reflect::set(
-        &obj,
-        &JsValue::from_str("content"),
-        &JsValue::from_str(&file.content),
-    );
-    obj.into()
+/// Core's export output as JS: `{relativePath, content}` files.
+fn to_js<T: serde::Serialize>(value: &T) -> Result<JsValue, JsError> {
+    crate::js_json::to_value(value).map_err(|e| JsError::new(&e.to_string()))
 }
 
 /// Export registered graphs as data (no filesystem).
@@ -26,14 +15,7 @@ fn export_file_to_js(file: &alizarin_core::ExportFile) -> JsValue {
 /// Returns an array of `{relativePath, content}` objects.
 #[wasm_bindgen(js_name = exportGraphs)]
 pub fn export_graphs(graph_ids: Vec<String>) -> Result<JsValue, JsError> {
-    let files =
-        alizarin_core::export_graphs(&graph_ids).map_err(|e| JsError::new(&e.to_string()))?;
-
-    let arr = js_sys::Array::new();
-    for file in &files {
-        arr.push(&export_file_to_js(file));
-    }
-    Ok(arr.into())
+    to_js(&alizarin_core::export_graphs(&graph_ids).map_err(|e| JsError::new(&e.to_string()))?)
 }
 
 /// Export all registered graphs as data.
@@ -41,38 +23,21 @@ pub fn export_graphs(graph_ids: Vec<String>) -> Result<JsValue, JsError> {
 /// Returns an array of `{relativePath, content}` objects.
 #[wasm_bindgen(js_name = exportAllGraphs)]
 pub fn export_all_graphs() -> Result<JsValue, JsError> {
-    let files = alizarin_core::export_all_graphs().map_err(|e| JsError::new(&e.to_string()))?;
-
-    let arr = js_sys::Array::new();
-    for file in &files {
-        arr.push(&export_file_to_js(file));
-    }
-    Ok(arr.into())
+    to_js(&alizarin_core::export_all_graphs().map_err(|e| JsError::new(&e.to_string()))?)
 }
 
-/// Build complete prebuild export data (graphs only, no RDM from WASM).
-///
-/// Returns `{graphFiles: [{relativePath, content}], referenceDataFiles: [...]}`.
+/// Build complete prebuild export data (no RDM from WASM): core's
+/// `{graphFiles, referenceDataFiles, businessDataFiles}`, each a list of
+/// `{relativePath, content}`, as NAPI's `buildExportData`. `graphIds`
+/// limits it to those graphs (all registered ones without).
 #[wasm_bindgen(js_name = buildPrebuildExport)]
-pub fn build_prebuild_export(base_uri: &str) -> Result<JsValue, JsError> {
-    let data = alizarin_core::build_prebuild_export(None, None, base_uri)
+pub fn build_prebuild_export(
+    base_uri: &str,
+    graph_ids: Option<Vec<String>>,
+) -> Result<JsValue, JsError> {
+    let data = alizarin_core::build_prebuild_export(graph_ids.as_deref(), None, base_uri)
         .map_err(|e| JsError::new(&e.to_string()))?;
-
-    let result = js_sys::Object::new();
-
-    let graph_arr = js_sys::Array::new();
-    for file in &data.graph_files {
-        graph_arr.push(&export_file_to_js(file));
-    }
-    let _ = js_sys::Reflect::set(&result, &JsValue::from_str("graphFiles"), &graph_arr);
-
-    let ref_arr = js_sys::Array::new();
-    for file in &data.reference_data_files {
-        ref_arr.push(&export_file_to_js(file));
-    }
-    let _ = js_sys::Reflect::set(&result, &JsValue::from_str("referenceDataFiles"), &ref_arr);
-
-    Ok(result.into())
+    to_js(&data)
 }
 
 /// Get IDs of all registered graphs.

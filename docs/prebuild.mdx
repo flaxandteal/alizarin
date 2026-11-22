@@ -161,14 +161,16 @@ result = alizarin.import_prebuild(
     extra_reference_data_dirs=None,  # optional: more SKOS directories
     extra_ontology_dirs=None,        # optional: more RDFS/OWL directories
 )
-# result = {
-#     "graph_ids": ["uuid1", "uuid2", ...],
-#     "collection_ids": ["uuid1", "uuid2", ...],
-#     "ontology_validator": OntologyValidator | None
+# result = {                                   # as NAPI's importPrebuild
+#     "graphIds": ["uuid1", "uuid2", ...],
+#     "collectionIds": ["uuid1", "uuid2", ...],
+#     "collections": [...],
+#     "ontologyConfigs": [...],
+#     "ontologyValidator": OntologyValidator | None,   # Python's alone
 # }
 ```
 
-This registers all graphs, loads SKOS collections into the global RDM cache, and creates an ontology validator if ontology files are present. It also sets the RDM namespace from `base_uri`, so generated concept ids are deterministic. Business data is not loaded; read it with a resource registry or the business-data loaders.
+This registers all graphs, loads SKOS collections into the global RDM cache, and creates an ontology validator if ontology files are present. It also sets the RDM namespace from `base_uri`, so generated concept ids are deterministic. Business data is not loaded; read it with a resource registry's `load_prebuild_business_data(dir)` (NAPI `loadPrebuildBusinessData`), or load everything into the ORM with `GraphManager.load_prebuild(dir)`.
 
 ### Export
 

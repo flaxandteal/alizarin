@@ -418,10 +418,10 @@ def build(
         extra_ontology_dirs=list(extra_ontologies) or None,
     )
 
-    graph_ids = result["graph_ids"]
-    click.echo(f"  Loaded {len(graph_ids)} graphs, {len(result['collection_ids'])} collections")
+    graph_ids = result["graphIds"]
+    click.echo(f"  Loaded {len(graph_ids)} graphs, {len(result['collectionIds'])} collections")
 
-    validator = None if no_ontology_validation else result.get("ontology_validator")
+    validator = None if no_ontology_validation else result.get("ontologyValidator")
     if validator:
         click.echo("  Ontology validation: enabled")
 

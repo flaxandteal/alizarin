@@ -255,9 +255,11 @@ export declare function getDefaultConfigKeys(): Array<string>
  * 2. Parses SKOS XML from reference_data/collections/ into the global RDM cache
  * 3. Loads ontology configs from ontologies/ (if present)
  *
- * Returns `{ graphIds, collectionIds, collections, ontologyConfigs }`.
+ * Returns `{ graphIds, collectionIds, collections, ontologyConfigs }` (core's
+ * `ImportPrebuildSummary`, as Python's `import_prebuild`). Resources are not
+ * loaded: use a registry's `loadPrebuildBusinessData`.
  */
-export declare function importPrebuild(prebuildDir: string, baseUri: string): any
+export declare function importPrebuild(prebuildDir: string, baseUri: string, extraReferenceDataDirs?: Array<string> | undefined | null, extraOntologyDirs?: Array<string> | undefined | null): any
 export declare class NapiRdmCache {
   constructor()
   /** Load collections from a SKOS JSON string. */
@@ -684,9 +686,9 @@ export declare class NapiPrebuildExporter {
   /** Export all registered graphs to a directory. */
   exportAllGraphs(outDir: string): Array<string>
   /**
-   * Build complete export data as JSON (without writing to filesystem).
-   *
-   * Returns an object with `files` array of `{relativePath, content}` entries.
+   * Build complete export data as JSON (without writing to filesystem):
+   * core's `{graphFiles, referenceDataFiles, businessDataFiles}`, each a
+   * list of `{relativePath, content}`, as WASM's `buildPrebuildExport`.
    */
   buildExportData(graphIds: Array<string> | undefined | null, baseUri: string): any
   /** Get IDs of all registered graphs. */
