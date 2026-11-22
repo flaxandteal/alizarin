@@ -244,6 +244,16 @@ impl GraphModelAccess {
         self.nodes.as_ref().map(|arc| arc.as_ref())
     }
 
+    /// A nodegroup's name: its grouping node's (the node whose id is the
+    /// nodegroup's), as every binding's `getNodegroupName`.
+    pub fn nodegroup_name(&self, nodegroup_id: &str) -> Result<String, String> {
+        self.get_nodes_internal()
+            .ok_or_else(|| "Nodes not available".to_string())?
+            .get(nodegroup_id)
+            .map(|node| node.name.clone())
+            .ok_or_else(|| format!("Node not found: {nodegroup_id}"))
+    }
+
     /// Get nodes by alias (returns None if caches not built).
     pub fn get_nodes_by_alias_internal(&self) -> Option<&HashMap<String, Arc<StaticNode>>> {
         self.nodes_by_alias.as_ref().map(|arc| arc.as_ref())
@@ -604,9 +614,57 @@ fn on_load_functions_of(graph: &StaticGraph) -> Vec<crate::DeriveConfig> {
         .collect()
 }
 
+/// How the ORM names a field (its view models' `describeField`):
+/// `"<model> - <node name>"`, the node name alone without a model, and in
+/// brackets for a list field.
+pub fn describe_field(model_name: Option<&str>, node_name: &str, list: bool) -> String {
+    let name = match model_name {
+        Some(model) => format!("{model} - {node_name}"),
+        None => node_name.to_string(),
+    };
+    bracketed(name, list)
+}
+
+/// How the ORM names a field's group (`describeFieldGroup`): `"<model> -
+/// <nodegroup name>"` when both are known, else the node name alone; in
+/// brackets for a list field.
+pub fn describe_field_group(
+    model_name: Option<&str>,
+    node_name: &str,
+    nodegroup_name: Option<&str>,
+    list: bool,
+) -> String {
+    let name = match (model_name, nodegroup_name) {
+        (Some(model), Some(group)) => format!("{model} - {group}"),
+        _ => node_name.to_string(),
+    };
+    bracketed(name, list)
+}
+
+fn bracketed(name: String, list: bool) -> String {
+    if list {
+        format!("[{name}]")
+    } else {
+        name
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_field_is_named_with_its_model_and_a_list_in_brackets() {
+        assert_eq!(describe_field(Some("Place"), "Name", false), "Place - Name");
+        assert_eq!(describe_field(None, "Name", false), "Name");
+        assert_eq!(describe_field(Some("P"), "Names", true), "[P - Names]");
+        assert_eq!(
+            describe_field_group(Some("Place"), "Name", Some("Naming"), false),
+            "Place - Naming"
+        );
+        let no_model = describe_field_group(None, "Name", Some("Ng"), true);
+        assert_eq!(no_model, "[Name]");
+    }
     use crate::graph::{StaticEdge, StaticNodegroup};
     use crate::instance_wrapper_core::ModelAccess;
     use serde_json::json;

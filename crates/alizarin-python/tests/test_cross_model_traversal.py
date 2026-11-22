@@ -181,9 +181,10 @@ async def test_view_model_describes_its_field(graph_manager):
         person = await graph_manager.getResource(graph_manager._test_person_id)
         name = await person.name
         forename = await (await name[0].forenames).forename
-        forename_node = {n['alias']: n for n in load_graph('Person')['nodes']}['forename']
-        assert forename.describeField() == "forename"
-        assert forename.describeFieldGroup() == forename_node['nodegroup_id']
+        # Core's rule, as TypeScript: "<model> - <node name>", and the
+        # nodegroup's grouping node's name ("Name") for the group.
+        assert forename.describeField() == "Person - Forename"
+        assert forename.describeFieldGroup() == "Person - Name"
 
     finally:
         viewContext.graphManager = None

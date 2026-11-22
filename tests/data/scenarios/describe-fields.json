@@ -1,0 +1,9 @@
+{
+  "_doc": "How the ORM names a field and its group (describeField, describeFieldGroup): core's rule, '<model> - <node name>' and '<model> - <grouping node name>'. The model is the fixture graph's ('Probe'). See tests/data/scenarios/README.md.",
+  "fixture": "view-models",
+  "steps": [
+    { "describe": "string", "field": "Probe - string", "group": "Probe - string" },
+    { "describe": "number", "field": "Probe - number", "group": "Probe - number" },
+    { "describe": "concepts", "field": "Probe - concepts", "group": "Probe - concepts" }
+  ]
+}

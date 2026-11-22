@@ -39,9 +39,10 @@ async function open(fixture: string): Promise<{ resource: any; nodeIds: Record<s
   const graphJson = load(fixture, "graph.json");
   const graph = parseStaticGraph(JSON.stringify({ graph: [graphJson] }));
   nodeConfigManager.loadFromGraph(graph);
+  // The model named as the graph, as Python's GraphManager names it.
   const wkrm = createWKRM(createStaticGraphMeta({
     graphid: graph.graphid,
-    name: "Scenario",
+    name: graphJson.name,
     slug: "scenario",
     relatable_resource_model_ids: [],
     resource_2_resource_constraints: [],
@@ -109,6 +110,13 @@ const STEPS: Record<string, (step: any, ctx: Context) => Promise<void> | void> =
   },
   commit_fails(step, { resource, at }) {
     expect(() => resource.$commit(), at).toThrow(step.commit_fails);
+  },
+  async describe(step, { resource, at }) {
+    const value = await resource[step.describe];
+    expect({ field: value.describeField(), group: value.describeFieldGroup() }, at).toEqual({
+      field: step.field,
+      group: step.group,
+    });
   },
 };
 

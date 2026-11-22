@@ -1967,14 +1967,9 @@ impl NapiResourceModelWrapper {
     /// Get nodegroup name (actually the name of the root node for that nodegroup).
     #[napi(js_name = "getNodegroupName")]
     pub fn get_nodegroup_name(&self, nodegroup_id: String) -> Result<String> {
-        let model = self.model()?;
-        let nodes = model
-            .get_nodes()
-            .ok_or_else(|| napi::Error::from_reason("Nodes not available"))?;
-        let node = nodes
-            .get(&nodegroup_id)
-            .ok_or_else(|| napi::Error::from_reason(format!("Node not found: {}", nodegroup_id)))?;
-        Ok(node.name.clone())
+        self.model()?
+            .nodegroup_name(&nodegroup_id)
+            .map_err(napi::Error::from_reason)
     }
 
     /// Get node ID from alias.

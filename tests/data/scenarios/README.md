@@ -36,3 +36,7 @@ unknown kind fails.
 | `{"assign_fails": alias, "value": v, "error": text}` | The assignment must raise where it is made, its message containing `text` (an edit the graph rules out). |
 | `{"commit": {"upserted": {alias: v}, "removed": [ids]}}` | Commit (`$commit()` / `commit()`): exactly one upserted tile per alias listed, holding `v` for that alias's node, and these tile ids removed. |
 | `{"commit_fails": text}` | The commit must raise, its message containing `text`; nothing is applied. |
+| `{"describe": alias, "field": f, "group": g}` | The attribute's view model names its field `f` (`describeField()`) and its group `g` (`describeFieldGroup()`). |
+
+The model the fixture's graph defines is named as the graph (`graph.json`'s
+`name`), on every runner.

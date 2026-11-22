@@ -1323,6 +1323,29 @@ pub fn batch_merge_resources(
         .map_err(|e| napi::Error::from_reason(e.to_string()))
 }
 
+/// How the ORM names a field: core's `describe_field` (`"<model> - <node
+/// name>"`, a list's in brackets), as WASM and Python give it.
+#[napi]
+pub fn describe_field(model_name: Option<String>, node_name: String, list: bool) -> String {
+    alizarin_core::describe_field(model_name.as_deref(), &node_name, list)
+}
+
+/// How the ORM names a field's group: core's `describe_field_group`.
+#[napi]
+pub fn describe_field_group(
+    model_name: Option<String>,
+    node_name: String,
+    nodegroup_name: Option<String>,
+    list: bool,
+) -> String {
+    alizarin_core::describe_field_group(
+        model_name.as_deref(),
+        &node_name,
+        nodegroup_name.as_deref(),
+        list,
+    )
+}
+
 /// Whether two nodes (whole or partial objects) are the same apart from their
 /// ids: core's `compare_nodes`, as WASM's `StaticNode.compare`. One of
 /// `"same"`, `"same_ids_partial"`, `"nodeid_conflict"`,

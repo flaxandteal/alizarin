@@ -636,6 +636,23 @@ export function applyGraphMutations(graph: any, mutationsJson: string): any {
 }
 
 /**
+ * How the ORM names a field, and a field's group, by core on either backend:
+ * `"<model> - <node name>"` / `"<model> - <nodegroup name>"`, the node name
+ * alone without a model, a list's in brackets.
+ */
+export function describeField(modelName: string | null, nodeName: string, list: boolean): string {
+  const module = _backend === 'napi' ? getNapiModule() : getWasmModule();
+  return module.describeField(modelName, nodeName, list);
+}
+
+export function describeFieldGroup(
+  modelName: string | null, nodeName: string, nodegroupName: string | null, list: boolean,
+): string {
+  const module = _backend === 'napi' ? getNapiModule() : getWasmModule();
+  return module.describeFieldGroup(modelName, nodeName, nodegroupName, list);
+}
+
+/**
  * Trees to tiles, and resource merging, by core on either backend; the
  * arguments are WASM's (graph: the active backend's StaticGraph). Each
  * returns core's JSON: `{business_data: {resources}}`; batch adds `errors`,

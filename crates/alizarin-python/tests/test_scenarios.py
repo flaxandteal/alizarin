@@ -109,8 +109,14 @@ async def commit_fails(step, resource, node_ids, at):
         resource.commit()
 
 
+async def describe(step, resource, node_ids, at):
+    value = await getattr(resource, step["describe"])
+    actual = {"field": value.describeField(), "group": value.describeFieldGroup()}
+    assert actual == {"field": step["field"], "group": step["group"]}, at
+
+
 # One handler per step, keyed by the step's kind (its first key).
-STEPS = {f.__name__: f for f in (read, pending, assign, assign_fails, commit, commit_fails)}
+STEPS = {f.__name__: f for f in (read, pending, assign, assign_fails, commit, commit_fails, describe)}
 
 
 @pytest.mark.asyncio

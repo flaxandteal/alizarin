@@ -107,6 +107,14 @@ entries is tracked in `PARITY-RESEARCH.md`.
   graph diff needs, and a bad argument throws (it logged and gave `null`).
   An id missing on one side and `null` on the other now counts as unset on
   both.
+- **Breaking (Python):** view models' `describeField()` /
+  `describeFieldGroup()` (and pseudos' `describe_field` /
+  `describe_field_group`) name a field as TypeScript does: `"<model> - <node
+  name>"`, and `"<model> - <nodegroup name>"` for its group, `[…]` for a
+  list (they gave the node's alias, and the nodegroup's id). The rule is
+  core's (`describe_field`, `describe_field_group`, on every binding); a
+  nodegroup's name is its grouping node's (Python's `nodegroup_name`), where
+  Python took the first node it found in the group.
 - **Breaking (Python):** `ResourceRegistry.populate_caches` returns
   `unknownReferences` / `hasUnknown` (were `unknown_references` /
   `has_unknown`), and `resolve_path` returns `nodegroupId` / `isSingle` /

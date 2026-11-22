@@ -480,6 +480,38 @@ fn construct_static(py: Python, kind: &str, value: &Bound<'_, PyAny>) -> PyResul
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
 
+/// How the ORM names a field: core's `describe_field` ("<model> - <node
+/// name>", a list's in brackets), as WASM and NAPI give it.
+#[pyfunction]
+#[pyo3(signature = (model_name, node_name, list=false))]
+fn describe_field(model_name: Option<&str>, node_name: &str, list: bool) -> String {
+    alizarin_core::describe_field(model_name, node_name, list)
+}
+
+/// How the ORM names a field's group: core's `describe_field_group`.
+#[pyfunction]
+#[pyo3(signature = (model_name, node_name, nodegroup_name, list=false))]
+fn describe_field_group(
+    model_name: Option<&str>,
+    node_name: &str,
+    nodegroup_name: Option<&str>,
+    list: bool,
+) -> String {
+    alizarin_core::describe_field_group(model_name, node_name, nodegroup_name, list)
+}
+
+/// The name of a registered graph's nodegroup: its grouping node's, as
+/// WASM's and NAPI's `getNodegroupName`.
+#[pyfunction]
+fn nodegroup_name(graph_id: &str, nodegroup_id: &str) -> PyResult<String> {
+    let model = alizarin_core::get_model(graph_id).ok_or_else(|| {
+        PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!("No model for graph {graph_id}"))
+    })?;
+    model
+        .nodegroup_name(nodegroup_id)
+        .map_err(PyErr::new::<pyo3::exceptions::PyKeyError, _>)
+}
+
 /// A number as JavaScript's `String(n)` shows it (`7`, not `7.0`; `1e+21`):
 /// core's, so number view models display alike on every backend.
 #[pyfunction]
@@ -2286,6 +2318,9 @@ fn alizarin(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(construct_static, m)?)?;
     m.add_function(wrap_pyfunction!(compare_nodes, m)?)?;
     m.add_function(wrap_pyfunction!(number_display, m)?)?;
+    m.add_function(wrap_pyfunction!(describe_field, m)?)?;
+    m.add_function(wrap_pyfunction!(describe_field_group, m)?)?;
+    m.add_function(wrap_pyfunction!(nodegroup_name, m)?)?;
     m.add_function(wrap_pyfunction!(resources_from_business_data_json, m)?)?;
     m.add_function(wrap_pyfunction!(summary_to_metadata, m)?)?;
     m.add_function(wrap_pyfunction!(static_resource_from_summary, m)?)?;

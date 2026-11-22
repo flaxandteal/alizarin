@@ -87,6 +87,31 @@ class IPseudo(Protocol):
         ...
 
 
+def _model_name(model: Optional[Any]) -> Optional[str]:
+    """The model's name, as TypeScript's wkrm.modelName."""
+    wkrm = getattr(model, "wkrm", None) if model is not None else None
+    return getattr(wkrm, "model_name", None) or None
+
+
+def _describe_field(model: Optional[Any], node: Optional[StaticNode], is_list: bool) -> str:
+    """Core's describe_field for a pseudo's node and model."""
+    from .alizarin import describe_field
+
+    if node is None:
+        return "[(uninitialized node)]" if is_list else "Unavailable field"
+    return describe_field(_model_name(model), node.name, is_list)
+
+
+def _describe_field_group(model: Optional[Any], node: Optional[StaticNode], is_list: bool) -> str:
+    """Core's describe_field_group: the nodegroup's name by core's rule."""
+    from .alizarin import describe_field_group, nodegroup_name
+
+    if node is None:
+        return "[(uninitialized node)]" if is_list else "Unavailable field"
+    group = nodegroup_name(node.graph_id, node.nodegroup_id) if model is not None and node.nodegroup_id else None
+    return describe_field_group(_model_name(model), node.name, group, is_list)
+
+
 # =============================================================================
 # PseudoValue Implementation
 # =============================================================================
@@ -314,16 +339,12 @@ class PseudoValue(Generic[VM]):
         return False
 
     def describe_field(self) -> str:
-        """Get human-readable field description."""
-        if self.node:
-            return self.node.alias or self.node.name or self.node.nodeid
-        return "(unknown field)"
+        """How the ORM names this field: core's, as TypeScript's describeField."""
+        return _describe_field(self._model, self.node, False)
 
     def describe_field_group(self) -> str:
-        """Get human-readable field group description."""
-        if self.node and self.node.nodegroup_id:
-            return self.node.nodegroup_id
-        return "(no group)"
+        """How the ORM names this field's group: core's, as TypeScript's describeFieldGroup."""
+        return _describe_field_group(self._model, self.node, False)
 
     def clear(self) -> None:
         """Clear the cached value."""
@@ -533,6 +554,19 @@ class PseudoList(List[PseudoValue[VM]], Generic[VM]):
 
     def __repr__(self) -> str:
         return f"<PseudoList alias={self.alias} len={len(self)} single={self.is_single}>"
+
+    def _node(self) -> Optional[StaticNode]:
+        if self._parent_model is None:
+            return None
+        return self._parent_model.get_node_objects_by_alias().get(self.alias)
+
+    def describe_field(self) -> str:
+        """How the ORM names this list field, in brackets: as TypeScript's."""
+        return _describe_field(self._parent_model, self._node(), True)
+
+    def describe_field_group(self) -> str:
+        """How the ORM names this list field's group, in brackets: as TypeScript's."""
+        return _describe_field_group(self._parent_model, self._node(), True)
 
     def matching_entries(
         self,

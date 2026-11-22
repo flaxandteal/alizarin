@@ -3576,6 +3576,16 @@
         "wasm": "ecosystem: WASM's static classes' constructors (new StaticNode(...)) build through core"
       }
     },
+    "describe_field": {
+      "wasm": "describeField",
+      "napi": "describeField",
+      "python": "describe_field"
+    },
+    "describe_field_group": {
+      "wasm": "describeFieldGroup",
+      "napi": "describeFieldGroup",
+      "python": "describe_field_group"
+    },
     "export_all_graphs": {
       "wasm": "exportAllGraphs",
       "napi": null,
@@ -3956,6 +3966,15 @@
       "why": {
         "napi": "ecosystem: WASM factory used by js/backend.ts; NAPI constructs NapiResourceInstanceWrapper directly",
         "python": "ecosystem: WASM factory used by js/backend.ts; Python constructs its wrapper class directly"
+      }
+    },
+    "nodegroup_name": {
+      "wasm": null,
+      "napi": null,
+      "python": "nodegroup_name",
+      "why": {
+        "wasm": "ecosystem: a method on WASM's model wrapper, getNodegroupName",
+        "napi": "ecosystem: a method on NAPI's instance wrapper, getNodegroupName"
       }
     },
     "number_display": {

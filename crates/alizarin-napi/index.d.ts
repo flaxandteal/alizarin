@@ -187,6 +187,13 @@ export declare function mergeResources(resourcesJson: string): JsonOut
  */
 export declare function batchMergeResources(batchesJson: string, recomputeDescriptors?: boolean | undefined | null, strict?: boolean | undefined | null): JsonOut
 /**
+ * How the ORM names a field: core's `describe_field` (`"<model> - <node
+ * name>"`, a list's in brackets), as WASM and Python give it.
+ */
+export declare function describeField(modelName: string | undefined | null, nodeName: string, list: boolean): string
+/** How the ORM names a field's group: core's `describe_field_group`. */
+export declare function describeFieldGroup(modelName: string | undefined | null, nodeName: string, nodegroupName: string | undefined | null, list: boolean): string
+/**
  * Whether two nodes (whole or partial objects) are the same apart from their
  * ids: core's `compare_nodes`, as WASM's `StaticNode.compare`. One of
  * `"same"`, `"same_ids_partial"`, `"nodeid_conflict"`,

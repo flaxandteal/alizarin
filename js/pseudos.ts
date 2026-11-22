@@ -2,7 +2,7 @@ import { StaticTile, StaticNode } from "./static-types";
 import { IViewModel, IPseudo, IRIVM } from "./interfaces";
 import { getViewModel } from "./viewModels";
 import { AttrPromise } from "./utils";
-import { createStaticTile } from "./backend";
+import { createStaticTile, describeField, describeFieldGroup } from "./backend";
 import { PseudoNode, WasmPseudoValue, WasmPseudoList } from '../pkg/alizarin';
 
 class PseudoUnavailable implements IPseudo {
@@ -180,23 +180,13 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
   }
 
   describeField(): string {
-    let fieldName = this._wasm.name;
-    if (this.parent && this.parent.__) {
-      fieldName = `${this.parent.__.wkrm.modelName} - ${fieldName}`;
-    }
-    return fieldName;
+    return describeField(this.parent?.__?.wkrm.modelName ?? null, this._wasm.name, false);
   }
 
   describeFieldGroup(): string {
-    let fieldName = this._wasm.name;
     const nodegroupId = this._wasm.nodegroupId;
-    if (this.parent && nodegroupId && this.parent.$) {
-      const nodegroupName = this.parent.$.model.getNodegroupName(nodegroupId);
-      if (nodegroupName && this.parent.__) {
-        fieldName = `${this.parent.__.wkrm.modelName} - ${nodegroupName}`;
-      }
-    }
-    return fieldName;
+    const nodegroupName = nodegroupId && this.parent?.$ ? this.parent.$.model.getNodegroupName(nodegroupId) : null;
+    return describeFieldGroup(this.parent?.__?.wkrm.modelName ?? null, this._wasm.name, nodegroupName || null, false);
   }
 
   /**
@@ -492,11 +482,7 @@ class PseudoList extends Array implements IPseudo {
       return "[(uninitialized node)]";
     }
 
-    let fieldName = this.node.name;
-    if (this.parent && this.parent.__) {
-      fieldName = `${this.parent.__.wkrm.modelName} - ${fieldName}`;
-    }
-    return `[${fieldName}]`;
+    return describeField(this.parent?.__?.wkrm.modelName ?? null, this.node.name, true);
   }
 
   describeFieldGroup() {
@@ -504,14 +490,9 @@ class PseudoList extends Array implements IPseudo {
       return "[(uninitialized node)]";
     }
 
-    let fieldName = this.node.name;
-    if (this.parent && this.node.nodegroup_id && this.parent.$) {
-      const nodegroupName = this.parent.$.model.getNodegroupName(this.node.nodegroup_id);
-      if (nodegroupName && this.parent.__) {
-        fieldName = `${this.parent.__.wkrm.modelName} - ${nodegroupName}`;
-      }
-    }
-    return `[${fieldName}]`;
+    const nodegroupId = this.node.nodegroup_id;
+    const nodegroupName = nodegroupId && this.parent?.$ ? this.parent.$.model.getNodegroupName(nodegroupId) : null;
+    return describeFieldGroup(this.parent?.__?.wkrm.modelName ?? null, this.node.name, nodegroupName || null, true);
   }
 
   // Otherwise interferes with Array methods;

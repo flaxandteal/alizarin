@@ -463,7 +463,7 @@ impl WASMResourceModelWrapper {
         })
     }
 
-    /// Get nodegroup name by ID
+    /// Get nodegroup name by ID: its grouping node's name (core's rule).
     /// Returns just the name string instead of full node object
     /// Note: nodegroup_id is actually a node ID (the root node of the nodegroup)
     #[wasm_bindgen(js_name = getNodegroupName)]
@@ -471,11 +471,9 @@ impl WASMResourceModelWrapper {
         let nodegroup_id =
             nodegroup_id.ok_or_else(|| JsValue::from_str("nodegroup_id is null or undefined"))?;
         self.with_core(|core| {
-            let nodes = core.get_node_objects().map_err(|e| JsValue::from_str(&e))?;
-            let node = nodes
-                .get(&nodegroup_id)
-                .ok_or_else(|| JsValue::from_str(&format!("Node not found: {}", nodegroup_id)))?;
-            Ok(node.name.clone())
+            core.model_access
+                .nodegroup_name(&nodegroup_id)
+                .map_err(|e| JsValue::from_str(&e))
         })
     }
 
@@ -610,4 +608,27 @@ impl WASMResourceModelWrapper {
         })
         .map_err(|e| JsValue::from_str(&e))
     }
+}
+
+/// How the ORM names a field: core's `describe_field` (`"<model> - <node
+/// name>"`, a list's in brackets), as NAPI and Python give it.
+#[wasm_bindgen(js_name = describeField)]
+pub fn describe_field(model_name: Option<String>, node_name: &str, list: bool) -> String {
+    alizarin_core::describe_field(model_name.as_deref(), node_name, list)
+}
+
+/// How the ORM names a field's group: core's `describe_field_group`.
+#[wasm_bindgen(js_name = describeFieldGroup)]
+pub fn describe_field_group(
+    model_name: Option<String>,
+    node_name: &str,
+    nodegroup_name: Option<String>,
+    list: bool,
+) -> String {
+    alizarin_core::describe_field_group(
+        model_name.as_deref(),
+        node_name,
+        nodegroup_name.as_deref(),
+        list,
+    )
 }

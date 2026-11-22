@@ -284,7 +284,7 @@ pub use instance_wrapper_core::{
 };
 
 // Platform-agnostic ModelAccess from StaticGraph (used by Python, NAPI, etc.)
-pub use graph_model_access::GraphModelAccess;
+pub use graph_model_access::{describe_field, describe_field_group, GraphModelAccess};
 
 // Path resolution (dot-separated path → nodegroup tiles)
 pub use path_resolution::{
