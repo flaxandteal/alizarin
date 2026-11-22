@@ -108,7 +108,7 @@ exporter.exportAllGraphs('/path/to/output');
 | `constructStatic(kind, value)` / `resourcesFromBusinessDataJson(json)` | A static type (`"node"`, `"resource"`, …) built from an object, or a business data file's resources, as core builds them: what WASM's `new StaticNode(…)` and `StaticResource.fromBusinessDataJsonString` hold. From `alizarin`, `createStatic*` and `parseStaticResources` route here on NAPI |
 | `summaryToMetadata(summary)` / `staticResourceFromSummary(summary)` | From a registry summary: its resource metadata, or a lightweight resource with no tiles (`tiles_loaded: false`), as core builds them (WASM: `summary.toMetadata()`, `StaticResource.fromSummary(summary)`) |
 | `setRdmNamespace(namespace)` / `getRdmNamespace()` / `getRdmNamespaceRaw()` / `hasRdmNamespace()` / `clearRdmNamespace()` | The global RDM namespace (UUID or URL): deterministic IDs, and the base URI for SKOS XML. From `alizarin`, `setRdmNamespace` routes to the selected backend |
-| `extensionCoerce(datatype, value, config)` | Call extension coercion |
+| `extensionCoerce(datatype, value, config)` | Call extension coercion: `{tileData, displayValue, warnings}`, as Python's `coerce_with_extension`, or null if no handler can coerce |
 | `extensionRenderDisplay(datatype, tileData, language)` | Call extension display renderer |
 
 The module-level functions take JSON strings; through the ORM you would call `resourceLifecycleState` / `transitionResourceLifecycle` from `alizarin` instead, which accept objects and route to NAPI when it is the selected backend. As on every backend, results are core's JSON, with `null` (never `undefined`) for absent values.

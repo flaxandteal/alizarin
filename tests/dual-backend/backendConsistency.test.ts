@@ -291,4 +291,15 @@ describe(`Backend consistency [${getBackend()}]`, () => {
       expect(typeof modelWrapper.isNodegroupPermitted).toBe('function');
     });
   });
+
+  describe("Populate result", () => {
+    test("getAllValues is a plain object of pseudo lists by alias", () => {
+      const result = wrapper.populate(false, ["12707705-c05e-11e9-8177-a4d18cec433a"], "group");
+      const all = result.getAllValues();
+      expect(Object.getPrototypeOf(all)).toBe(Object.prototype);
+      expect(Object.keys(all).sort()).toEqual([...result.getValueAliases()].sort());
+      const [alias] = Object.keys(all);
+      expect(all[alias].totalValues).toBe(result.getValue(alias).totalValues);
+    });
+  });
 });

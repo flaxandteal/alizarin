@@ -101,7 +101,8 @@ export declare function transitionResourceLifecycle(resourceJson: string, lifecy
 /**
  * Coerce a value using the registered extension handler for the given datatype.
  *
- * Returns `{ tileData, displayValue }` or null if no handler is registered.
+ * Returns `{ tileData, displayValue, warnings }` (core's `ExtensionCoercion`,
+ * as Python's `coerce_with_extension`), or null if no handler can coerce.
  */
 export declare function extensionCoerce(datatype: string, value: any, config?: any): any | null
 /**
@@ -379,8 +380,11 @@ export declare class NapiPseudoList {
 export declare class NapiPopulateResult {
   getValueAliases(): Array<string>
   getValue(alias: string): NapiPseudoList | null
-  /** Get all values as a JSON map (single boundary crossing). */
-  getAllValues(): any
+  /**
+   * Every value list by alias, in one boundary crossing: an object of
+   * `NapiPseudoList`s, as WASM's `getAllValues` gives its PseudoLists.
+   */
+  getAllValues(): Record<string, NapiPseudoList>
   get allValuesMap(): any
   get allNodegroupsMap(): any
 }

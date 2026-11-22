@@ -535,11 +535,9 @@ class TestDisplayTextWithUpdatedCollection:
             "multiValue": False,
         })
 
-        tile_data_json, _ = alizarin.coerce_with_extension(
+        tile_data = alizarin.coerce_with_extension(
             "reference", value_json, config_json,
-        )
-
-        tile_data = json.loads(tile_data_json)
+        )["tileData"]
         assert isinstance(tile_data, list)
         assert len(tile_data) == 1
         tile_data = tile_data[0]

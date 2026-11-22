@@ -46,16 +46,17 @@ impl WasmPopulateResult {
         }))
     }
 
-    /// Get all values as a Map in a single boundary crossing
+    /// Every value list by alias in a single boundary crossing: a plain object
+    /// of PseudoLists, as NAPI's `getAllValues` gives its lists.
     /// Replaces getValueAliases/getValue loop pattern (N+1 crossings -> 1 crossing)
     #[wasm_bindgen(js_name = getAllValues)]
     pub fn get_all_values(&self) -> JsValue {
-        let js_map = js_sys::Map::new();
+        let object = js_sys::Object::new();
         for (alias, core_list) in &self.inner.values {
             let wasm_list = PseudoList::from_rust(PseudoListInner::from_core(core_list.clone()));
-            js_map.set(&JsValue::from_str(alias), &wasm_list.into());
+            let _ = js_sys::Reflect::set(&object, &JsValue::from_str(alias), &wasm_list.into());
         }
-        js_map.into()
+        object.into()
     }
 
     #[wasm_bindgen(getter = allValuesMap)]

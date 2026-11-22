@@ -671,22 +671,19 @@ impl NapiPopulateResult {
             .map(|l| NapiPseudoList { inner: l.clone() })
     }
 
-    /// Get all values as a JSON map (single boundary crossing).
+    /// Every value list by alias, in one boundary crossing: an object of
+    /// `NapiPseudoList`s, as WASM's `getAllValues` gives its PseudoLists.
     #[napi]
-    pub fn get_all_values(&self) -> serde_json::Value {
-        let mut map = serde_json::Map::new();
-        for (alias, list) in &self.values {
-            map.insert(
-                alias.clone(),
-                serde_json::json!({
-                    "nodeAlias": list.node_alias,
-                    "isSingle": list.is_single,
-                    "isLoaded": list.is_loaded,
-                    "totalValues": list.values.len(),
-                }),
-            );
-        }
-        serde_json::Value::Object(map)
+    pub fn get_all_values(&self) -> HashMap<String, NapiPseudoList> {
+        self.values
+            .iter()
+            .map(|(alias, list)| {
+                let list = NapiPseudoList {
+                    inner: list.clone(),
+                };
+                (alias.clone(), list)
+            })
+            .collect()
     }
 
     #[napi(getter)]

@@ -107,6 +107,18 @@ entries is tracked in `PARITY-RESEARCH.md`.
   graph diff needs, and a bad argument throws (it logged and gave `null`).
   An id missing on one side and `null` on the other now counts as unset on
   both.
+- **Breaking:** extension coercion returns core's `{tileData, displayValue,
+  warnings}` (`warnings` always present) on NAPI (`extensionCoerce`, which
+  dropped `warnings` when empty) and Python (`coerce_with_extension`, which
+  gave a tuple of two JSON strings and dropped warnings). Without a handler
+  that can coerce, both give `null` / `None` (Python raised `KeyError`).
+- **Breaking:** a populate result's `getAllValues()` is a plain object of
+  pseudo lists by alias on WASM and NAPI (WASM gave a `Map`; NAPI gave
+  summaries, `{nodeAlias, isSingle, isLoaded, totalValues}`, which each list
+  has).
+- Python: `TreeToTilesIterator` converts each tree as `json_tree_to_tiles` and
+  `batch_trees_to_tiles` do, resolving concept labels against the global RDM
+  cache (it left them unresolved).
 - **Breaking:** `importPrebuild` / `import_prebuild` return core's summary,
   `{graphIds, collectionIds, collections, ontologyConfigs}`, on NAPI and
   Python (Python's were `graph_ids`, `collection_ids`; it keeps its

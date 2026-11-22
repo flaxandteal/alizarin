@@ -436,8 +436,8 @@ pub use string_utils::{camel_to_snake, snake_to_camel, sort_json_keys, transform
 // Extension type registry (unified handler infrastructure for WASM/Python)
 pub use datatype_index::datatype_index_spec;
 pub use extension_type_registry::{
-    ExtensionError, ExtensionTypeHandler, ExtensionTypeRegistry, HandlerCapabilities, IndexClass,
-    IndexSpec, ValidationResult,
+    ExtensionCoercion, ExtensionError, ExtensionTypeHandler, ExtensionTypeRegistry,
+    HandlerCapabilities, IndexClass, IndexSpec, ValidationResult,
 };
 
 // CSV model loader (3-CSV format: graph.csv, nodes.csv, collections.csv)

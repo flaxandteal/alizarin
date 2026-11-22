@@ -166,6 +166,13 @@ def routes():
             ),
         )
     )
+    def iterated():
+        # Python's iterator converts each tree as json_tree_to_tiles does.
+        items = list(alizarin.TreeToTilesIterator([tree_text()], GRAPH["graphid"], tile_namespace=tile_namespace))
+        assert [item["error"] for item in items] == [None]
+        return {"business_data": {"resources": [items[0]["resource"]]}}
+
+    out.append(("TreeToTilesIterator", "tiles:tree", iterated))
     layer_text = json.dumps(LAYER)
     out.append(("merge_resources", "merged", lambda: alizarin.merge_resources(f"[{resource_text},{layer_text}]")))
     out.append(

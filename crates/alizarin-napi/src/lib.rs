@@ -954,28 +954,20 @@ pub fn transition_resource_lifecycle(
 
 /// Coerce a value using the registered extension handler for the given datatype.
 ///
-/// Returns `{ tileData, displayValue }` or null if no handler is registered.
+/// Returns `{ tileData, displayValue, warnings }` (core's `ExtensionCoercion`,
+/// as Python's `coerce_with_extension`), or null if no handler can coerce.
 #[napi(js_name = "extensionCoerce")]
 pub fn extension_coerce(
     datatype: String,
     #[napi(ts_arg_type = "any")] value: JsonArg,
     #[napi(ts_arg_type = "any")] config: Option<JsonArg>,
 ) -> Result<Option<serde_json::Value>> {
-    let registry = extension_registry();
-    match registry.coerce(&datatype, &value.0, config.map(|c| c.0).as_ref()) {
-        Ok(Some(result)) => {
-            let mut output = serde_json::json!({
-                "tileData": result.tile_data,
-                "displayValue": result.display_value,
-            });
-            if !result.warnings.is_empty() {
-                output["warnings"] = serde_json::json!(result.warnings);
-            }
-            Ok(Some(output))
-        }
-        Ok(None) => Ok(None),
-        Err(e) => Err(napi::Error::from_reason(e.message)),
-    }
+    extension_registry()
+        .coerce_output(&datatype, &value.0, config.map(|c| c.0).as_ref())
+        .map_err(|e| napi::Error::from_reason(e.message))?
+        .map(serde_json::to_value)
+        .transpose()
+        .map_err(|e| napi::Error::from_reason(e.to_string()))
 }
 
 /// Render a display string for tile data using the extension handler.

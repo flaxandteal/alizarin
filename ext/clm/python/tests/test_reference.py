@@ -969,11 +969,9 @@ class TestRustCoercionIntegration:
             "multiValue": False,
         })
 
-        tile_data_json, resolved_json = alizarin.coerce_with_extension(
+        tile_data = alizarin.coerce_with_extension(
             "reference", value_json, config_json,
-        )
-
-        tile_data = json.loads(tile_data_json)
+        )["tileData"]
         assert isinstance(tile_data, list)
         assert len(tile_data) == 1
         tile_data = tile_data[0]
@@ -997,11 +995,9 @@ class TestRustCoercionIntegration:
             "multiValue": False,
         })
 
-        tile_data_json, _ = alizarin.coerce_with_extension(
+        tile_data = alizarin.coerce_with_extension(
             "reference", value_json, config_json,
-        )
-
-        tile_data = json.loads(tile_data_json)
+        )["tileData"]
         assert isinstance(tile_data, list)
         assert len(tile_data) == 1
         tile_data = tile_data[0]
@@ -1023,11 +1019,9 @@ class TestRustCoercionIntegration:
             "multiValue": True,
         })
 
-        tile_data_json, _ = alizarin.coerce_with_extension(
+        tile_data = alizarin.coerce_with_extension(
             "reference", value_json, config_json,
-        )
-
-        tile_data = json.loads(tile_data_json)
+        )["tileData"]
         assert isinstance(tile_data, list)
         assert len(tile_data) == 2
         assert tile_data[0]["label"] == "First Item"
@@ -1063,16 +1057,11 @@ class TestRustCoercionIntegration:
         with pytest.raises(ValueError, match="Pre-formed reference objects are not valid input"):
             alizarin.coerce_with_extension("reference", value_json, config_json)
 
-    def test_coerce_with_missing_handler_raises_error(self):
-        """Test that coercing with an unregistered type raises an error."""
+    def test_coerce_with_a_missing_handler_gives_none(self):
+        """An unregistered type has no coercion: None, as NAPI's extensionCoerce gives null."""
         import alizarin
 
-        with pytest.raises(KeyError):
-            alizarin.coerce_with_extension(
-                "nonexistent_type",
-                "{}",
-                None,
-            )
+        assert alizarin.coerce_with_extension("nonexistent_type", "{}", None) is None
 
 
 class TestPhase0NodeConfigManager:
@@ -2100,11 +2089,9 @@ class TestBatchTreesToTilesWithMultiValueReference:
         })
 
         # Should succeed and return a marker for label lookup
-        tile_data_json, resolved_json = alizarin.coerce_with_extension(
+        tile_data = alizarin.coerce_with_extension(
             "reference", label_value, config_json
-        )
-
-        tile_data = json.loads(tile_data_json)
+        )["tileData"]
 
         # Result should be an array (multiValue=True) with label lookup marker
         assert isinstance(tile_data, list), f"Expected array for multiValue, got {type(tile_data)}"
@@ -2139,11 +2126,9 @@ class TestBatchTreesToTilesWithMultiValueReference:
         })
 
         # Should succeed - UUIDs are valid input
-        tile_data_json, resolved_json = alizarin.coerce_with_extension(
+        tile_data = alizarin.coerce_with_extension(
             "reference", uuid_array, config_json
-        )
-
-        tile_data = json.loads(tile_data_json)
+        )["tileData"]
 
         # Result should be an array (multiValue=True)
         assert isinstance(tile_data, list), f"Expected array, got {type(tile_data)}"

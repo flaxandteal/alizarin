@@ -155,7 +155,7 @@ These live in the compiled submodule (`from alizarin import alizarin as core; co
 |----------|-------------|
 | `register_type_handler(capsule)` | Register custom datatype handler |
 | `has_type_handler(type_name)` | Check if a type handler is registered |
-| `coerce_with_extension(type_name, value_json, config_json=None)` | Call extension coercion |
+| `coerce_with_extension(type_name, value_json, config_json=None)` | Call extension coercion: `{"tileData", "displayValue", "warnings"}`, as NAPI's `extensionCoerce`, or `None` if no handler can coerce |
 | `render_display_with_extension(...)` | Call extension display renderer |
 | `register_widget_for_datatype(datatype, widget_name)` | Map datatype to widget |
 | `get_widget_for_datatype(datatype)` | Get widget for a datatype |

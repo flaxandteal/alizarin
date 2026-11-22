@@ -56,6 +56,16 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::type_coercion::CoercionResult;
+
+/// An extension handler's coercion as the bindings return it: the tile value,
+/// the display value, and any warnings (always present, maybe empty).
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtensionCoercion {
+    pub tile_data: Value,
+    pub display_value: Value,
+    pub warnings: Vec<String>,
+}
 use crate::type_serialization::SerializationContext;
 
 /// Moves on whenever a datatype handler is registered or removed (by any
@@ -583,6 +593,24 @@ impl ExtensionTypeRegistry {
         self.handlers.is_empty()
     }
 
+    /// [`Self::coerce`] as every binding's `extensionCoerce` /
+    /// `coerce_with_extension` returns it: `None` without a handler that can
+    /// coerce.
+    pub fn coerce_output(
+        &self,
+        datatype: &str,
+        value: &Value,
+        config: Option<&Value>,
+    ) -> Result<Option<ExtensionCoercion>, ExtensionError> {
+        Ok(self
+            .coerce(datatype, value, config)?
+            .map(|result| ExtensionCoercion {
+                tile_data: result.tile_data,
+                display_value: result.display_value,
+                warnings: result.warnings,
+            }))
+    }
+
     /// Coerce a value using the registered handler, if any.
     ///
     /// # Returns
@@ -776,6 +804,21 @@ mod tests {
         assert!(result.is_some());
         let coerced = result.unwrap();
         assert_eq!(coerced.tile_data["wrapped"], "test-value");
+    }
+
+    #[test]
+    fn the_bindings_coercion_output_has_every_key() {
+        let mut registry = ExtensionTypeRegistry::new();
+        let caps = HandlerCapabilities::coercion_only();
+        registry.register("test-type", Arc::new(TestHandler { caps }));
+
+        let value = serde_json::json!("test-value");
+        let output = registry.coerce_output("test-type", &value, None).unwrap();
+        let json = serde_json::to_value(output).unwrap();
+        let keys: Vec<_> = json.as_object().unwrap().keys().cloned().collect();
+        assert_eq!(keys, ["displayValue", "tileData", "warnings"]);
+        let unknown = registry.coerce_output("unknown", &value, None).unwrap();
+        assert!(unknown.is_none());
     }
 
     #[test]

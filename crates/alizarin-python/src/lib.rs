@@ -90,21 +90,16 @@ fn has_extension_handler(type_name: &str) -> bool {
 
 /// Coerce a value using a registered extension handler
 ///
-/// Returns (tile_data_json, resolved_json) or raises an error
+/// Returns {"tileData", "displayValue", "warnings"} (core's, as NAPI's
+/// extensionCoerce), or None if no handler can coerce; raises if it fails.
 #[pyfunction]
 fn coerce_with_extension(
+    py: Python,
     type_name: &str,
     value_json: &str,
     config_json: Option<&str>,
-) -> PyResult<(String, String)> {
+) -> PyResult<PyObject> {
     let registry = build_extension_registry();
-
-    if !registry.has(type_name) {
-        return Err(PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
-            "No handler registered for type: {}",
-            type_name
-        )));
-    }
 
     let value: serde_json::Value = serde_json::from_str(value_json).map_err(|e| {
         PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Invalid JSON: {}", e))
@@ -119,23 +114,10 @@ fn coerce_with_extension(
         })?;
 
     let result = registry
-        .coerce(type_name, &value, config.as_ref())
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?
-        .ok_or_else(|| {
-            PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
-                "Handler for type '{}' does not support coercion",
-                type_name
-            ))
-        })?;
-
-    let tile_json = serde_json::to_string(&result.tile_data).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to serialize: {}", e))
-    })?;
-    let resolved_json = serde_json::to_string(&result.display_value).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to serialize: {}", e))
-    })?;
-
-    Ok((tile_json, resolved_json))
+        .coerce_output(type_name, &value, config.as_ref())
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
+    pythonize::pythonize(py, &result)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
 
 /// Check if a type handler has display rendering support
@@ -1104,7 +1086,6 @@ impl ResourceRegistry {
 struct TreeToTilesIterator {
     trees: Vec<String>,
     graph: std::sync::Arc<AlizarinCoreStaticGraph>,
-    graph_id: String,
     from_camel: bool,
     strict: bool,
     id_keys: Option<Vec<String>>,
@@ -1165,7 +1146,6 @@ impl TreeToTilesIterator {
         Ok(TreeToTilesIterator {
             trees: tree_strings,
             graph,
-            graph_id,
             from_camel,
             strict,
             id_keys,
@@ -1191,37 +1171,26 @@ impl TreeToTilesIterator {
         let i = self.index;
         self.index += 1;
 
-        let tree: serde_json::Value = match serde_json::from_str(tree_str) {
-            Ok(t) => t,
-            Err(e) => {
-                let output = serde_json::json!({
-                    "resource": null,
-                    "error": format!("Tree {}: Failed to parse: {}", i, e),
-                    "index": i
-                });
-                return pythonize::pythonize(py, &output)
-                    .map(Some)
-                    .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()));
-            }
-        };
-
-        let output = match alizarin_core::convert_single_tree::<CoreRdmCache>(
-            &tree,
-            &self.graph,
-            &self.graph_id,
+        // Core's single-tree conversion, as batch_trees_to_tiles: concept
+        // labels resolved against the global RDM cache, scopes applied.
+        let opts = alizarin_core::TreeToTilesOptions {
             id_key,
-            self.from_camel,
-            self.strict,
-            self.random_ids,
+            from_camel: self.from_camel,
+            strict: self.strict,
+            random_ids: self.random_ids,
+            scopes: self.scopes.as_ref(),
+            tile_namespace: self.tile_namespace.as_deref(),
+            ..Default::default()
+        };
+        let converted = alizarin_core::tree_to_tiles_from_json(
+            tree_str,
+            &self.graph,
+            &opts,
             self.ext_registry.as_ref(),
             None,
-            true,
-            self.tile_namespace.as_deref(),
-        ) {
-            Ok(mut resource) => {
-                if let Some(ref scopes_val) = self.scopes {
-                    resource.scopes = Some(scopes_val.clone());
-                }
+        );
+        let output = match converted.map(|mut file| file.business_data.resources.pop()) {
+            Ok(resource) => {
                 serde_json::json!({
                     "resource": resource,
                     "error": null,
