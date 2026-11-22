@@ -310,7 +310,7 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { NapiRdmCache, NapiNodeConfigManager, NapiTileData, NapiStaticTile, NapiPseudoValue, NapiPseudoList, NapiPopulateResult, NapiResourceInstanceWrapper, NapiPseudoNode, NapiResourceModelWrapper, NapiStaticDomainValue, NapiNodeConfigBoolean, NapiNodeConfigConcept, NapiNodeConfigDomain, registerExtensionHandler, registerDeriveProvider, hasDeriveProvider, foldMayMatch, getCurrentLanguage, setCurrentLanguage, NapiPrebuildExporter, NapiStaticGraph, NapiStaticResourceRegistry, applyMutationsFromJson, applyMutationsCreate, getMutationSchema, buildGraphFromCsvs, buildBusinessDataFromCsv, composeResourceLayers, resourceLifecycleState, transitionResourceLifecycle, extensionCoerce, extensionRenderDisplay, extensionResolveMarkers, hasExtensionHandler, getRegisteredExtensionHandlers, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, applyAggregateFunctionsFromFile, buildAliasToCollectionMap, findNeededCollections, summaryToMetadata, constructStatic, treeToTiles, batchTreesToTiles, mergeResources, batchMergeResources, describeField, describeFieldGroup, compareNodes, resourcesFromBusinessDataJson, staticResourceFromSummary, tilesToTree, cardsToTree, batchTilesToTrees, setRdmNamespace, getRdmNamespace, getRdmNamespaceRaw, hasRdmNamespace, clearRdmNamespace, isValidUuid, getDefaultResolvableDatatypes, getDefaultConfigKeys, importPrebuild } = nativeBinding
+const { NapiRdmCache, NapiNodeConfigManager, NapiTileData, NapiStaticTile, NapiPseudoValue, NapiPseudoList, NapiPopulateResult, NapiResourceInstanceWrapper, NapiPseudoNode, NapiResourceModelWrapper, NapiStaticDomainValue, NapiNodeConfigBoolean, NapiNodeConfigConcept, NapiNodeConfigDomain, registerExtensionHandler, registerDeriveProvider, hasDeriveProvider, foldMayMatch, getCurrentLanguage, setCurrentLanguage, NapiPrebuildExporter, NapiStaticGraph, NapiStaticResourceRegistry, applyMutationsFromJson, applyMutationsCreate, getMutationSchema, buildGraphFromCsvs, buildBusinessDataFromCsv, composeResourceLayers, resourceLifecycleState, transitionResourceLifecycle, extensionCoerce, extensionRenderDisplay, extensionResolveMarkers, hasExtensionHandler, getRegisteredExtensionHandlers, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, applyAggregateFunctionsFromFile, buildAliasToCollectionMap, findNeededCollections, summaryToMetadata, constructStatic, treeToTiles, batchTreesToTiles, mergeResources, batchMergeResources, generateUuidV5, parseRdmNamespace, generateCollectionUuid, generateConceptUuid, generateValueUuid, labelsToDeterministicString, describeField, describeFieldGroup, compareNodes, resourcesFromBusinessDataJson, staticResourceFromSummary, tilesToTree, cardsToTree, batchTilesToTrees, setRdmNamespace, getRdmNamespace, getRdmNamespaceRaw, hasRdmNamespace, clearRdmNamespace, isValidUuid, getDefaultResolvableDatatypes, getDefaultConfigKeys, importPrebuild } = nativeBinding
 
 module.exports.NapiRdmCache = NapiRdmCache
 module.exports.NapiNodeConfigManager = NapiNodeConfigManager
@@ -361,6 +361,12 @@ module.exports.treeToTiles = treeToTiles
 module.exports.batchTreesToTiles = batchTreesToTiles
 module.exports.mergeResources = mergeResources
 module.exports.batchMergeResources = batchMergeResources
+module.exports.generateUuidV5 = generateUuidV5
+module.exports.parseRdmNamespace = parseRdmNamespace
+module.exports.generateCollectionUuid = generateCollectionUuid
+module.exports.generateConceptUuid = generateConceptUuid
+module.exports.generateValueUuid = generateValueUuid
+module.exports.labelsToDeterministicString = labelsToDeterministicString
 module.exports.describeField = describeField
 module.exports.describeFieldGroup = describeFieldGroup
 module.exports.compareNodes = compareNodes

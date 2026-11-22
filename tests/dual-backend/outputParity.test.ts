@@ -20,8 +20,10 @@
 import { describe, expect, test, beforeAll } from "vitest";
 import * as fs from "fs";
 import * as path from "path";
+import * as wasm from "../../pkg/alizarin";
 import {
   getBackend,
+  getNapiModule,
   parseStaticGraph,
   createStaticGraphMeta,
   createWKRM,
@@ -186,6 +188,29 @@ function routes(): [string, string, () => any][] {
     "batchTreesToTiles",
     "tiles:batch",
     () => batchTreesToTiles(`[${treeText()}]`, graph, false, true, null, false, false, null, TILE_NAMESPACE),
+  ]);
+  // Deterministic ids from fixed inputs, in the CSV fixtures' namespace.
+  out.push([
+    "rdm namespace ids",
+    "ids",
+    () => {
+      const m: any = backend === "napi" ? getNapiModule() : wasm;
+      m.setRdmNamespace(CSV_NAMESPACE);
+      try {
+        const collection = m.generateCollectionUuid("Name Types");
+        const concept = m.generateConceptUuid(collection, "Preferred Name");
+        return {
+          collection,
+          concept,
+          labels: m.labelsToDeterministicString({ en: "Fort", ga: "Ráth" }),
+          namespace: m.parseRdmNamespace(CSV_NAMESPACE),
+          uuidV5: m.generateUuidV5("node", "g1", "name"),
+          value: m.generateValueUuid(concept, "Preferred Name", "en"),
+        };
+      } finally {
+        m.clearRdmNamespace();
+      }
+    },
   ]);
   // A graph and its business data built from CSVs.
   const csv = (name: string) => read(`csv/${name}`);

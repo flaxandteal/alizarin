@@ -129,6 +129,18 @@ pub fn generate_collection_uuid(namespace: &Uuid, name: &str) -> Uuid {
     Uuid::new_v5(namespace, key.as_bytes())
 }
 
+/// [`generate_collection_uuid`] in the global RDM namespace: every binding's
+/// `generateCollectionUuid` / `generate_collection_uuid`. An error if no
+/// namespace is set.
+pub fn generate_collection_uuid_in_namespace(name: &str) -> Result<Uuid, String> {
+    let namespace = get_rdm_namespace().ok_or_else(|| {
+        "RDM namespace not set. Call setRdmNamespace() before creating \
+         collections or concepts from labels without explicit IDs."
+            .to_string()
+    })?;
+    Ok(generate_collection_uuid(&namespace, name))
+}
+
 /// Generate a deterministic UUID for a concept from its collection and label.
 ///
 /// Uses: uuid5(collection_id, label_string)

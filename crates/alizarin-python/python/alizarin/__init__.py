@@ -350,6 +350,11 @@ compose_collections_from_csv_in_global_cache = _alizarin_rust.compose_collection
 set_rdm_namespace = _alizarin_rust.set_rdm_namespace
 get_rdm_namespace = _alizarin_rust.get_rdm_namespace
 get_rdm_namespace_raw = _alizarin_rust.get_rdm_namespace_raw
+parse_rdm_namespace = _alizarin_rust.parse_rdm_namespace
+generate_collection_uuid = _alizarin_rust.generate_collection_uuid
+generate_concept_uuid = _alizarin_rust.generate_concept_uuid
+generate_value_uuid = _alizarin_rust.generate_value_uuid
+labels_to_deterministic_string = _alizarin_rust.labels_to_deterministic_string
 has_rdm_namespace = _alizarin_rust.has_rdm_namespace
 clear_rdm_namespace = _alizarin_rust.clear_rdm_namespace
 resolve_labels = _alizarin_rust.resolve_labels
@@ -564,6 +569,11 @@ __all__ = [
     "set_rdm_namespace",
     "get_rdm_namespace",
     "get_rdm_namespace_raw",
+    "parse_rdm_namespace",
+    "generate_collection_uuid",
+    "generate_concept_uuid",
+    "generate_value_uuid",
+    "labels_to_deterministic_string",
     "has_rdm_namespace",
     "clear_rdm_namespace",
     "resolve_labels",

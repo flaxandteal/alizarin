@@ -1284,6 +1284,50 @@ pub fn batch_merge_resources(
         .map_err(|e| napi::Error::from_reason(e.to_string()))
 }
 
+/// A graph element's deterministic id (`groupType`, optional `groupId`,
+/// `key`): core's, as WASM's `generateUuidV5` and Python's `generate_uuid_v5`.
+#[napi(js_name = "generateUuidV5")]
+pub fn generate_uuid_v5(group_type: String, group_id: Option<String>, key: String) -> String {
+    alizarin_core::graph_mutator::generate_uuid_v5((&group_type, group_id.as_deref()), &key)
+}
+
+/// The namespace UUID a namespace string (UUID or URL) stands for: core's.
+#[napi]
+pub fn parse_rdm_namespace(namespace: String) -> Result<String> {
+    alizarin_core::rdm_namespace::parse_rdm_namespace(&namespace)
+        .map(|u| u.to_string())
+        .map_err(napi::Error::from_reason)
+}
+
+/// A collection's deterministic id in the global RDM namespace: core's, as
+/// WASM's and Python's. An error if no namespace is set.
+#[napi]
+pub fn generate_collection_uuid(name: String) -> Result<String> {
+    alizarin_core::rdm_namespace::generate_collection_uuid_in_namespace(&name)
+        .map(|u| u.to_string())
+        .map_err(napi::Error::from_reason)
+}
+
+/// A concept's deterministic id within its collection: core's.
+#[napi]
+pub fn generate_concept_uuid(collection_id: String, label: String) -> Result<String> {
+    alizarin_core::rdm_namespace::generate_concept_uuid_from_str(&collection_id, &label)
+        .map(|u| u.to_string())
+        .map_err(napi::Error::from_reason)
+}
+
+/// A label value's deterministic id: core's.
+#[napi]
+pub fn generate_value_uuid(concept_id: String, value: String, language: String) -> String {
+    alizarin_core::rdm_namespace::generate_value_uuid(&concept_id, &value, &language).to_string()
+}
+
+/// Labels (language to text) as the deterministic string ids are made from: core's.
+#[napi]
+pub fn labels_to_deterministic_string(labels: HashMap<String, String>) -> String {
+    alizarin_core::rdm_namespace::labels_to_deterministic_string(&labels)
+}
+
 /// How the ORM names a field: core's `describe_field` (`"<model> - <node
 /// name>"`, a list's in brackets), as WASM and Python give it.
 #[napi]

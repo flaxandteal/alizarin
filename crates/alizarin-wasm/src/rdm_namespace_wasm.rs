@@ -25,11 +25,9 @@
 //! const conceptId = generateConceptUuid(collectionId, "ConceptA");
 //! ```
 
-use uuid::Uuid;
 use wasm_bindgen::prelude::*;
 
 use alizarin_core::rdm_namespace::{
-    generate_collection_uuid as core_generate_collection,
     generate_concept_uuid_from_str as core_generate_concept,
     generate_value_uuid as core_generate_value,
     labels_to_deterministic_string as core_labels_to_string,
@@ -112,8 +110,9 @@ pub fn clear_rdm_namespace() {
 /// @throws Error if namespace is not set
 #[wasm_bindgen(js_name = generateCollectionUuid)]
 pub fn generate_collection_uuid(name: &str) -> Result<String, JsError> {
-    let namespace = get_required_namespace()?;
-    Ok(core_generate_collection(&namespace, name).to_string())
+    alizarin_core::rdm_namespace::generate_collection_uuid_in_namespace(name)
+        .map(|u| u.to_string())
+        .map_err(|e| JsError::new(&e))
 }
 
 /// Generate a deterministic UUID for a concept from its collection and label.
@@ -177,16 +176,6 @@ pub fn parse_rdm_namespace(namespace: &str) -> Result<String, JsError> {
 // =============================================================================
 // Internal Helpers
 // =============================================================================
-
-/// Get the global namespace or return an error if not set.
-fn get_required_namespace() -> Result<Uuid, JsError> {
-    alizarin_core::get_rdm_namespace().ok_or_else(|| {
-        JsError::new(
-            "RDM namespace not set. Call setRdmNamespace() before creating \
-             collections or concepts from labels without explicit IDs.",
-        )
-    })
-}
 
 #[cfg(test)]
 mod tests {

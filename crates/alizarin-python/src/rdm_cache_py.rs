@@ -371,6 +371,43 @@ pub fn get_rdm_namespace_raw() -> Option<String> {
     alizarin_core::get_rdm_namespace_raw()
 }
 
+/// The namespace UUID a namespace string (UUID or URL) stands for: core's.
+#[pyfunction]
+pub fn parse_rdm_namespace(namespace: &str) -> PyResult<String> {
+    alizarin_core::rdm_namespace::parse_rdm_namespace(namespace)
+        .map(|u| u.to_string())
+        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)
+}
+
+/// A collection's deterministic id in the global RDM namespace: core's, as
+/// WASM's and NAPI's. Raises if no namespace is set.
+#[pyfunction]
+pub fn generate_collection_uuid(name: &str) -> PyResult<String> {
+    alizarin_core::rdm_namespace::generate_collection_uuid_in_namespace(name)
+        .map(|u| u.to_string())
+        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)
+}
+
+/// A concept's deterministic id within its collection: core's.
+#[pyfunction]
+pub fn generate_concept_uuid(collection_id: &str, label: &str) -> PyResult<String> {
+    alizarin_core::rdm_namespace::generate_concept_uuid_from_str(collection_id, label)
+        .map(|u| u.to_string())
+        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)
+}
+
+/// A label value's deterministic id: core's.
+#[pyfunction]
+pub fn generate_value_uuid(concept_id: &str, value: &str, language: &str) -> String {
+    alizarin_core::rdm_namespace::generate_value_uuid(concept_id, value, language).to_string()
+}
+
+/// Labels (language to text) as the deterministic string ids are made from: core's.
+#[pyfunction]
+pub fn labels_to_deterministic_string(labels: std::collections::HashMap<String, String>) -> String {
+    alizarin_core::rdm_namespace::labels_to_deterministic_string(&labels)
+}
+
 /// Check if a global RDM namespace is set.
 #[pyfunction]
 pub fn has_rdm_namespace() -> bool {
@@ -1818,6 +1855,11 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(set_rdm_namespace, m)?)?;
     m.add_function(wrap_pyfunction!(get_rdm_namespace, m)?)?;
     m.add_function(wrap_pyfunction!(get_rdm_namespace_raw, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_rdm_namespace, m)?)?;
+    m.add_function(wrap_pyfunction!(generate_collection_uuid, m)?)?;
+    m.add_function(wrap_pyfunction!(generate_concept_uuid, m)?)?;
+    m.add_function(wrap_pyfunction!(generate_value_uuid, m)?)?;
+    m.add_function(wrap_pyfunction!(labels_to_deterministic_string, m)?)?;
     m.add_function(wrap_pyfunction!(has_rdm_namespace, m)?)?;
     m.add_function(wrap_pyfunction!(clear_rdm_namespace, m)?)?;
 

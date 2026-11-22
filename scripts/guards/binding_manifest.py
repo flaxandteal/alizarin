@@ -99,7 +99,6 @@ GAP_FS = "gap: Node has a filesystem; NAPI lacks this file-based form"
 ECO_PLAIN_JSON = "ecosystem: core's JSON as plain objects, built by js/backend.ts createStatic* (constructStatic)"
 ECO_DATACLASS = "ecosystem: Python dataclasses in python/alizarin/static_types.py, read and written through core"
 GAP_RDM_GLOBAL = "gap: the global RDM cache functions differ per binding (A-6)"
-GAP_NAMESPACE = "gap: H-3, RDM namespaces and deterministic UUIDs must agree across bindings"
 GAP_EXTENSIONS = "gap: the extension registry functions differ per binding (A-6, G)"
 
 # Why a binding lacks something (PARITY-RESEARCH.md A-6/A-7). Keys are
@@ -153,9 +152,6 @@ REASONS = [
     ("fn:coerce_with_extension", {"wasm": GAP_EXTENSIONS}),
     ("fn:coerce_*", {"napi": "gap: NAPI has no standalone coercion functions; its ORM coerces inside the instance wrapper (A-6)"}),
     ("class:coercionResult", {"napi": "gap: NAPI has no standalone coercion functions (A-6)"}),
-    ("fn:*rdm_namespace*", {"wasm": GAP_NAMESPACE, "napi": GAP_NAMESPACE, "python": GAP_NAMESPACE}),
-    ("fn:generate_*uuid*", {"wasm": GAP_NAMESPACE, "napi": GAP_NAMESPACE, "python": GAP_NAMESPACE}),
-    ("fn:labels_to_deterministic_string", {"napi": GAP_NAMESPACE, "python": GAP_NAMESPACE}),
     ("fn:*global_rdm*", {"wasm": GAP_RDM_GLOBAL, "napi": GAP_RDM_GLOBAL, "python": GAP_RDM_GLOBAL}),
     ("fn:*global_cache*", {"wasm": GAP_RDM_GLOBAL, "napi": GAP_RDM_GLOBAL, "python": GAP_RDM_GLOBAL}),
     ("fn:*extension*", {"wasm": GAP_EXTENSIONS, "napi": GAP_EXTENSIONS, "python": GAP_EXTENSIONS}),

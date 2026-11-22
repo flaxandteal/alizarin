@@ -3563,38 +3563,23 @@
     },
     "generate_collection_uuid": {
       "wasm": "generateCollectionUuid",
-      "napi": null,
-      "python": null,
-      "why": {
-        "napi": "gap: H-3, RDM namespaces and deterministic UUIDs must agree across bindings",
-        "python": "gap: H-3, RDM namespaces and deterministic UUIDs must agree across bindings"
-      }
+      "napi": "generateCollectionUuid",
+      "python": "generate_collection_uuid"
     },
     "generate_concept_uuid": {
       "wasm": "generateConceptUuid",
-      "napi": null,
-      "python": null,
-      "why": {
-        "napi": "gap: H-3, RDM namespaces and deterministic UUIDs must agree across bindings",
-        "python": "gap: H-3, RDM namespaces and deterministic UUIDs must agree across bindings"
-      }
+      "napi": "generateConceptUuid",
+      "python": "generate_concept_uuid"
     },
     "generate_uuid_v5": {
       "wasm": "generateUuidV5",
-      "napi": null,
-      "python": "generate_uuid_v5",
-      "why": {
-        "napi": "gap: H-3, RDM namespaces and deterministic UUIDs must agree across bindings"
-      }
+      "napi": "generateUuidV5",
+      "python": "generate_uuid_v5"
     },
     "generate_value_uuid": {
       "wasm": "generateValueUuid",
-      "napi": null,
-      "python": null,
-      "why": {
-        "napi": "gap: H-3, RDM namespaces and deterministic UUIDs must agree across bindings",
-        "python": "gap: H-3, RDM namespaces and deterministic UUIDs must agree across bindings"
-      }
+      "napi": "generateValueUuid",
+      "python": "generate_value_uuid"
     },
     "get_current_language": {
       "wasm": "getCurrentLanguage",
@@ -3813,12 +3798,8 @@
     },
     "labels_to_deterministic_string": {
       "wasm": "labelsToDeterministicString",
-      "napi": null,
-      "python": null,
-      "why": {
-        "napi": "gap: H-3, RDM namespaces and deterministic UUIDs must agree across bindings",
-        "python": "gap: H-3, RDM namespaces and deterministic UUIDs must agree across bindings"
-      }
+      "napi": "labelsToDeterministicString",
+      "python": "labels_to_deterministic_string"
     },
     "list_datatypes": {
       "wasm": null,
@@ -3890,12 +3871,8 @@
     },
     "parse_rdm_namespace": {
       "wasm": "parseRdmNamespace",
-      "napi": null,
-      "python": null,
-      "why": {
-        "napi": "gap: H-3, RDM namespaces and deterministic UUIDs must agree across bindings",
-        "python": "gap: H-3, RDM namespaces and deterministic UUIDs must agree across bindings"
-      }
+      "napi": "parseRdmNamespace",
+      "python": "parse_rdm_namespace"
     },
     "parse_skos_xml": {
       "wasm": "parseSkosXml",

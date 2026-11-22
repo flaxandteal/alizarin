@@ -188,6 +188,24 @@ export declare function mergeResources(resourcesJson: string): JsonOut
  */
 export declare function batchMergeResources(batchesJson: string, recomputeDescriptors?: boolean | undefined | null, strict?: boolean | undefined | null): JsonOut
 /**
+ * A graph element's deterministic id (`groupType`, optional `groupId`,
+ * `key`): core's, as WASM's `generateUuidV5` and Python's `generate_uuid_v5`.
+ */
+export declare function generateUuidV5(groupType: string, groupId: string | undefined | null, key: string): string
+/** The namespace UUID a namespace string (UUID or URL) stands for: core's. */
+export declare function parseRdmNamespace(namespace: string): string
+/**
+ * A collection's deterministic id in the global RDM namespace: core's, as
+ * WASM's and Python's. An error if no namespace is set.
+ */
+export declare function generateCollectionUuid(name: string): string
+/** A concept's deterministic id within its collection: core's. */
+export declare function generateConceptUuid(collectionId: string, label: string): string
+/** A label value's deterministic id: core's. */
+export declare function generateValueUuid(conceptId: string, value: string, language: string): string
+/** Labels (language to text) as the deterministic string ids are made from: core's. */
+export declare function labelsToDeterministicString(labels: Record<string, string>): string
+/**
  * How the ORM names a field: core's `describe_field` (`"<model> - <node
  * name>"`, a list's in brackets), as WASM and Python give it.
  */

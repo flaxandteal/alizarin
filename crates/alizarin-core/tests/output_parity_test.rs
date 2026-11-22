@@ -164,6 +164,27 @@ fn outputs() -> BTreeMap<String, String> {
                 .unwrap(),
         ),
     );
+    // Deterministic ids from fixed inputs, in the CSV fixtures' namespace.
+    use alizarin_core::rdm_namespace as ns;
+    ns::set_rdm_namespace(CSV_NAMESPACE).unwrap();
+    let collection = ns::generate_collection_uuid_in_namespace("Name Types").unwrap();
+    let concept =
+        ns::generate_concept_uuid_from_str(&collection.to_string(), "Preferred Name").unwrap();
+    let labels = std::collections::HashMap::from([
+        ("en".to_string(), "Fort".to_string()),
+        ("ga".to_string(), "Ráth".to_string()),
+    ]);
+    let ids = serde_json::json!({
+        "namespace": ns::parse_rdm_namespace(CSV_NAMESPACE).unwrap().to_string(),
+        "collection": collection.to_string(),
+        "concept": concept.to_string(),
+        "value": ns::generate_value_uuid(&concept.to_string(), "Preferred Name", "en").to_string(),
+        "labels": ns::labels_to_deterministic_string(&labels),
+        "uuidV5": alizarin_core::graph_mutator::generate_uuid_v5(("node", Some("g1")), "name"),
+    });
+    ns::clear_rdm_namespace();
+    put("ids".into(), canonical(&ids));
+
     // A graph and its business data built from CSVs (csv/): the graph with
     // its collections, then the resources, multi-valued tile ids fixed by
     // the tile namespace.

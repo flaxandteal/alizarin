@@ -8,6 +8,12 @@ entries is tracked in `PARITY-RESEARCH.md`.
 ## Unreleased
 
 ### Added
+- NAPI and Python: the deterministic id functions WASM had,
+  `generateCollectionUuid` / `generate_collection_uuid`,
+  `generateConceptUuid`, `generateValueUuid`, `parseRdmNamespace`,
+  `labelsToDeterministicString`; NAPI also `generateUuidV5` (Python had
+  `generate_uuid_v5`). Core's on every binding, held to one set of expected
+  ids.
 - Python: `GraphManager.load_prebuild(dir, base_uri)` loads a prebuild
   directory's graphs, collections and business data, and
   `GraphManager.load_graph(name_or_id)` finds a model by class name (case

@@ -173,6 +173,24 @@ def routes():
         return {"business_data": {"resources": [items[0]["resource"]]}}
 
     out.append(("TreeToTilesIterator", "tiles:tree", iterated))
+    def ids():
+        # Deterministic ids from fixed inputs, in the CSV fixtures' namespace.
+        alizarin.set_rdm_namespace("https://example.org/parity")
+        try:
+            collection = alizarin.generate_collection_uuid("Name Types")
+            concept = alizarin.generate_concept_uuid(collection, "Preferred Name")
+            return {
+                "collection": collection,
+                "concept": concept,
+                "labels": alizarin.labels_to_deterministic_string({"en": "Fort", "ga": "Ráth"}),
+                "namespace": alizarin.parse_rdm_namespace("https://example.org/parity"),
+                "uuidV5": alizarin.generate_uuid_v5("node", "name", "g1"),
+                "value": alizarin.generate_value_uuid(concept, "Preferred Name", "en"),
+            }
+        finally:
+            alizarin.clear_rdm_namespace()
+
+    out.append(("rdm namespace ids", "ids", ids))
     # A graph and its business data built from CSVs.
     def csv(name):
         with open(os.path.join(DATA_DIR, "csv", name), encoding="utf-8") as f:
