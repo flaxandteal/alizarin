@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Print each JS binding's runtime surface as JSON: every export, and for
- * classes their prototype methods, listed exactly as
+ * classes their methods (instance and static), listed exactly as
  * tests/dual-backend/bindingParity.test.ts sees them. Used to build and
  * maintain tests/binding-parity.json (see scripts/guards/binding_manifest.py).
  *
@@ -16,7 +16,21 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const require = createRequire(import.meta.url);
 
 /** Same plumbing filter as bindingParity.test.ts. */
-const PLUMBING = new Set(['constructor', 'free', '__destroy_into_raw', '__getClassname', 'toJSON', 'toString']);
+const PLUMBING = new Set([
+  'constructor', 'free', '__destroy_into_raw', '__getClassname', 'toJSON', 'toString', '__wrap', '__unwrap',
+]);
+/** A function's own properties, which every class has (not static methods). */
+const FUNCTION_OWN = new Set(['length', 'name', 'prototype', 'caller', 'arguments']);
+
+/** A class's methods, instance and static, as Python's dir() lists both. */
+function members(cls) {
+  const statics = Object.getOwnPropertyNames(cls).filter(
+    (m) => !FUNCTION_OWN.has(m) && typeof cls[m] === 'function',
+  );
+  return [...new Set([...Object.getOwnPropertyNames(cls.prototype), ...statics])]
+    .filter((m) => !PLUMBING.has(m) && !m.startsWith('__wbg'))
+    .sort();
+}
 
 function surface(module, classNames) {
   const classes = {};
@@ -25,9 +39,7 @@ function surface(module, classNames) {
     if (name === 'default' || name.startsWith('__')) continue;
     if (typeof value !== 'function') continue;
     if (classNames.has(name)) {
-      classes[name] = Object.getOwnPropertyNames(value.prototype)
-        .filter((m) => !PLUMBING.has(m) && !m.startsWith('__wbg'))
-        .sort();
+      classes[name] = members(value);
     } else {
       functions.push(name);
     }

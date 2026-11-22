@@ -18,13 +18,22 @@ import manifest from '../binding-parity.json';
 type Binding = 'wasm' | 'napi' | 'python';
 
 /** WASM-bindgen's and NAPI's own plumbing, not part of either API. */
-const PLUMBING = new Set(['constructor', 'free', '__destroy_into_raw', '__getClassname', 'toJSON', 'toString']);
+const PLUMBING = new Set([
+  'constructor', 'free', '__destroy_into_raw', '__getClassname', 'toJSON', 'toString', '__wrap', '__unwrap',
+]);
 
 /** String.prototype's names, which js/_wasm.ts copies onto `stringLike` classes. */
 const STRING_LIKE = new Set([...Object.getOwnPropertyNames(String.prototype), 'length']);
 
+/** A function's own properties, which every class has (not static methods). */
+const FUNCTION_OWN = new Set(['length', 'name', 'prototype', 'caller', 'arguments']);
+
+/** A class's methods, instance and static, as Python's dir() lists both. */
 function methods(cls: any, stringLike = false): string[] {
-  return Object.getOwnPropertyNames(cls.prototype)
+  const statics = Object.getOwnPropertyNames(cls).filter(
+    (name) => !FUNCTION_OWN.has(name) && typeof cls[name] === 'function',
+  );
+  return [...new Set([...Object.getOwnPropertyNames(cls.prototype), ...statics])]
     .filter((name) => !PLUMBING.has(name) && !name.startsWith('__wbg'))
     .filter((name) => !(stringLike && STRING_LIKE.has(name)))
     .sort();

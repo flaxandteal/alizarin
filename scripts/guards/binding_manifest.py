@@ -96,8 +96,8 @@ FUNCTION_RENAMES = {
 
 ECO_FS = "ecosystem: reads or writes the filesystem, which WASM has not"
 GAP_FS = "gap: Node has a filesystem; NAPI lacks this file-based form"
-ECO_PLAIN_JSON = "ecosystem: plain JSON objects, built by js/backend.ts createStatic*/createWKRM (which skip core's parse: B-7)"
-ECO_DATACLASS = "ecosystem: pure-Python dataclasses in python/alizarin/static_types.py (whose parsing drifts from core: B-5)"
+ECO_PLAIN_JSON = "ecosystem: core's JSON as plain objects, built by js/backend.ts createStatic* (constructStatic)"
+ECO_DATACLASS = "ecosystem: Python dataclasses in python/alizarin/static_types.py, read and written through core"
 GAP_RDM_GLOBAL = "gap: the global RDM cache functions differ per binding (A-6)"
 GAP_NAMESPACE = "gap: H-3, RDM namespaces and deterministic UUIDs must agree across bindings"
 GAP_EXTENSIONS = "gap: the extension registry functions differ per binding (A-6, G)"

@@ -340,6 +340,33 @@
       "python": "PyResourceModelWrapper",
       "operations": [
         {
+          "wasm": null,
+          "napi": "fromGraph",
+          "python": null,
+          "why": {
+            "wasm": "ecosystem: WASM's constructor takes the StaticGraph object, as fromGraph takes a NapiStaticGraph",
+            "python": "ecosystem: Python's constructor takes a registered graph's id"
+          }
+        },
+        {
+          "wasm": "getModelByGraphId",
+          "napi": null,
+          "python": null,
+          "why": {
+            "napi": "gap: a static registry query only WASM exposes, unused by the ORM (A-7)",
+            "python": "gap: a static registry query only WASM exposes, unused by the ORM (A-7)"
+          }
+        },
+        {
+          "wasm": "isModelRegistered",
+          "napi": null,
+          "python": null,
+          "why": {
+            "napi": "gap: a static registry query only WASM exposes, unused by the ORM (A-7)",
+            "python": "gap: a static registry query only WASM exposes, unused by the ORM (A-7)"
+          }
+        },
+        {
           "wasm": "createPseudoNode",
           "napi": "createPseudoNode",
           "python": "create_pseudo_node"
@@ -1772,8 +1799,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "ecosystem: plain JSON objects, built by js/backend.ts createStatic*/createWKRM (which skip core's parse: B-7)",
-        "python": "ecosystem: pure-Python dataclasses in python/alizarin/static_types.py (whose parsing drifts from core: B-5)"
+        "napi": "ecosystem: core's JSON as plain objects, built by js/backend.ts createStatic* (constructStatic)",
+        "python": "ecosystem: Python dataclasses in python/alizarin/static_types.py, read and written through core"
       },
       "operations": [
         {
@@ -1868,8 +1895,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "ecosystem: plain JSON objects, built by js/backend.ts createStatic*/createWKRM (which skip core's parse: B-7)",
-        "python": "ecosystem: pure-Python dataclasses in python/alizarin/static_types.py (whose parsing drifts from core: B-5)"
+        "napi": "ecosystem: core's JSON as plain objects, built by js/backend.ts createStatic* (constructStatic)",
+        "python": "ecosystem: Python dataclasses in python/alizarin/static_types.py, read and written through core"
       },
       "operations": [
         {
@@ -1919,8 +1946,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "ecosystem: plain JSON objects, built by js/backend.ts createStatic*/createWKRM (which skip core's parse: B-7)",
-        "python": "ecosystem: pure-Python dataclasses in python/alizarin/static_types.py (whose parsing drifts from core: B-5)"
+        "napi": "ecosystem: core's JSON as plain objects, built by js/backend.ts createStatic* (constructStatic)",
+        "python": "ecosystem: Python dataclasses in python/alizarin/static_types.py, read and written through core"
       },
       "operations": [
         {
@@ -1995,8 +2022,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "ecosystem: plain JSON objects, built by js/backend.ts createStatic*/createWKRM (which skip core's parse: B-7)",
-        "python": "ecosystem: pure-Python dataclasses in python/alizarin/static_types.py (whose parsing drifts from core: B-5)"
+        "napi": "ecosystem: core's JSON as plain objects, built by js/backend.ts createStatic* (constructStatic)",
+        "python": "ecosystem: Python dataclasses in python/alizarin/static_types.py, read and written through core"
       },
       "operations": [
         {
@@ -2046,8 +2073,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "ecosystem: plain JSON objects, built by js/backend.ts createStatic*/createWKRM (which skip core's parse: B-7)",
-        "python": "ecosystem: pure-Python dataclasses in python/alizarin/static_types.py (whose parsing drifts from core: B-5)"
+        "napi": "ecosystem: core's JSON as plain objects, built by js/backend.ts createStatic* (constructStatic)",
+        "python": "ecosystem: Python dataclasses in python/alizarin/static_types.py, read and written through core"
       },
       "operations": [
         {
@@ -2082,7 +2109,7 @@
       "napi": "NapiStaticGraph",
       "python": null,
       "why": {
-        "python": "ecosystem: pure-Python dataclasses in python/alizarin/static_types.py (whose parsing drifts from core: B-5)"
+        "python": "ecosystem: Python dataclasses in python/alizarin/static_types.py, read and written through core"
       },
       "operations": [
         {
@@ -2142,6 +2169,11 @@
         {
           "wasm": "edges",
           "napi": "edges",
+          "python": null
+        },
+        {
+          "wasm": "fromJsonString",
+          "napi": "fromJsonString",
           "python": null
         },
         {
@@ -2336,8 +2368,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "ecosystem: plain JSON objects, built by js/backend.ts createStatic*/createWKRM (which skip core's parse: B-7)",
-        "python": "ecosystem: pure-Python dataclasses in python/alizarin/static_types.py (whose parsing drifts from core: B-5)"
+        "napi": "ecosystem: core's JSON as plain objects, built by js/backend.ts createStatic* (constructStatic)",
+        "python": "ecosystem: Python dataclasses in python/alizarin/static_types.py, read and written through core"
       },
       "operations": [
         {
@@ -2552,12 +2584,17 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "ecosystem: plain JSON objects, built by js/backend.ts createStatic*/createWKRM (which skip core's parse: B-7)",
-        "python": "ecosystem: pure-Python dataclasses in python/alizarin/static_types.py (whose parsing drifts from core: B-5)"
+        "napi": "ecosystem: core's JSON as plain objects, built by js/backend.ts createStatic* (constructStatic)",
+        "python": "ecosystem: Python dataclasses in python/alizarin/static_types.py, read and written through core"
       },
       "operations": [
         {
           "wasm": "alias",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "compare",
           "napi": null,
           "python": null
         },
@@ -2673,8 +2710,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "ecosystem: plain JSON objects, built by js/backend.ts createStatic*/createWKRM (which skip core's parse: B-7)",
-        "python": "ecosystem: pure-Python dataclasses in python/alizarin/static_types.py (whose parsing drifts from core: B-5)"
+        "napi": "ecosystem: core's JSON as plain objects, built by js/backend.ts createStatic* (constructStatic)",
+        "python": "ecosystem: Python dataclasses in python/alizarin/static_types.py, read and written through core"
       },
       "operations": [
         {
@@ -2709,8 +2746,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "ecosystem: plain JSON objects, built by js/backend.ts createStatic*/createWKRM (which skip core's parse: B-7)",
-        "python": "ecosystem: pure-Python dataclasses in python/alizarin/static_types.py (whose parsing drifts from core: B-5)"
+        "napi": "ecosystem: core's JSON as plain objects, built by js/backend.ts createStatic* (constructStatic)",
+        "python": "ecosystem: Python dataclasses in python/alizarin/static_types.py, read and written through core"
       },
       "operations": [
         {
@@ -2745,8 +2782,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "ecosystem: plain JSON objects, built by js/backend.ts createStatic*/createWKRM (which skip core's parse: B-7)",
-        "python": "ecosystem: pure-Python dataclasses in python/alizarin/static_types.py (whose parsing drifts from core: B-5)"
+        "napi": "ecosystem: core's JSON as plain objects, built by js/backend.ts createStatic* (constructStatic)",
+        "python": "ecosystem: Python dataclasses in python/alizarin/static_types.py, read and written through core"
       },
       "operations": [
         {
@@ -2761,6 +2798,21 @@
         },
         {
           "wasm": "copy",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "fromBusinessDataJsonString",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "fromJsonString",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "fromSummary",
           "napi": null,
           "python": null
         },
@@ -2791,8 +2843,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "ecosystem: plain JSON objects, built by js/backend.ts createStatic*/createWKRM (which skip core's parse: B-7)",
-        "python": "ecosystem: pure-Python dataclasses in python/alizarin/static_types.py (whose parsing drifts from core: B-5)"
+        "napi": "ecosystem: core's JSON as plain objects, built by js/backend.ts createStatic* (constructStatic)",
+        "python": "ecosystem: Python dataclasses in python/alizarin/static_types.py, read and written through core"
       },
       "operations": [
         {
@@ -2802,6 +2854,11 @@
         },
         {
           "wasm": "description",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "empty",
           "napi": null,
           "python": null
         },
@@ -2832,8 +2889,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "ecosystem: plain JSON objects, built by js/backend.ts createStatic*/createWKRM (which skip core's parse: B-7)",
-        "python": "ecosystem: pure-Python dataclasses in python/alizarin/static_types.py (whose parsing drifts from core: B-5)"
+        "napi": "ecosystem: core's JSON as plain objects, built by js/backend.ts createStatic* (constructStatic)",
+        "python": "ecosystem: Python dataclasses in python/alizarin/static_types.py, read and written through core"
       },
       "operations": [
         {
@@ -2898,8 +2955,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "ecosystem: plain JSON objects, built by js/backend.ts createStatic*/createWKRM (which skip core's parse: B-7)",
-        "python": "ecosystem: pure-Python dataclasses in python/alizarin/static_types.py (whose parsing drifts from core: B-5)"
+        "napi": "ecosystem: core's JSON as plain objects, built by js/backend.ts createStatic* (constructStatic)",
+        "python": "ecosystem: Python dataclasses in python/alizarin/static_types.py, read and written through core"
       },
       "operations": [
         {
@@ -2944,8 +3001,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "ecosystem: plain JSON objects, built by js/backend.ts createStatic*/createWKRM (which skip core's parse: B-7)",
-        "python": "ecosystem: pure-Python dataclasses in python/alizarin/static_types.py (whose parsing drifts from core: B-5)"
+        "napi": "ecosystem: core's JSON as plain objects, built by js/backend.ts createStatic* (constructStatic)",
+        "python": "ecosystem: Python dataclasses in python/alizarin/static_types.py, read and written through core"
       },
       "operations": [
         {
@@ -2955,6 +3012,16 @@
         },
         {
           "wasm": "descriptors",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "fromJsonString",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "fromResource",
           "napi": null,
           "python": null
         },
@@ -2975,6 +3042,11 @@
         },
         {
           "wasm": "resourceinstanceid",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "summariesFromBusinessDataJsonString",
           "napi": null,
           "python": null
         },
@@ -3040,8 +3112,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "ecosystem: plain JSON objects, built by js/backend.ts createStatic*/createWKRM (which skip core's parse: B-7)",
-        "python": "ecosystem: pure-Python dataclasses in python/alizarin/static_types.py (whose parsing drifts from core: B-5)"
+        "napi": "ecosystem: core's JSON as plain objects, built by js/backend.ts createStatic* (constructStatic)",
+        "python": "ecosystem: Python dataclasses in python/alizarin/static_types.py, read and written through core"
       },
       "stringLike": true,
       "operations": [
@@ -3088,8 +3160,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "ecosystem: plain JSON objects, built by js/backend.ts createStatic*/createWKRM (which skip core's parse: B-7)",
-        "python": "ecosystem: pure-Python dataclasses in python/alizarin/static_types.py (whose parsing drifts from core: B-5)"
+        "napi": "ecosystem: core's JSON as plain objects, built by js/backend.ts createStatic* (constructStatic)",
+        "python": "ecosystem: Python dataclasses in python/alizarin/static_types.py, read and written through core"
       },
       "operations": [
         {
