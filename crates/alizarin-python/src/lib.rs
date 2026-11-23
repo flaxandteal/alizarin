@@ -1446,10 +1446,11 @@ impl PyResourceModelWrapper {
 #[pymethods]
 impl PyResourceModelWrapper {
     #[new]
-    fn new(graph_id: String, default_allow: Option<bool>) -> PyResult<Self> {
+    /// `default_allow` is required, as on WASM and NAPI: whether nodegroups
+    /// without a permission rule are readable.
+    fn new(graph_id: String, default_allow: bool) -> PyResult<Self> {
         // Get graph from registry
         let graph = get_registered_graph(&graph_id)?;
-        let default_allow = default_allow.unwrap_or(true);
 
         // A model of its own (the graph id then names it, as the latest);
         // `graph_id` holds the model's id.

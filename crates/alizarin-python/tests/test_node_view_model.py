@@ -21,7 +21,7 @@ def make_wrapper() -> ResourceModelWrapper:
         "slug": "group",
         "relatable_resource_model_ids": [],
     })
-    return ResourceModelWrapper(wkrm, graph)
+    return ResourceModelWrapper(wkrm, graph, True)
 
 
 def test_pseudo_nodes_record_the_path_from_the_root():

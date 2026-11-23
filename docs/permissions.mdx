@@ -65,8 +65,11 @@ nodegroup but only those of its tiles whose value at `path` (for example
 model's graph itself (keeping the functions whose ids are listed), and
 `Model.graph` is then the pruned graph: the way to write a public copy of a
 graph (`tests/graphManager.test.ts`, "pruneGraph"). (Older releases called
-this `exportGraph()`.) A model built directly
-with `new ResourceModelWrapper(wkrm, graph)` defaults to deny.
+this `exportGraph()`.) A model built directly takes the default too, and
+must be given it: `new ResourceModelWrapper(wkrm, graph, viewModelClass,
+false)`; in Python `ResourceModelWrapper(wkrm, graph, False)`,
+`ResourceModelWrapper.from_graph_id(graph_id, False)` or
+`alizarin.load_model(graph_id, False)`.
 
 ## Several views of one graph
 

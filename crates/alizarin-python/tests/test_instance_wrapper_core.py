@@ -32,7 +32,7 @@ def loaded():
     the model's permissions restored afterwards, as the registry is shared."""
     graph = group_graph()
     register_graph(json.dumps(graph))
-    model = PyResourceModelWrapper(graph["graphid"])
+    model = PyResourceModelWrapper(graph["graphid"], True)
     resource_id = str(uuid.uuid4())
     resource = {
         "resourceinstance": {
@@ -101,7 +101,7 @@ def test_without_a_descriptor_function_the_name_is_the_stored_one():
     graph_id = "aacd4ba3-8395-5092-870d-727143cd489a"
     with open(os.path.join(example, "resource_models", f"{graph_id}.json")) as f:
         register_graph(json.dumps(json.load(f)["graph"][0]))
-    PyResourceModelWrapper(graph_id)
+    PyResourceModelWrapper(graph_id, True)
     with open(os.path.join(example, "business_data", f"_{graph_id}.json")) as f:
         resource = json.load(f)["business_data"]["resources"][0]
     assert resource["resourceinstance"]["descriptors"] == {}

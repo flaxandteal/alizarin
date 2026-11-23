@@ -115,7 +115,7 @@ def test_build_nodes_should_cache_nodes_edges_and_nodegroups():
         config={}
     )
 
-    wrapper = ResourceModelWrapper(create_test_wkrm(graph), graph)
+    wrapper = ResourceModelWrapper(create_test_wkrm(graph), graph, True)
 
     # Build nodes
     wrapper.build_nodes()
@@ -132,7 +132,7 @@ def test_build_nodes_should_cache_nodes_edges_and_nodegroups():
 def test_get_node_objects_should_build_nodes_if_not_cached():
     """ResourceModelWrapper.get_node_objects() should build nodes if not cached"""
     graph = create_test_graph()
-    wrapper = ResourceModelWrapper(create_test_wkrm(graph), graph)
+    wrapper = ResourceModelWrapper(create_test_wkrm(graph), graph, True)
 
     nodes = wrapper.get_node_objects()
 
@@ -193,7 +193,7 @@ def test_get_edges_should_return_edge_map():
         config={}
     )
 
-    wrapper = ResourceModelWrapper(create_test_wkrm(graph), graph)
+    wrapper = ResourceModelWrapper(create_test_wkrm(graph), graph, True)
     edges = wrapper.get_edges()
 
     # Should have edge from root to child
@@ -255,7 +255,7 @@ def test_get_child_nodes_should_return_child_nodes():
         config={}
     )
 
-    wrapper = ResourceModelWrapper(create_test_wkrm(graph), graph)
+    wrapper = ResourceModelWrapper(create_test_wkrm(graph), graph, True)
     child_nodes = wrapper.get_child_nodes(root_node.nodeid)
 
     assert len(child_nodes) == 1
@@ -265,7 +265,7 @@ def test_get_child_nodes_should_return_child_nodes():
 def test_get_root_node_should_return_root_node():
     """ResourceModelWrapper.get_root_node() should return root node"""
     graph = create_test_graph()
-    wrapper = ResourceModelWrapper(create_test_wkrm(graph), graph)
+    wrapper = ResourceModelWrapper(create_test_wkrm(graph), graph, True)
 
     root_node = wrapper.get_root_node()
 
@@ -337,7 +337,7 @@ def test_get_collections_should_return_unique_collection_ids():
         config={}
     )
 
-    wrapper = ResourceModelWrapper(create_test_wkrm(graph), graph)
+    wrapper = ResourceModelWrapper(create_test_wkrm(graph), graph, True)
     collections = wrapper.get_collections()
 
     assert len(collections) == 1
@@ -390,7 +390,7 @@ def test_get_branch_publication_ids_should_return_unique_ids():
         config={}
     )
 
-    wrapper = ResourceModelWrapper(create_test_wkrm(graph), graph)
+    wrapper = ResourceModelWrapper(create_test_wkrm(graph), graph, True)
     branch_pub_ids = wrapper.get_branch_publication_ids()
 
     assert len(branch_pub_ids) == 1
@@ -400,7 +400,7 @@ def test_get_branch_publication_ids_should_return_unique_ids():
 def test_get_permitted_nodegroups_should_default_to_all_permitted():
     """ResourceModelWrapper.get_permitted_nodegroups() should default to all permitted"""
     graph = create_test_graph()
-    wrapper = ResourceModelWrapper(create_test_wkrm(graph), graph)
+    wrapper = ResourceModelWrapper(create_test_wkrm(graph), graph, True)
 
     permissions = wrapper.get_permitted_nodegroups()
 
@@ -454,7 +454,7 @@ def test_set_permitted_nodegroups_should_set_permissions_by_nodegroup_id():
         config={}
     )
 
-    wrapper = ResourceModelWrapper(create_test_wkrm(graph), graph)
+    wrapper = ResourceModelWrapper(create_test_wkrm(graph), graph, True)
 
     permissions = {
         "": True,
@@ -463,6 +463,17 @@ def test_set_permitted_nodegroups_should_set_permissions_by_nodegroup_id():
     wrapper.set_permitted_nodegroups(permissions)
 
     assert wrapper.is_nodegroup_permitted("field-ng", None) == False
+
+
+def test_a_model_built_directly_requires_default_allow():
+    # As TypeScript's new ResourceModelWrapper(wkrm, graph, vmc, defaultAllow).
+    import alizarin
+
+    graph = create_test_graph()
+    with pytest.raises(TypeError, match="default_allow"):
+        ResourceModelWrapper(create_test_wkrm(graph), graph, None)  # type: ignore[arg-type]
+    with pytest.raises(TypeError):
+        alizarin.load_model(graph.graphid)  # type: ignore[call-arg]
 
 
 if __name__ == '__main__':

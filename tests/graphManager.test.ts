@@ -1,4 +1,4 @@
-import { test, beforeAll } from "vitest";
+import { test, beforeAll, expect } from "vitest";
 import { assert } from 'chai';
 import { createStaticGraph, StaticCollection, StaticConcept, StaticNode, StaticNodegroup, StaticGraph, StaticGraphMeta } from '../js/static-types';
 import { ResourceModelWrapper, GraphMutator, createWKRM, GraphManager, StaticStore } from '../js/graphManager';
@@ -683,6 +683,16 @@ test("initialize() requires defaultAllowAllNodegroups, and get() requires initia
   // Not allow-all: a nodegroup without a rule is denied.
   const nodegroupId = [...Group.getNodegroupObjects().keys()].find((id) => id);
   assert.isFalse(Group.isNodegroupPermitted(nodegroupId!, null));
+});
+
+test("a model built directly requires defaultAllow too", () => {
+  const graph: any = parseStaticGraph(JSON.stringify(GroupJSON));
+  const wkrm = createWKRM(new StaticGraphMeta({ graphid: graph.graphid, name: "Group", slug: "group" }));
+  // As Quartz's public reindex.ts wrote it, relying on a deny default.
+  expect(() => new ResourceModelWrapper(wkrm, graph, null, undefined as any)).toThrow(/needs defaultAllow/);
+  const denied = new ResourceModelWrapper(wkrm, graph, null, false);
+  const nodegroupId = [...denied.getNodegroupObjects().keys()].find((id) => id);
+  assert.isFalse(denied.isNodegroupPermitted(nodegroupId!, null));
 });
 
 test("get() loads a graph by a non-exact name on a cold cache (N1)", async () => {

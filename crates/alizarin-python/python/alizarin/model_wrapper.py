@@ -71,7 +71,7 @@ class ResourceModelWrapper(Generic[RIVM]):
         self,
         wkrm: IWKRM,
         graph: StaticGraph,
-        default_allow: bool = True,
+        default_allow: bool,
     ) -> None:
         """
         Initialize ResourceModelWrapper.
@@ -79,9 +79,15 @@ class ResourceModelWrapper(Generic[RIVM]):
         Args:
             wkrm: Well-Known Resource Model metadata
             graph: The StaticGraph for this model
-            default_allow: Whether nodegroups without a permission rule are
-                permitted (GraphManager.load_graph passes its own default).
+            default_allow: Required. Whether nodegroups without a permission
+                rule are readable (GraphManager.load_graph passes its own
+                default), as TypeScript's constructor.
         """
+        if not isinstance(default_allow, bool):
+            raise TypeError(
+                "ResourceModelWrapper needs default_allow=True (every nodegroup "
+                "readable) or False (each denied until granted)"
+            )
         self.wkrm: IWKRM = wkrm
         self.graph: StaticGraph = graph
         self._default_allow = default_allow
@@ -126,7 +132,7 @@ class ResourceModelWrapper(Generic[RIVM]):
     def from_graph_id(
         cls,
         graph_id: str,
-        default_allow: bool = True,
+        default_allow: bool,
     ) -> "ResourceModelWrapper[RIVM]":
         """
         Create a ResourceModelWrapper from a registered graph ID.
@@ -136,6 +142,8 @@ class ResourceModelWrapper(Generic[RIVM]):
 
         Args:
             graph_id: The graph ID returned by register_graph()
+            default_allow: Required. Whether nodegroups without a permission
+                rule are readable.
 
         Returns:
             A fully initialized ResourceModelWrapper with nodes built
@@ -146,7 +154,7 @@ class ResourceModelWrapper(Generic[RIVM]):
         Example:
             >>> import alizarin
             >>> graph_id = alizarin.register_graph(graph_json)
-            >>> model = ResourceModelWrapper.from_graph_id(graph_id)
+            >>> model = ResourceModelWrapper.from_graph_id(graph_id, True)
             >>> # model is ready to use - nodes are already built
         """
         from . import get_graph_json

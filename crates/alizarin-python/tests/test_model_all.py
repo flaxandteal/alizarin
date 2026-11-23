@@ -41,7 +41,7 @@ def with_group(gm):
 @pytest.mark.asyncio
 async def test_all_reads_back_the_resource(manager):
     with_group(manager)
-    model = ResourceModelWrapper.from_graph_id(GRAPH_ID)
+    model = ResourceModelWrapper.from_graph_id(GRAPH_ID, True)
     instances = await model.all()
     assert len(instances) == 1
 
@@ -66,11 +66,11 @@ async def test_all_takes_a_limit_and_only_the_models_graph(manager):
         },
         "tiles": [],
     })
-    model = ResourceModelWrapper.from_graph_id(GRAPH_ID)
+    model = ResourceModelWrapper.from_graph_id(GRAPH_ID, True)
     assert [i.id for i in await model.all()] == [RESOURCE_ID]
     assert await model.all({"limit": 1}) != []
 
 
 @pytest.mark.asyncio
 async def test_all_with_no_resources_is_empty(manager):
-    assert await ResourceModelWrapper.from_graph_id(GRAPH_ID).all() == []
+    assert await ResourceModelWrapper.from_graph_id(GRAPH_ID, True).all() == []

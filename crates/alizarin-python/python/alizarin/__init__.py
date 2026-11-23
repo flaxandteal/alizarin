@@ -227,7 +227,7 @@ from .model_wrapper import ResourceModelWrapper
 from .graph_mutator import GraphMutator
 
 
-def load_model(graph_id: str) -> ResourceModelWrapper:
+def load_model(graph_id: str, default_allow: bool) -> ResourceModelWrapper:
     """
     Load a ResourceModelWrapper from a registered graph ID.
 
@@ -236,6 +236,8 @@ def load_model(graph_id: str) -> ResourceModelWrapper:
 
     Args:
         graph_id: The graph ID returned by register_graph()
+        default_allow: Required. Whether nodegroups without a permission rule
+            are readable (False: each denied until granted).
 
     Returns:
         A fully initialized ResourceModelWrapper with nodes built
@@ -243,10 +245,10 @@ def load_model(graph_id: str) -> ResourceModelWrapper:
     Example:
         >>> import alizarin
         >>> graph_id = alizarin.register_graph(graph_json)
-        >>> model = alizarin.load_model(graph_id)
+        >>> model = alizarin.load_model(graph_id, True)
         >>> # model is ready to use
     """
-    return ResourceModelWrapper.from_graph_id(graph_id)
+    return ResourceModelWrapper.from_graph_id(graph_id, default_allow)
 
 # =============================================================================
 # Instance Wrapper (matching TypeScript graphManager.ts)

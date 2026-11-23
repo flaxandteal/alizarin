@@ -211,7 +211,7 @@ tiles = alizarin.json_tree_to_tiles(tree_json, resource_id, graph_id,
 ```python
 graph_id = alizarin.register_graph(graph_json)
 graph = alizarin.get_graph_json(graph_id)
-model = alizarin.load_model(graph_id)   # ResourceModelWrapper
+model = alizarin.load_model(graph_id, True)   # ResourceModelWrapper; True: every nodegroup readable
 ```
 
 ### Mutate a graph

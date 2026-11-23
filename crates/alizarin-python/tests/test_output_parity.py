@@ -145,7 +145,7 @@ def routes():
     def resolve_path():
         from alizarin.instance_wrapper import RustResourceInstanceWrapperCore
 
-        alizarin.PyResourceModelWrapper(GRAPH["graphid"])
+        alizarin.PyResourceModelWrapper(GRAPH["graphid"], True)
         return RustResourceInstanceWrapperCore(GRAPH["graphid"]).resolve_path("part")
 
     out.append(("ResourceRegistry.populate_caches", "populate_caches", populate_caches))

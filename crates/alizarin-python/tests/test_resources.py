@@ -112,7 +112,7 @@ def test_model(registered_test_graph):
             graphid=graph.graphid,
         ),
     )
-    return ResourceModelWrapper(wkrm=wkrm, graph=graph)
+    return ResourceModelWrapper(wkrm=wkrm, graph=graph, default_allow=True)
 
 
 def create_test_resource(graph_id: str = "test-graph") -> StaticResource:

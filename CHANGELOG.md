@@ -112,6 +112,15 @@ entries is tracked in `PARITY-RESEARCH.md`.
   `initialize` now throws instead of initialising with the defaults (a `get`
   racing an `initialize` in flight still waits for it). See
   `docs/permissions.mdx`.
+- **Breaking:** a model built outside a manager must be given its default
+  too. TypeScript's `new ResourceModelWrapper(wkrm, graph, viewModelClass,
+  defaultAllow)` throws without `defaultAllow` (it defaulted to deny; a
+  `null` view-model class is accepted); Python's `ResourceModelWrapper(wkrm,
+  graph, default_allow)`, `ResourceModelWrapper.from_graph_id(graph_id,
+  default_allow)`, `alizarin.load_model(graph_id, default_allow)` and the
+  native `PyResourceModelWrapper(graph_id, default_allow)` require it (they
+  defaulted to allow). The bindings disagreed; now neither guesses. Pass
+  `false` where the TypeScript default was relied on, `True` where Python's was.
 - Fixed: asking a model whose permissions were never set
   (`isNodegroupPermitted`, `getPermittedNodegroups`) filled in all-true and
   wrote it to the backend, turning a deny-by-default model allow-all. It now

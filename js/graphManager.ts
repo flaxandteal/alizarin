@@ -874,11 +874,19 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
   private _graph: StaticGraph | null = null;
   private _edgeObjects: any[] | null = null;
 
-  constructor(wkrm: IWKRM, graph: StaticGraph, viewModelClass?: ResourceInstanceViewModelConstructor<RIVM>, defaultAllow: boolean = false, store: StaticStore = staticStore) {
+  /** `defaultAllow` is required, as `initialize`'s `defaultAllowAllNodegroups`:
+   *  whether nodegroups without a permission rule are readable. */
+  constructor(wkrm: IWKRM, graph: StaticGraph, viewModelClass: ResourceInstanceViewModelConstructor<RIVM> | undefined | null, defaultAllow: boolean, store: StaticStore = staticStore) {
+    if (typeof defaultAllow !== 'boolean') {
+      throw Error(
+        'new ResourceModelWrapper(wkrm, graph, viewModelClass, defaultAllow) needs defaultAllow: ' +
+        'true (every nodegroup readable) or false (each denied until granted)',
+      );
+    }
     this.wkrm = wkrm;
     this._backend = createResourceModelWrapper(wkrm, graph, defaultAllow);
     this.pruneTiles = !defaultAllow;
-    this.viewModelClass = viewModelClass;
+    this.viewModelClass = viewModelClass ?? undefined;
     this.staticStore = store;
   }
 
