@@ -362,10 +362,19 @@ class ArchesClientLocal extends ArchesClient {
   async getResource(resourceId: string): Promise<StaticResource> {
     const fs = await this.ensureFs();
     const source = this.resourceIdToFile(resourceId);
-    const response = await fs.promises.readFile(
-      source,
-      "utf8",
-    );
+    let response: string;
+    try {
+      response = await fs.promises.readFile(source, "utf8");
+    } catch (e: any) {
+      if (e?.code !== 'ENOENT') {
+        throw e;
+      }
+      throw new Error(
+        `Resource ${resourceId} is not in the registry, and ${source} (from resourceIdToFile) ` +
+        `does not exist. Load the business data holding it into the registry ` +
+        `(staticStore.registry.loadFromBusinessDataBytes), or point resourceIdToFile at its file.`,
+      );
+    }
     // A business data file or a bare resource, read by core.
     const resource: StaticResource | undefined = parseStaticResources(response)
       .find(resource => resource.resourceinstance.resourceinstanceid === resourceId);

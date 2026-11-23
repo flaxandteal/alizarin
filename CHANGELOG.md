@@ -8,6 +8,14 @@ entries is tracked in `PARITY-RESEARCH.md`.
 ## Unreleased
 
 ### Added
+- Docs: "Batch and ETL" (`docs/batch-etl.mdx`): business data loaded in
+  bulk into the registry, read raw (`getFull`, `hasFull`, `contains`, …) or
+  through the ORM with no resource files, `isPublic` and `__scopes`, and the
+  Python route; run as written on all three bindings. The LLM reference gains
+  the registry and permissions.
+- `ArchesClientLocal.getResource`: when `resourceIdToFile` names a file that
+  does not exist, the error names the resource and says to load its business
+  data into the registry, instead of a bare `ENOENT`.
 - NAPI: the RDM cache's lookups WASM and Python have (`getCollectionIds`,
   `lookupLabel`, `lookupConcept`, `lookupValue`, `getConceptIdForValue`,
   `validateValue`, `addCollectionsFromSkosXml`), and the global RDM cache

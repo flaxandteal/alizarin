@@ -1,0 +1,137 @@
+---
+title: Batch and ETL
+description: Load business data in bulk into the registry and read it raw or through the ORM
+---
+
+For batch work (building indexes, exports, transforms) load business data in
+bulk into the **resource registry** and read from there. The steps below are
+run as written, on both JS backends, by `tests/dual-backend/docsEtl.test.ts`,
+and the Python ones by `crates/alizarin-python/tests/test_load_prebuild.py`,
+against `docs/example`.
+
+## One store, with the client as fallback
+
+There is one place resources live: the registry (`staticStore.registry` in
+JS, `gm.registry` in Python). `Model.find(id)`, `Model.all()`, `retrieve()`
+and following a reference all look there first. Only a resource the registry
+does not hold is fetched through the client (`ArchesClient.getResource`, for
+`ArchesClientLocal` the file `resourceIdToFile` names), and is then kept in
+the registry too.
+
+```
+business data file ──loadFromBusinessDataBytes──▶ registry ◀──miss── ArchesClient.getResource
+                                                    │
+                          getFull / getSummary ◀────┼────▶ Model.find / .all / references (view models)
+```
+
+So once a batch's business data is loaded, the client needs to serve graphs
+and collections only, and a resource missing from every loaded file fails
+with an error naming it.
+
+## 1. Graphs
+
+```ts
+import { client, graphManager, staticStore, RDM } from 'alizarin';
+
+const local = new client.ArchesClientLocal({
+  allGraphFile: () => `${dir}/resource_models/_all.json`,
+  graphIdToGraphFile: (graphId) => `${dir}/resource_models/${graphId}.json`,
+  graphIdToResourcesFiles: () => [],           // resources come from step 2
+  collectionIdToFile: (id) => `${dir}/collections/${id}.json`,
+});
+graphManager.archesClient = local;
+staticStore.archesClient = local;
+RDM.archesClient = local;
+await graphManager.initialize({ defaultAllowAllNodegroups: true });
+```
+
+`defaultAllowAllNodegroups` is required: `true` reads everything, `false`
+denies each nodegroup until granted (see [Permissions](/docs/permissions);
+a public build wants `false` and a permitted set).
+
+Prefer `graphIdToGraphFile` to `graphToGraphFile`. The latter receives the
+graph's `StaticGraphMeta`, whose `name` is a translatable string (on WASM a
+`StaticTranslatableString`), not a plain file-name-ready string.
+
+## 2. Business data, in bulk
+
+```ts
+import * as fs from 'fs';
+
+for (const file of businessDataFiles) {
+  const refs = staticStore.registry.loadFromBusinessDataBytes(
+    fs.readFileSync(file),
+    true,   // storeFull: keep tiles (false keeps summaries only, for less memory)
+    true,   // includeCaches: also add the resources' __cache related resources as summaries
+  );
+  // refs: [{ resourceinstanceid, graph_id, isPublic }, ...], in file order
+}
+```
+
+Load the files of every graph your batch touches, not just the one you are
+processing: references (a person's site, a site's organisation) resolve from
+the registry, and a dependency's resources are there to read even if you
+leave them out of your output.
+
+`isPublic` is true when the resource's top-level `__scopes` includes
+`"public"`. A resource without `__scopes` is not public, so an export meant
+to feed a public build should always write `__scopes`.
+
+## 3. Reading raw resources
+
+| | JS (WASM and NAPI) | Python |
+|---|---|---|
+| Held at all (full or summary) | `registry.contains(id)` | — |
+| Held with tiles | `registry.hasFull(id)` | `registry.has_full(id)` |
+| The resource with its tiles, or `null` | `registry.getFull(id)` | `registry.get_full(id)` |
+| Its summary (`resourceinstance` only) | `registry.getSummary(id)` | `registry.get_summary(id)` |
+| Every full resource of a graph | `registry.getAllFullForGraph(graphId)` | `registry.get_all_full_for_graph(graphId)` |
+| How many | `registry.length` | — |
+| Value index for one node | `registry.getNodeValuesIndex(graph, node)` | `registry.get_node_values_index(...)` |
+| Tile values filtered by another node | NAPI only: `registry.getFilteredTileValues(...)` | — |
+
+```ts
+const person = staticStore.registry.getFull('193750d0-e4b8-527d-8dc2-cbfb4cd31e72');
+person.resourceinstance.graph_id;   // '91e13029-…'
+person.tiles.length;
+```
+
+On WASM `getFull` gives a `StaticResource` object, on NAPI plain JSON of the
+same shape, in Python a dict.
+
+## 4. Reading through the ORM
+
+```ts
+const Person = await graphManager.loadGraph('Person');
+const person = await Person.find('193750d0-e4b8-527d-8dc2-cbfb4cd31e72');
+String(await person.name);                          // 'Oisín Ó Dálaigh'
+const org = await (await person.primary_site).maintained_by;
+String(await org.name);                             // 'City Council -- Planning & GIS Division'
+```
+
+No resource file is read: `find` and the references come from the registry.
+See [Resource references](/docs/resource-references) for stubs and
+retrieval.
+
+## Python
+
+```python
+import json
+from alizarin.graph_manager import GraphManager
+from alizarin.view_models import viewContext
+
+gm = GraphManager(default_allow_all_nodegroups=True)
+for path in graph_files:
+    with open(path) as f:
+        gm.register_graph(json.load(f)["graph"][0])
+for path in business_data_files:
+    with open(path, "rb") as f:
+        refs = gm.registry.load_from_business_data_bytes(f.read())
+viewContext.graphManager = gm
+
+gm.registry.get_full(person_id)["resourceinstance"]["graph_id"]
+person = await gm.getResource(person_id)
+```
+
+With a whole [prebuild directory](/docs/prebuild), `gm.load_prebuild(dir)`
+does both loops (and the collections) in one call.

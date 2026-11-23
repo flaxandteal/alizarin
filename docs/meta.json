@@ -11,6 +11,7 @@
     "local-testing",
     "resource-references",
     "permissions",
+    "batch-etl",
     "graphs",
     "mutations",
     "resource-layers",

@@ -102,6 +102,30 @@ The referenced resource must be in the registry (load its graph's business
 data, e.g. `await Site.all()`) or fetchable by the client. See
 [Resource references](/docs/resource-references).
 
+### Pattern 1c: Batch / ETL — business data straight into the registry
+
+```typescript
+import * as fs from 'fs';
+
+// The registry is the one resource store: find(), all() and references read
+// it first and fall back to the client only for a resource it lacks.
+for (const file of businessDataFiles) {   // every graph you touch, dependencies too
+  const refs = staticStore.registry.loadFromBusinessDataBytes(fs.readFileSync(file), true, true);
+  // refs: [{ resourceinstanceid, graph_id, isPublic }]; isPublic needs __scopes: ["public"]
+}
+
+staticStore.registry.getFull(id);     // raw resource with tiles, or null
+staticStore.registry.hasFull(id);     // also contains(id), getSummary(id), length
+const person = await (await graphManager.loadGraph('Person')).find(id);  // no client fetch
+```
+
+Permissions: `initialize` requires `defaultAllowAllNodegroups`. With `false`,
+every nodegroup is denied (its values read `null`, while `__has(alias)` stays
+true) until granted with `Model.setPermittedNodegroups(new Map([[alias, true]]))`.
+`ArchesClientLocal`'s `graphToGraphFile` receives a `StaticGraphMeta` whose
+`name` is a translatable string; prefer `graphIdToGraphFile`. See
+[Batch and ETL](/docs/batch-etl) and [Permissions](/docs/permissions).
+
 ### Pattern 2: Build a graph from CSV
 
 ```typescript
@@ -265,6 +289,8 @@ add_node,heritage_item,description,Description,string,1,E62_String,P3_has_note
 8. **Don't test for `undefined` in Alizarin output.** Absent values are `null` on every backend.
 
 9. **Don't expect a reference to be loaded.** A resource-instance value is a stub until an attribute is read (or `retrieve()` called), and retrieving needs the target in the registry or reachable by the client. Without a cache entry, `getName()` is `null` until retrieved; `getName(true)` retrieves.
+
+10. **Don't read a `null` field as "no data" until you know its nodegroup is permitted.** A denied nodegroup reads `null`; check `Model.isNodegroupPermitted(nodegroupId, null)` or initialise with `defaultAllowAllNodegroups: true`.
 
 ## License
 

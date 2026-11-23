@@ -76,6 +76,35 @@ async def test_a_models_resources_are_its_business_data(gm):
     assert PERSON_ID in [p.id for p in people]
 
 
+@pytest.mark.asyncio
+async def test_business_data_bytes_go_straight_into_the_registry():
+    # docs/batch-etl.mdx, Python: graphs registered, business data loaded as
+    # bytes, then read raw or through the ORM, with no prebuild directory.
+    import json
+
+    gm = GraphManager(default_allow_all_nodegroups=True)
+    for name in os.listdir(os.path.join(EXAMPLE, "resource_models")):
+        if not name.startswith("_"):
+            with open(os.path.join(EXAMPLE, "resource_models", name), encoding="utf-8") as f:
+                gm.register_graph(json.load(f)["graph"][0])
+    refs = []
+    business = os.path.join(EXAMPLE, "business_data")
+    for name in sorted(os.listdir(business)):
+        with open(os.path.join(business, name), "rb") as f:
+            refs.extend(gm.registry.load_from_business_data_bytes(f.read()))
+    assert len(refs) == 64
+    assert {"resourceinstanceid": PERSON_ID, "graph_id": "91e13029-1637-5fbb-ac8a-2dd0c6502cc7", "isPublic": False} in refs
+    assert gm.registry.has_full(PERSON_ID)
+    assert gm.registry.get_full(PERSON_ID)["resourceinstance"]["graph_id"] == "91e13029-1637-5fbb-ac8a-2dd0c6502cc7"
+    viewContext.graphManager = gm
+    try:
+        person = await gm.getResource(PERSON_ID)
+        org = await (await person.primary_site).maintained_by
+        assert str(await org.name) == "City Council -- Planning & GIS Division"
+    finally:
+        viewContext.graphManager = None
+
+
 def test_the_manager_requires_a_default_permission():
     # As TypeScript's initialize({defaultAllowAllNodegroups}).
     with pytest.raises(TypeError, match="default_allow_all_nodegroups"):
