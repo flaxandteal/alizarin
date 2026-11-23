@@ -113,7 +113,7 @@ fn serialize_cards_with(
     max_depth: Option<usize>,
     display: Option<CardDisplay>,
 ) -> Result<JsValue, JsValue> {
-    let result = with_registry_model::<_, _, String>(&core.graph_id, |model| {
+    let result = with_registry_model::<_, _, String>(&core.model_id, |model| {
         let Some(display) = display else {
             return core.serialize_cards(
                 card_id,
@@ -184,7 +184,7 @@ fn semantic_child_value(
     parent_nodegroup_id: Option<&String>,
     child_alias: &str,
 ) -> Result<SemanticChildResult, SemanticChildError> {
-    with_registry_model(&core.graph_id, |model| {
+    with_registry_model(&core.model_id, |model| {
         core.get_semantic_child_value(
             parent_tile_id,
             parent_node_id,
@@ -223,7 +223,7 @@ impl WASMResourceInstanceWrapper {
 
     /// Return the graph for this wrapper's model (Rust-only, not exposed to JS).
     pub fn graph(&self) -> Option<Arc<alizarin_core::StaticGraph>> {
-        let graph_id = self.core.borrow().graph_id.clone();
+        let graph_id = self.core.borrow().model_id.clone();
         with_registry_model::<_, _, String>(&graph_id, |core| Ok(core.model_access.get_graph_arc()))
             .ok()
     }
@@ -241,7 +241,7 @@ impl WASMResourceInstanceWrapper {
     where
         F: FnOnce(&crate::model_wrapper::ResourceModelWrapperCore) -> Result<R, JsValue>,
     {
-        let graph_id = self.core.borrow().graph_id.clone();
+        let graph_id = self.core.borrow().model_id.clone();
         with_registry_model(&graph_id, f)
     }
 
@@ -290,7 +290,7 @@ impl WASMResourceInstanceWrapper {
     ) -> Result<(), JsValue> {
         self.check_tiles(&tiles)?;
         let mut core = self.core.borrow_mut();
-        let graph_id = core.graph_id.clone();
+        let graph_id = core.model_id.clone();
         with_registry_model::<_, _, JsValue>(&graph_id, |model| {
             core.merge_fetched_tiles(tiles, nodegroup_id, &model.model_access);
             Ok(())
@@ -309,7 +309,7 @@ impl WASMResourceInstanceWrapper {
         // the model), on-load derives, then, when comprehensive, every
         // nodegroup marked loaded.
         let mut core = self.core.borrow_mut();
-        let graph_id = core.graph_id.clone();
+        let graph_id = core.model_id.clone();
         with_registry_model::<_, _, JsValue>(&graph_id, |model| {
             let model = &model.model_access;
             if append {
@@ -329,17 +329,29 @@ impl WASMResourceInstanceWrapper {
 
 #[wasm_bindgen]
 impl WASMResourceInstanceWrapper {
-    pub(crate) fn new_from_graph_id(graph_id: String) -> WASMResourceInstanceWrapper {
+    /// An instance of the model `model_id` names (a model wrapper's id, or a
+    /// graph id for its latest).
+    pub(crate) fn new_from_graph_id(model_id: String) -> WASMResourceInstanceWrapper {
         WASMResourceInstanceWrapper {
-            core: RefCell::new(new_core(graph_id)),
+            core: RefCell::new(alizarin_core::ResourceInstanceWrapperCore::for_model(
+                &model_id,
+            )),
             tile_loader: RefCell::new(None),
         }
     }
 
-    pub(crate) fn new_from_resource(resource: &StaticResource) -> WASMResourceInstanceWrapper {
+    /// An instance of `resource`, through `model_id`'s model if given, else
+    /// its graph's latest.
+    pub(crate) fn new_from_resource(
+        resource: &StaticResource,
+        model_id: Option<String>,
+    ) -> WASMResourceInstanceWrapper {
         WASMResourceInstanceWrapper {
             core: RefCell::new({
                 let mut c = new_core(resource.0.resourceinstance.graph_id.clone());
+                if let Some(model_id) = model_id {
+                    c.model_id = model_id;
+                }
                 c.resource_instance = Some(resource.0.resourceinstance.clone());
                 c
             }),
@@ -483,7 +495,7 @@ impl WASMResourceInstanceWrapper {
     #[wasm_bindgen(js_name = getDescriptors)]
     pub fn get_descriptors(&self, recompute: bool) -> Result<StaticResourceDescriptors, JsValue> {
         // Core's, as NAPI uses; the graph and registry only when building.
-        let graph_id = self.core.borrow().graph_id.clone();
+        let graph_id = self.core.borrow().model_id.clone();
         self.core
             .borrow_mut()
             .descriptors(recompute, || {
@@ -542,7 +554,7 @@ impl WASMResourceInstanceWrapper {
     pub fn prune_resource_tiles(&mut self) -> Result<(), JsValue> {
         // Core's, as on NAPI and Python: the tiles and their index entries.
         let mut core = self.core.borrow_mut();
-        let graph_id = core.graph_id.clone();
+        let graph_id = core.model_id.clone();
         with_registry_model::<_, _, JsValue>(&graph_id, |model| {
             core.prune_to_permitted(&model.model_access)
                 .map_err(|e| JsValue::from_str(&e))
@@ -574,7 +586,7 @@ impl WASMResourceInstanceWrapper {
 
     fn root_pseudo(&self) -> Option<PseudoValue> {
         let core_ref = self.core.borrow();
-        let root_alias = with_registry_model::<_, _, String>(&core_ref.graph_id, |model| {
+        let root_alias = with_registry_model::<_, _, String>(&core_ref.model_id, |model| {
             Ok(model.get_root_node()?.alias.clone().unwrap_or_default())
         })
         .ok()?;
@@ -778,7 +790,7 @@ impl WASMResourceInstanceWrapper {
         // Core's serialisation, as on NAPI: core's pseudo_cache and the
         // model's own node and edge maps, borrowed, not copied.
         let core_ref = self.core.borrow();
-        let json = with_registry_model::<_, _, JsValue>(&core_ref.graph_id, |model| {
+        let json = with_registry_model::<_, _, JsValue>(&core_ref.model_id, |model| {
             core_ref
                 .ensure_populated(model)
                 .map_err(|e| JsValue::from_str(&e.to_string()))?;
@@ -878,7 +890,7 @@ impl WASMResourceInstanceWrapper {
         // Core's serialisation in display mode: core's pseudo_cache (populated
         // here if needed, as on NAPI and Python) and the model's own maps.
         let core_ref = self.core.borrow();
-        let json = with_registry_model::<_, _, JsValue>(&core_ref.graph_id, |model| {
+        let json = with_registry_model::<_, _, JsValue>(&core_ref.model_id, |model| {
             core_ref
                 .ensure_populated(model)
                 .map_err(|e| JsValue::from_str(&e.to_string()))?;
@@ -964,7 +976,7 @@ impl WASMResourceInstanceWrapper {
         is_single: bool,
     ) -> Result<JsValue, JsValue> {
         let core_ref = self.core.borrow();
-        let result = with_registry_model::<_, _, String>(&core_ref.graph_id, |model| {
+        let result = with_registry_model::<_, _, String>(&core_ref.model_id, |model| {
             core_ref.make_pseudo_value(alias, tile_id.as_deref(), is_permitted, is_single, model)
         })
         .map_err(|e| JsValue::from_str(&e))?;
@@ -1003,7 +1015,7 @@ impl WASMResourceInstanceWrapper {
         // Core's populate, the one NAPI and Python use; the model view supplies
         // the permissions and graph indices.
         let core = self.core.borrow();
-        let result = with_registry_model(&core.graph_id, |model| {
+        let result = with_registry_model(&core.model_id, |model| {
             core.populate(lazy, &nodegroup_ids, &root_node_alias, model)
                 .map_err(|e| JsValue::from_str(&format!("{:?}", e)))
         })?;
@@ -1052,7 +1064,7 @@ impl WASMResourceInstanceWrapper {
     pub fn resolve_path(&self, path: &str) -> Result<JsValue, JsValue> {
         // Core's resolve_path, as NAPI and Python use.
         let core_ref = self.core.borrow();
-        let info = with_registry_model::<_, _, JsValue>(&core_ref.graph_id, |model| {
+        let info = with_registry_model::<_, _, JsValue>(&core_ref.model_id, |model| {
             core_ref
                 .resolve_path(path, model)
                 .map_err(|e| JsValue::from_str(&e.to_string()))
@@ -1081,7 +1093,7 @@ impl WASMResourceInstanceWrapper {
     ) -> Result<PseudoList, JsValue> {
         // Core's, as NAPI and Python use.
         let core_ref = self.core.borrow();
-        let list = with_registry_model(&core_ref.graph_id, |model| {
+        let list = with_registry_model(&core_ref.model_id, |model| {
             core_ref
                 .get_values_at_path(path, model, filter_tile_id.as_deref())
                 .map_err(|e| JsValue::from_str(&e.to_string()))
@@ -1095,7 +1107,7 @@ impl WASMResourceInstanceWrapper {
     #[wasm_bindgen(js_name = nodegroupsToFetch)]
     pub fn nodegroups_to_fetch(&self, nodegroup_id: String) -> Result<Vec<String>, JsValue> {
         let core_ref = self.core.borrow();
-        with_registry_model::<_, _, JsValue>(&core_ref.graph_id, |model| {
+        with_registry_model::<_, _, JsValue>(&core_ref.model_id, |model| {
             Ok(core_ref.nodegroups_to_fetch(&nodegroup_id, model))
         })
     }
@@ -1106,7 +1118,7 @@ impl WASMResourceInstanceWrapper {
     #[wasm_bindgen(js_name = checkEditable)]
     pub fn check_editable(&self, alias: String) -> Result<(), JsValue> {
         let core_ref = self.core.borrow();
-        with_registry_model::<_, _, JsValue>(&core_ref.graph_id, |model| {
+        with_registry_model::<_, _, JsValue>(&core_ref.model_id, |model| {
             core_ref
                 .check_editable(&alias, &model.model_access)
                 .map_err(|e| JsValue::from_str(&e))
@@ -1121,7 +1133,7 @@ impl WASMResourceInstanceWrapper {
         let ops: Vec<alizarin_core::EditOp> = crate::js_json::from_value(ops)
             .map_err(|e| JsValue::from_str(&format!("invalid edits: {e}")))?;
         let mut core = self.core.borrow_mut();
-        let graph_id = core.graph_id.clone();
+        let graph_id = core.model_id.clone();
         let delta = with_registry_model::<_, _, JsValue>(&graph_id, |model| {
             core.apply_edits(&ops, &model.model_access)
                 .map_err(|e| JsValue::from_str(&e))
@@ -1138,7 +1150,7 @@ impl WASMResourceInstanceWrapper {
         nodegroup_ids: Vec<String>,
     ) -> Result<Vec<String>, JsValue> {
         let mut core = self.core.borrow_mut();
-        let graph_id = core.graph_id.clone();
+        let graph_id = core.model_id.clone();
         with_registry_model::<_, _, JsValue>(&graph_id, |model| {
             core.fetch_from_tile_source(&nodegroup_ids, &model.model_access)
                 .map_err(|e| JsValue::from_str(&format!("TileSource error: {e}")))
@@ -1162,7 +1174,7 @@ impl WASMResourceInstanceWrapper {
     ) -> Result<Vec<String>, JsValue> {
         // Core's, as NAPI uses (none in eager mode; each nodegroup once).
         let core_ref = self.core.borrow();
-        with_registry_model::<_, _, JsValue>(&core_ref.graph_id, |model| {
+        with_registry_model::<_, _, JsValue>(&core_ref.model_id, |model| {
             Ok(
                 core_ref.missing_nodegroups_for_children(
                     &parent_node_id,
@@ -1195,7 +1207,7 @@ impl WASMResourceInstanceWrapper {
         parent_nodegroup_id: Option<String>,
     ) -> Result<JsValue, JsValue> {
         let core_ref = self.core.borrow();
-        let values = with_registry_model::<_, _, SemanticChildError>(&core_ref.graph_id, |model| {
+        let values = with_registry_model::<_, _, SemanticChildError>(&core_ref.model_id, |model| {
             core_ref.get_all_semantic_child_values(
                 parent_tile_id.as_ref(),
                 &parent_node_id,
@@ -1217,24 +1229,22 @@ impl WASMResourceInstanceWrapper {
 // Helper implementations
 // ============================================================================
 
+/// An instance wrapper for a model: `model_id` is its model wrapper's
+/// `modelId` (or a graph id, for that graph's latest model).
 #[wasm_bindgen(js_name = newWASMResourceInstanceWrapperForModel)]
 pub fn new_wasm_resource_instance_wrapper_for_model(
-    graph_id: &str,
+    model_id: &str,
     resource_id: Option<String>,
 ) -> Result<WASMResourceInstanceWrapper, JsValue> {
-    // Verify the model exists in the registry
-    crate::model_wrapper::MODEL_REGISTRY.with(|registry| {
-        if !registry.borrow().contains_key(graph_id) {
-            return Err(JsValue::from_str(&format!(
-                "Model not found in registry for graph_id: {}",
-                graph_id
-            )));
-        }
-        Ok(())
-    })?;
+    if alizarin_core::get_model(model_id).is_none() {
+        return Err(JsValue::from_str(&format!(
+            "Model not found in registry for graph_id: {}",
+            model_id
+        )));
+    }
 
-    // Create instance wrapper with the graph_id
-    let wrapper = WASMResourceInstanceWrapper::new_from_graph_id(graph_id.to_string());
+    let wrapper = WASMResourceInstanceWrapper::new_from_graph_id(model_id.to_string());
+    let graph_id = wrapper.core.borrow().graph_id.clone();
 
     // If a resource_id is provided, set minimal resource metadata so the
     // tile source can resolve this instance's tiles.
@@ -1242,7 +1252,7 @@ pub fn new_wasm_resource_instance_wrapper_for_model(
         use alizarin_core::graph::{StaticResourceDescriptors, StaticResourceMetadata};
         wrapper.core.borrow_mut().resource_instance = Some(StaticResourceMetadata {
             resourceinstanceid: rid,
-            graph_id: graph_id.to_string(),
+            graph_id,
             name: String::new(),
             descriptors: StaticResourceDescriptors::default(),
             publication_id: None,
@@ -1259,24 +1269,25 @@ pub fn new_wasm_resource_instance_wrapper_for_model(
     Ok(wrapper)
 }
 
+/// An instance wrapper for `resource`, through `model_id`'s model (its model
+/// wrapper's `modelId`) if given, else its graph's latest.
 #[wasm_bindgen(js_name = newWASMResourceInstanceWrapperForResource)]
 pub fn new_wasm_resource_instance_wrapper_for_resource(
     resource: &StaticResource,
+    model_id: Option<String>,
 ) -> Result<WASMResourceInstanceWrapper, JsValue> {
-    let model_id = resource.resourceinstance.graph_id.clone();
-    // Verify the model exists in the registry
-    crate::model_wrapper::MODEL_REGISTRY.with(|registry| {
-        if !registry.borrow().contains_key(&model_id) {
-            return Err(JsValue::from_str(&format!(
-                "Model not found in registry for graph_id: {}",
-                model_id
-            )));
-        }
-        Ok(())
-    })?;
-
-    // Create instance wrapper with the graph_id
-    Ok(WASMResourceInstanceWrapper::new_from_resource(resource))
+    let id = model_id
+        .clone()
+        .unwrap_or_else(|| resource.resourceinstance.graph_id.clone());
+    if alizarin_core::get_model(&id).is_none() {
+        return Err(JsValue::from_str(&format!(
+            "Model not found in registry for graph_id: {}",
+            id
+        )));
+    }
+    Ok(WASMResourceInstanceWrapper::new_from_resource(
+        resource, model_id,
+    ))
 }
 
 // Tests for this module are in tests/ directory

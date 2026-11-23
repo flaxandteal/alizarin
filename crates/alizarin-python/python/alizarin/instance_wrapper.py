@@ -87,9 +87,10 @@ class ResourceInstanceWrapper(Generic[RIVM]):
         self.wkri: RIVM = wkri
         self.model: ResourceModelWrapper = model
 
-        # Create Rust core wrapper
+        # Create Rust core wrapper, through this model's own core model (its
+        # permissions), not the graph's latest.
         self._rust_core: RustResourceInstanceWrapperCore = (
-            RustResourceInstanceWrapperCore(model.wkrm.graph_id)
+            RustResourceInstanceWrapperCore(model.model_id)
         )
 
         # Layer 2: Python pseudo cache (wrapped objects)

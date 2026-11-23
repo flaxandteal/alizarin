@@ -8,6 +8,15 @@ entries is tracked in `PARITY-RESEARCH.md`.
 ## Unreleased
 
 ### Added
+- Fixed: two managers (or model wrappers) over one graph shared, and
+  overwrote, one set of permissions and prunes, on every binding: the later
+  `initialize` default or `setPermittedNodegroups` replaced the earlier's, so
+  a public and a private view of a graph could not be open at once. Each model
+  now keeps its own, by its `modelId` (Python `model_id`), and its instances
+  read through it. `createInstanceWrapperForResource` takes an optional
+  `modelId`; `newWASMResourceInstanceWrapperForModel` and
+  `NapiResourceInstanceWrapper` take one in place of the graph id. Functions
+  given only a graph id use the graph's most recently loaded model.
 - Resource registry parity: NAPI gains `getAllFull`, `isEmpty` and
   `getGraphId`; WASM and Python gain `getFilteredTileValues` /
   `get_filtered_tile_values`; Python gains `memory_stats` and

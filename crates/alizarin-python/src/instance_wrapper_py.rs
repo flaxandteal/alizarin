@@ -105,9 +105,9 @@ pub struct PyResourceInstanceWrapperCore {
 }
 
 impl PyResourceInstanceWrapperCore {
-    /// This instance's graph's shared model, as it is now.
+    /// This instance's model, as it is now.
     fn model(&self) -> PyResult<Arc<GraphModelAccess>> {
-        model_for(&self.graph_id)
+        model_for(&self.inner.model_id)
     }
 
     /// Set a compiled-in tile source, tried before the host's loader
@@ -265,15 +265,18 @@ impl PyResourceInstanceWrapperCore {
     /// Create a new PyResourceInstanceWrapperCore
     ///
     /// Args:
-    ///     graph_id: The graph ID (its model wrapper must exist)
+    ///     graph_id: The graph ID (its model wrapper must exist), or a model
+    ///         wrapper's `model_id`, to use that model rather than the
+    ///         graph's latest
     #[new]
     fn new(graph_id: String) -> PyResult<Self> {
-        // Its graph's model must be registered; the instance builds nothing.
+        // Its model must be registered; the instance builds nothing.
         model_for(&graph_id)?;
 
+        let inner = ResourceInstanceWrapperCore::for_model(&graph_id);
         Ok(PyResourceInstanceWrapperCore {
-            inner: ResourceInstanceWrapperCore::new(graph_id.clone()),
-            graph_id,
+            graph_id: inner.graph_id.clone(),
+            inner,
         })
     }
 
@@ -632,11 +635,11 @@ impl PyResourceInstanceWrapperCore {
     /// `recompute` or none are cached. Core's, as on NAPI and WASM.
     #[pyo3(signature = (recompute=false))]
     fn get_descriptors(&mut self, py: Python, recompute: bool) -> PyResult<PyObject> {
-        let graph_id = self.graph_id.clone();
+        let model_id = self.inner.model_id.clone();
         let descriptors = self
             .inner
             .descriptors(recompute, || {
-                let graph = model_for(&graph_id)
+                let graph = model_for(&model_id)
                     .map_err(|e| e.to_string())?
                     .get_graph_arc();
                 Ok((graph, crate::build_extension_registry()))

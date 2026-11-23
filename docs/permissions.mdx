@@ -68,9 +68,18 @@ graph (`tests/graphManager.test.ts`, "pruneGraph"). (Older releases called
 this `exportGraph()`.) A model built directly
 with `new ResourceModelWrapper(wkrm, graph)` defaults to deny.
 
-## One model per graph
+## Several views of one graph
 
-Core keeps one model per graph id, and its permissions with it. Two managers
-that load the same graph therefore share one set of permissions, and the one
-set last wins: a public and a private view of one graph cannot be open in the
-same process yet (PARITY-RESEARCH.md, A-9).
+Each model keeps its own permissions and prunes, so two managers can hold a
+public and a private view of one graph at once:
+
+```ts
+const privateView = new GraphManager(client);
+await privateView.initialize({ defaultAllowAllNodegroups: true });
+const publicView = new GraphManager(client);
+await publicView.initialize({ defaultAllowAllNodegroups: false });
+```
+
+A model's instances read through it (`Model.modelId` names it). Functions
+given only a graph id, such as tree-to-tiles conversion, use the graph's most
+recently loaded model.

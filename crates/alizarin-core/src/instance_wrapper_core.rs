@@ -675,8 +675,13 @@ pub type TileStore = IndexMap<String, StaticTile>;
 /// Used by NAPI, Python, and WASM bindings. SharedMut provides
 /// Rc<RefCell> on wasm32 and Arc<Mutex> on native targets.
 pub struct ResourceInstanceWrapperCore {
-    /// Graph ID to look up model
+    /// The resource's graph.
     pub graph_id: String,
+
+    /// The model this instance reads through ([`crate::get_model`]): its
+    /// model wrapper's id, so its permissions and prunes; the graph id (that
+    /// graph's latest model) unless [`Self::for_model`] says otherwise.
+    pub model_id: String,
 
     /// Resource metadata
     pub resource_instance: Option<StaticResourceMetadata>,
@@ -714,6 +719,7 @@ impl ResourceInstanceWrapperCore {
     /// Create a new empty core with just a graph ID
     pub fn new(graph_id: String) -> Self {
         ResourceInstanceWrapperCore {
+            model_id: graph_id.clone(),
             graph_id,
             resource_instance: None,
             tiles: None,
@@ -724,6 +730,17 @@ impl ResourceInstanceWrapperCore {
             on_load_derived: HashSet::new(),
             tile_source: None,
         }
+    }
+
+    /// A core for the model `id` names (a model wrapper's id, or a graph id):
+    /// its graph is that model's.
+    pub fn for_model(id: &str) -> Self {
+        let graph_id = crate::get_model(id)
+            .map(|model| model.get_graph_arc().graph_id().to_string())
+            .unwrap_or_else(|| id.to_string());
+        let mut core = Self::new(graph_id);
+        core.model_id = id.to_string();
+        core
     }
 
     /// Load tiles into the wrapper

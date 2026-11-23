@@ -47,12 +47,16 @@ describe("docs: local testing recipe", () => {
   test("initialize takes a plain options object", async () => {
     const { GraphManager } = await import("../../js/graphManager");
     const only = new GraphManager(graphManager.archesClient);
-    // Allow-all as the shared manager: core keeps one model, and so one set of
-    // permissions, per graph id, so a second manager's default would replace
-    // the first's (PARITY-RESEARCH.md, A-9).
-    await only.initialize({ graphs: ["91e13029-1637-5fbb-ac8a-2dd0c6502cc7"], defaultAllowAllNodegroups: true });
-    await expect(only.loadGraph("Person")).resolves.toBeDefined();
+    // Deny-by-default, unlike the shared manager: each model keeps its own
+    // permissions (PARITY-RESEARCH.md, A-9), so this changes nothing there.
+    await only.initialize({ graphs: ["91e13029-1637-5fbb-ac8a-2dd0c6502cc7"], defaultAllowAllNodegroups: false });
+    const denied = await only.loadGraph("Person");
     await expect(only.loadGraph("Site")).rejects.toThrow(/known: Person$/);
+
+    const shared = await graphManager.loadGraph("Person");
+    expect(denied.modelId).not.toBe(shared.modelId);
+    expect(await (await denied.find(PERSON_ID)).name).toBeNull();
+    expect(String(await (await shared.find(PERSON_ID)).name)).toBe("Oisín Ó Dálaigh");
   });
 
   test("an unknown model name says which names it knows", async () => {
@@ -89,8 +93,7 @@ describe("docs: local testing recipe", () => {
   });
 
   test("docs/permissions.mdx: a denied nodegroup reads null until granted", async () => {
-    // On the shared model (a second manager would share its permissions, A-9),
-    // restored after.
+    // On the shared manager's model, restored after for the tests that follow.
     const Person = await graphManager.loadGraph("Person");
     try {
       Person.setDefaultAllowAllNodegroups(false);

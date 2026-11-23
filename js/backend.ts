@@ -138,12 +138,15 @@ export function safeStringify(value: any): string {
  *
  * If registry is provided in NAPI mode, tiles are loaded directly from Rust
  * (avoids the JS→Rust serialization round-trip for tile data).
+ *
+ * `modelId` is the model wrapper's `modelId`: the instance then reads through
+ * that model (its permissions and prunes); without it, the graph's latest.
  */
-export function createInstanceWrapperForResource(resource: StaticResource, registry?: any): any {
+export function createInstanceWrapperForResource(resource: StaticResource, registry?: any, modelId?: string): any {
   if (_backend === 'napi') {
     const napi = getNapiModule();
     if (!napi) throw new Error('NAPI backend selected but @alizarin/napi not available');
-    const wrapper = new napi.NapiResourceInstanceWrapper(resource.resourceinstance.graph_id);
+    const wrapper = new napi.NapiResourceInstanceWrapper(modelId ?? resource.resourceinstance.graph_id);
     // Try direct registry load (avoids re-serializing all tile data through JS)
     const resourceId = resource.resourceinstance.resourceinstanceid;
     if (registry && typeof wrapper.loadFromRegistry === 'function') {
@@ -158,7 +161,7 @@ export function createInstanceWrapperForResource(resource: StaticResource, regis
     return wrapper;
   }
   const { newWASMResourceInstanceWrapperForResource } = getWasmModule();
-  return newWASMResourceInstanceWrapperForResource(resource);
+  return newWASMResourceInstanceWrapperForResource(resource, modelId ?? null);
 }
 
 /**
@@ -196,7 +199,9 @@ export function loadTiles(wrapper: any, tiles: any): void {
  * Create an instance wrapper for a model (no resource data yet).
  *
  * If `resourceId` is provided, a minimal resource metadata is set so the
- * tile-source fast path can look up tiles by resource.
+ * tile-source fast path can look up tiles by resource. `graphId` may be a
+ * model wrapper's `modelId`, to read through that model rather than the
+ * graph's latest.
  */
 export function createInstanceWrapperForModel(graphId: string, resourceId?: string): any {
   if (_backend === 'napi') {

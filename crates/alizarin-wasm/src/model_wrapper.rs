@@ -35,13 +35,15 @@ pub struct ResourceModelWrapperCore {
 }
 
 impl ResourceModelWrapperCore {
-    /// The view for `graph_id`; an error if no model wrapper registered it.
-    pub(crate) fn for_graph(graph_id: &str) -> Result<Self, String> {
+    /// The view for the model `id` names (a model id, or a graph id for its
+    /// latest); an error if no model wrapper registered it.
+    pub(crate) fn for_graph(id: &str) -> Result<Self, String> {
+        let model_access = alizarin_core::get_model(id)
+            .ok_or_else(|| format!("No shared model registered for graph {id}"))?;
+        let graph_id = model_access.get_graph_arc().graph_id().to_string();
         let wkrm = MODEL_REGISTRY
-            .with(|registry| registry.borrow().get(graph_id).cloned())
+            .with(|registry| registry.borrow().get(&graph_id).cloned())
             .ok_or_else(|| format!("Model not found in registry: {graph_id}"))?;
-        let model_access = alizarin_core::get_model(graph_id)
-            .ok_or_else(|| format!("No shared model registered for graph {graph_id}"))?;
         Ok(ResourceModelWrapperCore { wkrm, model_access })
     }
 
@@ -199,8 +201,9 @@ impl alizarin_core::ModelAccess for ResourceModelWrapperCore {
     }
 }
 
-// WASM wrapper - lightweight reference that borrows from registry
-// Only holds the graph_id and looks up the core from MODEL_REGISTRY
+// WASM wrapper - lightweight reference that borrows from registry. Holds its
+// core model's id (a graph id names that graph's latest model), so two
+// wrappers over one graph keep their own permissions.
 #[wasm_bindgen]
 #[derive(Clone)]
 pub struct WASMResourceModelWrapper {
@@ -238,17 +241,25 @@ impl WASMResourceModelWrapper {
         // graph, which core's graph registry shares); WASM keeps only the WKRM.
         let core_graph = graph.0.clone();
         let graph_id = core_graph.graph_id().to_string();
-        alizarin_core::register_model(Arc::new(core_graph), default_allow)
-            .unwrap_or_else(|e| wasm_bindgen::throw_str(&e));
+        let (model_id, _) =
+            alizarin_core::register_model_with_id(Arc::new(core_graph), default_allow)
+                .unwrap_or_else(|e| wasm_bindgen::throw_str(&e));
 
         MODEL_REGISTRY.with(|registry| {
             registry
                 .borrow_mut()
-                .insert(graph_id.clone(), Rc::new(wkrm.clone()));
+                .insert(graph_id, Rc::new(wkrm.clone()));
         });
 
-        // Return a lightweight wrapper that just holds the graph_id
-        WASMResourceModelWrapper { graph_id }
+        // A lightweight wrapper holding its own model's id.
+        WASMResourceModelWrapper { graph_id: model_id }
+    }
+
+    /// This wrapper's core model id: instance wrappers made with it use this
+    /// model (its permissions and prunes), not the graph's latest.
+    #[wasm_bindgen(getter, js_name = modelId)]
+    pub fn model_id(&self) -> String {
+        self.graph_id.clone()
     }
 
     /// Get a registered model by graph_id (returns None if not found or graph_id is null)

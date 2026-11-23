@@ -105,6 +105,23 @@ async def test_business_data_bytes_go_straight_into_the_registry():
         viewContext.graphManager = None
 
 
+@pytest.mark.asyncio
+async def test_two_managers_of_one_graph_keep_their_own_permissions(prebuild):
+    # A-9: a public and a private view of one graph, open at once.
+    private = GraphManager(default_allow_all_nodegroups=True)
+    private.load_prebuild(prebuild)
+    public = GraphManager(default_allow_all_nodegroups=False)
+    public.load_prebuild(prebuild)
+    assert private.load_graph("Person").model_id != public.load_graph("Person").model_id
+    try:
+        viewContext.graphManager = public
+        assert await (await public.getResource(PERSON_ID)).contact_handle is None
+        viewContext.graphManager = private
+        assert await (await private.getResource(PERSON_ID)).contact_handle == "+353-1-555-1004"
+    finally:
+        viewContext.graphManager = None
+
+
 def test_the_manager_requires_a_default_permission():
     # As TypeScript's initialize({defaultAllowAllNodegroups}).
     with pytest.raises(TypeError, match="default_allow_all_nodegroups"):

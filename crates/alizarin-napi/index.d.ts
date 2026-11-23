@@ -451,6 +451,8 @@ export declare class NapiResourceInstanceWrapper {
    *
    * If `resource_id` is provided, a minimal resource metadata is created so
    * the tile-source fast path can look up tiles by resource.
+   * `graph_id` may be a model wrapper's `modelId`: the instance then uses
+   * that model; a graph id uses the graph's latest.
    */
   constructor(graphId: string, resourceId?: string | undefined | null)
   /**
@@ -701,6 +703,11 @@ export declare class NapiResourceModelWrapper {
   setDefaultAllowAllNodegroups(defaultAllow: boolean): void
   /** Prune graph to only include permitted nodegroups and their dependencies. */
   pruneGraph(keepFunctions?: Array<string> | undefined | null): void
+  /**
+   * This wrapper's core model id: instance wrappers made with it use this
+   * model (its permissions and prunes), not the graph's latest.
+   */
+  get modelId(): string
 }
 /** A domain value option from node config. */
 export declare class NapiStaticDomainValue {

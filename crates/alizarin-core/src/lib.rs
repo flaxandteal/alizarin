@@ -379,10 +379,10 @@ pub use registry::{
     register_graph_owned, registry_size, unregister_graph,
 };
 
-// Model registry: one shared model per graph, for every binding
+// Model registry: a model per model wrapper, by id; a graph id names its latest
 pub use registry::{
-    clear_model_registry, get_model, register_model, set_model_default_allow,
-    set_model_permissions, unregister_model, update_model,
+    clear_model_registry, get_model, register_model, register_model_with_id,
+    set_model_default_allow, set_model_permissions, unregister_model, update_model,
 };
 
 // List datatype registry (for datatypes where array IS the value)

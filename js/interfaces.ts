@@ -110,6 +110,8 @@ interface IModelWrapperBackend {
   // Build / lifecycle
   buildNodes(): void;
   getGraphId(): string;
+  /** This wrapper's own core model id (its permissions and prunes). */
+  readonly modelId: string;
 
   // Node accessors
   getRootNode(): StaticNode;

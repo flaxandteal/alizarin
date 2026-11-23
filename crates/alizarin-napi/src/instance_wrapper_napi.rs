@@ -883,12 +883,15 @@ impl NapiResourceInstanceWrapper {
     ///
     /// If `resource_id` is provided, a minimal resource metadata is created so
     /// the tile-source fast path can look up tiles by resource.
+    /// `graph_id` may be a model wrapper's `modelId`: the instance then uses
+    /// that model; a graph id uses the graph's latest.
     #[napi(constructor)]
     pub fn new(graph_id: String, resource_id: Option<String>) -> Result<Self> {
-        // Its graph's model must be registered; the instance builds nothing.
+        // Its model must be registered; the instance builds nothing.
         model_for(&graph_id)?;
 
-        let mut core = ResourceInstanceWrapperCore::new(graph_id.clone());
+        let mut core = ResourceInstanceWrapperCore::for_model(&graph_id);
+        let graph_id = core.graph_id.clone();
 
         // Set minimal resource metadata so tile source can resolve this instance.
         if let Some(rid) = resource_id {
@@ -1161,11 +1164,11 @@ impl NapiResourceInstanceWrapper {
     /// or none are cached: core's, as WASM uses.
     #[napi]
     pub fn get_descriptors(&mut self, recompute: bool) -> Result<serde_json::Value> {
-        let graph_id = self.inner.graph_id.clone();
+        let model_id = self.inner.model_id.clone();
         let descriptors = self
             .inner
             .descriptors(recompute, || {
-                let graph = model_for(&graph_id).map_err(|e| e.reason)?.get_graph_arc();
+                let graph = model_for(&model_id).map_err(|e| e.reason)?.get_graph_arc();
                 Ok((graph, ext_registry()))
             })
             .map_err(napi::Error::from_reason)?;
@@ -1506,9 +1509,9 @@ impl NapiResourceInstanceWrapper {
 // =============================================================================
 
 impl NapiResourceInstanceWrapper {
-    /// This instance's graph's shared model, as it is now.
+    /// This instance's model, as it is now.
     fn model(&self) -> Result<Arc<GraphModelAccess>> {
-        model_for(&self.inner.graph_id)
+        model_for(&self.inner.model_id)
     }
 
     /// Set a compiled-in tile source, tried before the host's loader
@@ -2208,14 +2211,22 @@ impl NapiResourceModelWrapper {
     pub fn prune_graph(&mut self, keep_functions: Option<Vec<String>>) -> Result<()> {
         self.update(|model| model.prune_graph(keep_functions.as_deref()))
     }
+
+    /// This wrapper's core model id: instance wrappers made with it use this
+    /// model (its permissions and prunes), not the graph's latest.
+    #[napi(getter, js_name = "modelId")]
+    pub fn model_id(&self) -> String {
+        self.graph_id.clone()
+    }
 }
 
 // Private helpers for NapiResourceModelWrapper
 impl NapiResourceModelWrapper {
-    /// Register `graph` and its shared model with core (replacing any earlier one).
+    /// Register `graph` and a model of its own with core; the graph id then
+    /// names this model (its latest), and `graph_id` holds the model's id.
     fn register(graph: Arc<StaticGraph>, default_allow: bool) -> Result<Self> {
-        let graph_id = graph.graphid.clone();
-        alizarin_core::register_model(graph, default_allow).map_err(napi::Error::from_reason)?;
+        let (graph_id, _) = alizarin_core::register_model_with_id(graph, default_allow)
+            .map_err(napi::Error::from_reason)?;
         Ok(NapiResourceModelWrapper { graph_id })
     }
 

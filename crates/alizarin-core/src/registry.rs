@@ -29,11 +29,10 @@ lazy_static::lazy_static! {
     static ref GRAPH_REGISTRY: RwLock<HashMap<String, Arc<StaticGraph>>> =
         RwLock::new(HashMap::new());
 
-    /// One model per graph (graph_id -> model), shared by every binding's
-    /// model and instance wrappers; see [`register_model`]. Always built:
-    /// readers need only `&self` accessors.
-    static ref MODEL_REGISTRY: RwLock<HashMap<String, Arc<GraphModelAccess>>> =
-        RwLock::new(HashMap::new());
+    /// Every registered model by its id, and each graph's latest; see
+    /// [`register_model_with_id`]. Always built: readers need only `&self`
+    /// accessors.
+    static ref MODEL_REGISTRY: RwLock<Models> = RwLock::new(Models::default());
 
     /// Global RDM (Reference Data Manager) cache for concept collections.
     /// Used by label resolution, display rendering, and other functions that
@@ -174,51 +173,90 @@ pub fn get_registered_graph_ids() -> Vec<String> {
 // Model Registry
 // ============================================================================
 
-/// Register the model for `graph`: the graph itself (sharing this `Arc`, as
-/// [`register_graph`] stores it) and one [`GraphModelAccess`] over it, built
-/// now, with `default_allow` and no explicit permission rules. This is the one
-/// model every binding's model and instance wrappers use for the graph;
-/// registering again replaces it, permissions included.
-pub fn register_model(
+/// The registered models: each by its id (`<graph_id>#<n>`), and each
+/// graph's latest, which a graph id names.
+#[derive(Default)]
+struct Models {
+    by_id: HashMap<String, Arc<GraphModelAccess>>,
+    latest: HashMap<String, String>,
+    next: u64,
+}
+
+impl Models {
+    /// The model id `id` names: itself if a model id, else its graph's latest.
+    fn resolve(&self, id: &str) -> Option<String> {
+        if self.by_id.contains_key(id) {
+            Some(id.to_string())
+        } else {
+            self.latest.get(id).cloned()
+        }
+    }
+}
+
+/// Register a model for `graph`: the graph itself (sharing this `Arc`, as
+/// [`register_graph`] stores it) and a [`GraphModelAccess`] over it, built
+/// now, with `default_allow` and no explicit permission rules. Each call makes
+/// a new model with its own id, so two model wrappers over one graph (two
+/// managers, a public and a private view) keep their own permissions and
+/// prunes; the graph id names the latest. Models are not removed when their
+/// wrappers go: each costs a model's indices, shared with its graph.
+pub fn register_model_with_id(
     graph: Arc<StaticGraph>,
     default_allow: bool,
-) -> Result<Arc<GraphModelAccess>, String> {
+) -> Result<(String, Arc<GraphModelAccess>), String> {
     let graph_id = graph.graph_id().to_string();
     let mut model = GraphModelAccess::new(Arc::clone(&graph), default_allow);
     model.ensure_built()?;
     let model = Arc::new(model);
     register_graph(&graph_id, graph);
-    MODEL_REGISTRY
-        .write()
-        .map_err(|_| "model registry lock poisoned".to_string())?
-        .insert(graph_id, Arc::clone(&model));
-    Ok(model)
-}
-
-/// The model registered for `graph_id`, as a cheap `Arc` snapshot. Instances
-/// look it up on each use, so they see changes made after they were created.
-pub fn get_model(graph_id: &str) -> Option<Arc<GraphModelAccess>> {
-    MODEL_REGISTRY
-        .read()
-        .ok()
-        .and_then(|registry| registry.get(graph_id).cloned())
-}
-
-/// Change the model registered for `graph_id` with `f`, rebuilding its indices
-/// if `f` invalidated them (a new graph, a prune). Copy-on-write: anyone
-/// holding the previous snapshot keeps it unchanged, and the copy is cheap, as
-/// the index maps are `Arc`-shared. Errors if no model is registered, or with
-/// `f`'s error, leaving the registered model as it was.
-pub fn update_model<R>(
-    graph_id: &str,
-    f: impl FnOnce(&mut GraphModelAccess) -> Result<R, String>,
-) -> Result<R, String> {
-    let mut registry = MODEL_REGISTRY
+    let mut models = MODEL_REGISTRY
         .write()
         .map_err(|_| "model registry lock poisoned".to_string())?;
-    let entry = registry
-        .get_mut(graph_id)
-        .ok_or_else(|| format!("no model registered for graph {graph_id}"))?;
+    let id = format!("{graph_id}#{}", models.next);
+    models.next += 1;
+    models.by_id.insert(id.clone(), Arc::clone(&model));
+    models.latest.insert(graph_id, id.clone());
+    Ok((id, model))
+}
+
+/// [`register_model_with_id`], without the id: for callers that name the
+/// model by its graph id (the latest).
+pub fn register_model(
+    graph: Arc<StaticGraph>,
+    default_allow: bool,
+) -> Result<Arc<GraphModelAccess>, String> {
+    register_model_with_id(graph, default_allow).map(|(_, model)| model)
+}
+
+/// The model `id` names (a model id, or a graph id for its latest), as a
+/// cheap `Arc` snapshot. Instances look it up on each use, so they see
+/// changes made after they were created.
+pub fn get_model(id: &str) -> Option<Arc<GraphModelAccess>> {
+    let models = MODEL_REGISTRY.read().ok()?;
+    models
+        .resolve(id)
+        .and_then(|id| models.by_id.get(&id).cloned())
+}
+
+/// Change the model `id` names with `f`, rebuilding its indices if `f`
+/// invalidated them (a new graph, a prune). Copy-on-write: anyone holding the
+/// previous snapshot keeps it unchanged, and the copy is cheap, as the index
+/// maps are `Arc`-shared. Errors if no model is registered, or with `f`'s
+/// error, leaving the registered model as it was.
+pub fn update_model<R>(
+    id: &str,
+    f: impl FnOnce(&mut GraphModelAccess) -> Result<R, String>,
+) -> Result<R, String> {
+    let mut models = MODEL_REGISTRY
+        .write()
+        .map_err(|_| "model registry lock poisoned".to_string())?;
+    let model_id = models
+        .resolve(id)
+        .ok_or_else(|| format!("no model registered for graph {id}"))?;
+    let entry = models
+        .by_id
+        .get_mut(&model_id)
+        .ok_or_else(|| format!("no model registered for graph {id}"))?;
     let mut model = (**entry).clone();
     let result = f(&mut model)?;
     model.ensure_built()?;
@@ -226,40 +264,55 @@ pub fn update_model<R>(
     Ok(result)
 }
 
-/// Set the permission rules on `graph_id`'s model. Keys may be node aliases or
-/// nodegroup ids: aliases resolve to nodegroup ids here, once, so every
+/// Set the permission rules on the model `id` names. Keys may be node aliases
+/// or nodegroup ids: aliases resolve to nodegroup ids here, once, so every
 /// binding and every check (tile filtering, pruning) sees the same keys.
 pub fn set_model_permissions(
-    graph_id: &str,
+    id: &str,
     rules: HashMap<String, PermissionRule>,
 ) -> Result<(), String> {
-    let resolved = resolve_permission_keys(graph_id, rules);
-    update_model(graph_id, |model| {
+    let graph_id = get_model(id)
+        .map(|model| model.get_graph_arc().graph_id().to_string())
+        .unwrap_or_else(|| id.to_string());
+    let resolved = resolve_permission_keys(&graph_id, rules);
+    update_model(id, |model| {
         model.set_permitted_nodegroups_rules(resolved);
         Ok(())
     })
 }
 
-/// Set whether nodegroups without a rule are permitted on `graph_id`'s model.
-pub fn set_model_default_allow(graph_id: &str, default_allow: bool) -> Result<(), String> {
-    update_model(graph_id, |model| {
+/// Set whether nodegroups without a rule are permitted on the model `id` names.
+pub fn set_model_default_allow(id: &str, default_allow: bool) -> Result<(), String> {
+    update_model(id, |model| {
         model.set_default_allow(default_allow);
         Ok(())
     })
 }
 
-/// Unregister `graph_id`'s model (its graph stays registered).
-pub fn unregister_model(graph_id: &str) -> Option<Arc<GraphModelAccess>> {
-    MODEL_REGISTRY
-        .write()
-        .ok()
-        .and_then(|mut registry| registry.remove(graph_id))
+/// Unregister models (their graph stays registered): a model id, that model;
+/// a graph id, every model of the graph. Returns the one `id` named.
+pub fn unregister_model(id: &str) -> Option<Arc<GraphModelAccess>> {
+    let mut models = MODEL_REGISTRY.write().ok()?;
+    let named = models.resolve(id)?;
+    let removed = models.by_id.get(&named).cloned();
+    if models.by_id.contains_key(id) {
+        models.by_id.remove(id);
+        models.latest.retain(|_, latest| latest != id);
+    } else {
+        let prefix = format!("{id}#");
+        models
+            .by_id
+            .retain(|model_id, _| !model_id.starts_with(&prefix));
+        models.latest.remove(id);
+    }
+    removed
 }
 
 /// Clear every registered model (graphs stay registered).
 pub fn clear_model_registry() {
-    if let Ok(mut registry) = MODEL_REGISTRY.write() {
-        registry.clear();
+    if let Ok(mut models) = MODEL_REGISTRY.write() {
+        models.by_id.clear();
+        models.latest.clear();
     }
 }
 
@@ -772,6 +825,38 @@ mod tests {
 
         unregister_model(graph_id);
         assert!(get_model(graph_id).is_none());
+        unregister_graph(graph_id);
+    }
+
+    #[test]
+    fn two_models_of_one_graph_keep_their_own_permissions() {
+        // A-9: a public and a private view of one graph.
+        let graph_id = "test-model-3";
+        let graph = Arc::new(create_aliased_graph(graph_id));
+        let (private, _) = register_model_with_id(Arc::clone(&graph), true).unwrap();
+        let (public, _) = register_model_with_id(graph, false).unwrap();
+        assert_ne!(private, public);
+
+        set_model_permissions(
+            &public,
+            HashMap::from([("name".to_string(), PermissionRule::Boolean(false))]),
+        )
+        .unwrap();
+        assert!(get_model(&private).unwrap().is_nodegroup_permitted("ng1"));
+        assert!(!get_model(&public).unwrap().is_nodegroup_permitted("ng1"));
+        // The graph id names the latest.
+        assert!(Arc::ptr_eq(
+            &get_model(graph_id).unwrap(),
+            &get_model(&public).unwrap()
+        ));
+
+        // Unregistering one model leaves the other; the graph id, then, none.
+        unregister_model(&public);
+        assert!(get_model(&private).is_some());
+        assert!(get_model(graph_id).is_none());
+        unregister_model(graph_id);
+        unregister_model(&private);
+        assert!(get_model(&private).is_none());
         unregister_graph(graph_id);
     }
 

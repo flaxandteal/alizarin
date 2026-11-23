@@ -85,14 +85,15 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     this.model = model;
     this.pruneTiles = pruneTiles;
 
-    // Initialize wrapper for tile management (WASM or NAPI depending on backend)
+    // Initialize wrapper for tile management (WASM or NAPI depending on backend),
+    // reading through this model's own core model (its permissions and prunes).
     let t0 = performance.now();
     if (resource) {
-      this.wasmWrapper = createInstanceWrapperForResource(resource, this.model.staticStore.registry);
+      this.wasmWrapper = createInstanceWrapperForResource(resource, this.model.staticStore.registry, model.modelId);
       this.resource = resource;
       recordNativeTiming("createInstanceWrapperForResource", performance.now() - t0);
     } else {
-      this.wasmWrapper = createInstanceWrapperForModel(model.wkrm.graphId, wkri.id);
+      this.wasmWrapper = createInstanceWrapperForModel(model.modelId, wkri.id);
       recordNativeTiming("createInstanceWrapperForModel", performance.now() - t0);
     }
 
@@ -957,6 +958,12 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
 
   getGraphId(): string {
     return this._backend.getGraphId?.() ?? this.wkrm.graphId;
+  }
+
+  /** This model's own core model id. Its instances read through it, so two
+   *  models of one graph (two managers) keep their own permissions. */
+  get modelId(): string {
+    return this._backend.modelId ?? this.wkrm.graphId;
   }
 
   getNodeObjectFromAlias(alias: string): StaticNode {

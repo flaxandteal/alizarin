@@ -1451,11 +1451,19 @@ impl PyResourceModelWrapper {
         let graph = get_registered_graph(&graph_id)?;
         let default_allow = default_allow.unwrap_or(true);
 
-        // The graph's shared model, which every instance wrapper uses.
-        alizarin_core::register_model(graph, default_allow)
+        // A model of its own (the graph id then names it, as the latest);
+        // `graph_id` holds the model's id.
+        let (graph_id, _) = alizarin_core::register_model_with_id(graph, default_allow)
             .map_err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>)?;
 
         Ok(PyResourceModelWrapper { graph_id })
+    }
+
+    /// This wrapper's core model id: instance wrappers made with it use this
+    /// model (its permissions and prunes), not the graph's latest.
+    #[getter]
+    fn model_id(&self) -> String {
+        self.graph_id.clone()
     }
 
     /// Get child nodes for a given node ID, keyed by alias.

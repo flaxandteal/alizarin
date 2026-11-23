@@ -110,6 +110,12 @@ class ResourceModelWrapper(Generic[RIVM]):
         register_graph(json.dumps(self.graph.to_dict()))
         self._rust_model = PyResourceModelWrapper(self.graph.graphid, self._default_allow)
 
+    @property
+    def model_id(self) -> str:
+        """This model's own core model id: its instances read through it (its
+        permissions and prunes), not the graph's latest model."""
+        return self._rust_model.model_id
+
     def set_default_allow_all_nodegroups(self, default_allow: bool) -> None:
         """Whether nodegroups without a permission rule are permitted, as
         TypeScript's setDefaultAllowAllNodegroups."""
