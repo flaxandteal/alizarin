@@ -1,0 +1,8 @@
+# One build directory for the repo. The ext crates are excluded from the
+# workspace (their own lockfiles, published separately), so without this each
+# builds alizarin-core and every dependency into its own ext/*/*/target.
+# Cargo keys artefacts by crate version, features, profile and target, so
+# shared ones are reused and differing ones sit side by side. Found from any
+# working directory in the repo; CARGO_TARGET_DIR still overrides.
+[build]
+target-dir = "target"

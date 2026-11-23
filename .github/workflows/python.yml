@@ -67,7 +67,7 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            crates/alizarin-python/target/
+            target/
           key: ${{ runner.os }}-cargo-python-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Install maturin
@@ -142,10 +142,11 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            ext/*/python/target/
-          # -v2 bump: the pre-rename cache carried ext/alizarin-*/python/target/,
-          # which re-created phantom old-name dirs on restore. Invalidate it once.
-          key: ${{ runner.os }}-cargo-extensions-v2-${{ hashFiles('**/Cargo.lock') }}
+            target/
+          # The ext crates build into the shared target/ (.cargo/config.toml).
+          # -v3: earlier caches held per-crate ext/*/python/target/ dirs, which
+          # restored phantom dirs; invalidate them.
+          key: ${{ runner.os }}-cargo-extensions-v3-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Install maturin and pytest
         run: pip install maturin pytest pytest-asyncio
