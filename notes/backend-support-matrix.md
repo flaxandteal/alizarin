@@ -11,6 +11,8 @@ needs. This is a deliberate, supported contract as of 2.0, not partial work.
 | Registry calls behind `StaticStore` (`getAllFullForGraph`/`mergeFromResources`/`insert`) | ✓ | ✓ | ✓ |
 | Graph / prebuild export | ✓ | ✓ | ✓ |
 | SKOS / RDM parse | ✓ | ✓ | ✓ |
+| RDM cache lookups, global RDM cache | ✓ | ✓ | ✓ |
+| RDM collection editing / label search | — | — | ✓ |
 | Extension coerce / render / resolve | ✓ | ✓ | ✓ |
 | Layer composition (`composeResourceLayers`) | ✓ | ✓ | ✓ |
 | Resource lifecycle state / transitions | ✓ | ✓ | ✓ |

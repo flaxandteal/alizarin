@@ -8,6 +8,23 @@ entries is tracked in `PARITY-RESEARCH.md`.
 ## Unreleased
 
 ### Added
+- NAPI: the RDM cache's lookups WASM and Python have (`getCollectionIds`,
+  `lookupLabel`, `lookupConcept`, `lookupValue`, `getConceptIdForValue`,
+  `validateValue`, `addCollectionsFromSkosXml`), and the global RDM cache
+  functions (`setGlobalRdmCache`, `hasGlobalRdmCache`, `clearGlobalRdmCache`,
+  `addToGlobalRdmCacheFromSkosXml`, `addCollectionToGlobalRdmCache`,
+  `removeFromGlobalRdmCache`, `globalRdmLookupLabel`, `globalRdmHasCollection`,
+  `globalRdmGetParentId`, `globalRdmGetCollectionIds`). Tree-to-tiles label
+  resolution against the global cache now works from NAPI.
+- Python: `RustRdmCache.lookup_label`, `remove_collection` (returning whether
+  it was there) and `resolve_labels(tree_json, alias_to_collection, strict)`;
+  `global_rdm_lookup_label` (a label string, as WASM's and NAPI's),
+  `global_rdm_get_collection_ids` and `remove_from_global_rdm_cache`. The
+  package now also exports the `global_rdm_*` lookups it already had
+  (`global_rdm_has_collection`, `global_rdm_lookup_value`,
+  `global_rdm_concept_pref_label`, `global_rdm_get_parent_id`).
+- All three bindings' RDM lookups and global-cache functions are core's, held
+  to one set of expected results (golden routes `rdm`, `rdm:global`).
 - NAPI and Python: the deterministic id functions WASM had,
   `generateCollectionUuid` / `generate_collection_uuid`,
   `generateConceptUuid`, `generateValueUuid`, `parseRdmNamespace`,

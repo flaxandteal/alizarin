@@ -305,7 +305,7 @@ pub use slice_source::{GraphSource, RegisteredGraphs, SliceMember, SliceSource};
 // RDM cache types
 pub use rdm_cache::{
     rdm_to_skos_collection, rdm_to_skos_collection_excluding, skos_to_rdm_collection, RdmCache,
-    RdmCollection, RdmConcept,
+    RdmCollection, RdmConcept, RdmValueInfo,
 };
 
 // RDM namespace utilities (deterministic UUID generation)
@@ -403,10 +403,12 @@ pub use registry::{
 
 // Global RDM cache (for concept lookups across FFI targets)
 pub use registry::{
-    add_to_global_rdm_cache_from_skos, add_to_global_rdm_cache_from_skos_xml,
-    clear_global_rdm_cache, ensure_global_rdm_cache, get_global_rdm_cache,
-    get_global_rdm_cache_arc, has_global_rdm_cache, set_global_rdm_cache, with_global_rdm_cache,
-    with_global_rdm_cache_mut,
+    add_collection_to_global_rdm_cache, add_to_global_rdm_cache_from_skos,
+    add_to_global_rdm_cache_from_skos_xml, clear_global_rdm_cache, ensure_global_rdm_cache,
+    get_global_rdm_cache, get_global_rdm_cache_arc, global_rdm_get_collection_ids,
+    global_rdm_get_parent_id, global_rdm_has_collection, global_rdm_lookup_label,
+    has_global_rdm_cache, remove_from_global_rdm_cache, set_global_rdm_cache,
+    with_global_rdm_cache, with_global_rdm_cache_mut,
 };
 
 // Global extension type registry (for extension crates like alizarin-pg)

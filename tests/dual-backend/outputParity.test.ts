@@ -212,6 +212,63 @@ function routes(): [string, string, () => any][] {
       }
     },
   ]);
+  // RDM cache lookups over collection.json, on a cache and the global cache.
+  const rdm: any = backend === "napi" ? getNapiModule() : wasm;
+  const collection = JSON.parse(read("collection.json"));
+  const [CID, MONUMENT, FORT] = [
+    "parity-collection",
+    "c0000000-0000-4000-8000-000000000001",
+    "c0000000-0000-4000-8000-000000000002",
+  ];
+  const rdmCache = () => {
+    const cache = backend === "napi" ? new rdm.NapiRdmCache() : new rdm.WasmRdmCache();
+    cache.addCollectionFromJson(CID, JSON.stringify(collection.concepts));
+    return cache;
+  };
+  out.push([
+    "RdmCache lookups",
+    "rdm",
+    () => {
+      const cache = rdmCache();
+      return {
+        collectionIds: cache.getCollectionIds(),
+        concept: cache.lookupConcept(CID, FORT),
+        conceptIdForValue: cache.getConceptIdForValue(CID, "v0000000-0000-4000-8000-000000000004"),
+        invalidValue: cache.validateValue(CID, "nope"),
+        labelEn: cache.lookupLabel(CID, FORT, "en"),
+        labelGa: cache.lookupLabel(CID, FORT, "ga"),
+        labelMissing: cache.lookupLabel(CID, "nope", "en"),
+        parent: cache.getParentId(CID, FORT),
+        topParent: cache.getParentId(CID, MONUMENT),
+        validValue: cache.validateValue(CID, "v0000000-0000-4000-8000-000000000003"),
+        value: cache.lookupValue(CID, "v0000000-0000-4000-8000-000000000004"),
+      };
+    },
+  ]);
+  out.push([
+    "global RDM cache",
+    "rdm:global",
+    () => {
+      rdm.setGlobalRdmCache(rdmCache());
+      try {
+        // In call order; the golden's keys are sorted.
+        const before = {
+          collectionIds: rdm.globalRdmGetCollectionIds(),
+          has: rdm.hasGlobalRdmCache(),
+          hasCollection: rdm.globalRdmHasCollection(CID),
+          label: rdm.globalRdmLookupLabel(CID, FORT, "ga"),
+          parent: rdm.globalRdmGetParentId(CID, FORT),
+        };
+        const removed = rdm.removeFromGlobalRdmCache(CID);
+        const removedAgain = rdm.removeFromGlobalRdmCache(CID);
+        const { collectionIds, has, hasCollection, label, parent } = before;
+        const hasCollectionAfter = rdm.globalRdmHasCollection(CID);
+        return { collectionIds, has, hasCollection, hasCollectionAfter, label, parent, removed, removedAgain };
+      } finally {
+        rdm.clearGlobalRdmCache();
+      }
+    },
+  ]);
   // A graph and its business data built from CSVs.
   const csv = (name: string) => read(`csv/${name}`);
   const csvGraph = () =>

@@ -191,6 +191,55 @@ def routes():
             alizarin.clear_rdm_namespace()
 
     out.append(("rdm namespace ids", "ids", ids))
+    # RDM cache lookups over collection.json, on a cache and the global cache.
+    with open(os.path.join(DATA_DIR, "collection.json"), encoding="utf-8") as f:
+        collection = json.load(f)
+    cid, monument, fort = (
+        "parity-collection",
+        "c0000000-0000-4000-8000-000000000001",
+        "c0000000-0000-4000-8000-000000000002",
+    )
+
+    def rdm_cache():
+        cache = alizarin.RustRdmCache()
+        cache.add_collection_from_json(cid, json.dumps(collection["concepts"]))
+        return cache
+
+    def rdm():
+        cache = rdm_cache()
+        return {
+            "collectionIds": cache.get_collection_ids(),
+            # Python gives a concept object; its dict is core's serialisation.
+            "concept": cache.lookup_concept(cid, fort).to_dict(),
+            "conceptIdForValue": cache.get_concept_id_for_value(cid, "v0000000-0000-4000-8000-000000000004"),
+            "invalidValue": cache.validate_value(cid, "nope"),
+            "labelEn": cache.lookup_label(cid, fort, "en"),
+            "labelGa": cache.lookup_label(cid, fort, "ga"),
+            "labelMissing": cache.lookup_label(cid, "nope", "en"),
+            "parent": cache.get_parent_id(cid, fort),
+            "topParent": cache.get_parent_id(cid, monument),
+            "validValue": cache.validate_value(cid, "v0000000-0000-4000-8000-000000000003"),
+            "value": cache.lookup_value(cid, "v0000000-0000-4000-8000-000000000004"),
+        }
+
+    def rdm_global():
+        alizarin.set_global_rdm_cache(rdm_cache())
+        try:
+            return {
+                "has": alizarin.has_global_rdm_cache(),
+                "collectionIds": alizarin.global_rdm_get_collection_ids(),
+                "hasCollection": alizarin.global_rdm_has_collection(cid),
+                "label": alizarin.global_rdm_lookup_label(cid, fort, "ga"),
+                "parent": alizarin.global_rdm_get_parent_id(cid, fort),
+                "removed": alizarin.remove_from_global_rdm_cache(cid),
+                "removedAgain": alizarin.remove_from_global_rdm_cache(cid),
+                "hasCollectionAfter": alizarin.global_rdm_has_collection(cid),
+            }
+        finally:
+            alizarin.clear_global_rdm_cache()
+
+    out.append(("RdmCache lookups", "rdm", rdm))
+    out.append(("global RDM cache", "rdm:global", rdm_global))
     # A graph and its business data built from CSVs.
     def csv(name):
         with open(os.path.join(DATA_DIR, "csv", name), encoding="utf-8") as f:

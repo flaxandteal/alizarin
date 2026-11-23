@@ -11,31 +11,10 @@
 //! ```
 
 use alizarin_core::rdm_cache::RdmCache;
-use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
 // =============================================================================
-// RDM Value Info (for JS return type)
-// =============================================================================
-
-/// Information about a label value, returned by lookupValue
-///
-/// This matches the StaticValue interface expected by JS ViewModels.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RdmValueInfo {
-    /// Value ID (UUID) - unique identifier for this specific label
-    pub id: String,
-    /// The label text
-    pub value: String,
-    /// Concept ID that this value belongs to
-    pub concept_id: String,
-    /// Language code (e.g., "en", "de")
-    pub language: String,
-}
-
-// =============================================================================
-// RDM Cache (WASM-exported)
+// RDM Cache (WASM-exported); lookupValue returns core's RdmValueInfo
 // =============================================================================
 
 /// Cache for RDM collections, enabling concept UUID -> label lookups
@@ -174,17 +153,9 @@ impl WasmRdmCache {
             Some(id) => id,
             None => return Ok(JsValue::NULL),
         };
-        match self.inner.lookup_value(&collection_id, &value_id) {
-            Some(value) => {
-                let info = RdmValueInfo {
-                    id: value.id.clone(),
-                    value: value.value.clone(),
-                    concept_id: value.concept_id.clone(),
-                    language: value.language.clone(),
-                };
-                crate::js_json::to_value(&info)
-                    .map_err(|e| JsError::new(&format!("Serialization error: {}", e)))
-            }
+        match self.inner.lookup_value_info(&collection_id, &value_id) {
+            Some(info) => crate::js_json::to_value(&info)
+                .map_err(|e| JsError::new(&format!("Serialization error: {}", e))),
             None => Ok(JsValue::NULL),
         }
     }
@@ -352,53 +323,45 @@ pub fn add_collection_to_global_rdm_cache(
     collection_id: &str,
     concepts_json: &str,
 ) -> Result<(), JsError> {
-    alizarin_core::ensure_global_rdm_cache(|cache| {
-        cache
-            .add_collection_from_json(collection_id, concepts_json)
-            .map_err(|e| JsError::new(&e))
-    })
+    alizarin_core::add_collection_to_global_rdm_cache(collection_id, concepts_json)
+        .map_err(|e| JsError::new(&e))
 }
 
 /// Remove a collection from the global RDM cache.
 #[wasm_bindgen(js_name = removeFromGlobalRdmCache)]
 pub fn remove_from_global_rdm_cache(collection_id: &str) -> bool {
-    alizarin_core::with_global_rdm_cache_mut(|cache| cache.remove_collection(collection_id))
-        .unwrap_or(false)
+    alizarin_core::remove_from_global_rdm_cache(collection_id)
 }
 
 /// Lookup a label in the global RDM cache.
 #[wasm_bindgen(js_name = globalRdmLookupLabel, unchecked_return_type = "string | null")]
 pub fn global_rdm_lookup_label(collection_id: &str, concept_id: &str, language: &str) -> JsValue {
-    crate::js_json::or_null(
-        alizarin_core::with_global_rdm_cache(|cache| {
-            cache.lookup_label(collection_id, concept_id, language)
-        })
-        .flatten(),
-    )
+    crate::js_json::or_null(alizarin_core::global_rdm_lookup_label(
+        collection_id,
+        concept_id,
+        language,
+    ))
 }
 
 /// Check if a collection exists in the global RDM cache.
 #[wasm_bindgen(js_name = globalRdmHasCollection)]
 pub fn global_rdm_has_collection(collection_id: &str) -> bool {
-    alizarin_core::with_global_rdm_cache(|cache| cache.has_collection(collection_id))
-        .unwrap_or(false)
+    alizarin_core::global_rdm_has_collection(collection_id)
 }
 
 /// Get parent concept ID from the global RDM cache.
 #[wasm_bindgen(js_name = globalRdmGetParentId, unchecked_return_type = "string | null")]
 pub fn global_rdm_get_parent_id(collection_id: &str, concept_id: &str) -> JsValue {
-    crate::js_json::or_null(
-        alizarin_core::with_global_rdm_cache(|cache| {
-            cache.get_parent_id(collection_id, concept_id)
-        })
-        .flatten(),
-    )
+    crate::js_json::or_null(alizarin_core::global_rdm_get_parent_id(
+        collection_id,
+        concept_id,
+    ))
 }
 
 /// Get all collection IDs from the global RDM cache.
 #[wasm_bindgen(js_name = globalRdmGetCollectionIds)]
 pub fn global_rdm_get_collection_ids() -> Vec<String> {
-    alizarin_core::with_global_rdm_cache(|cache| cache.get_collection_ids()).unwrap_or_default()
+    alizarin_core::global_rdm_get_collection_ids()
 }
 
 #[cfg(test)]

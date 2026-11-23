@@ -151,6 +151,161 @@ impl NapiRdmCache {
 
         Ok(resolved)
     }
+
+    // As WASM's WasmRdmCache and Python's RustRdmCache: lookups, all core's.
+
+    /// Every loaded collection's id.
+    #[napi]
+    pub fn get_collection_ids(&self) -> Vec<String> {
+        self.inner.get_collection_ids()
+    }
+
+    /// A concept's label in a language, if any.
+    #[napi]
+    pub fn lookup_label(
+        &self,
+        collection_id: String,
+        concept_id: String,
+        language: String,
+    ) -> Option<String> {
+        self.inner
+            .lookup_label(&collection_id, &concept_id, &language)
+    }
+
+    /// A concept as JSON, if any.
+    #[napi]
+    pub fn lookup_concept(
+        &self,
+        collection_id: String,
+        concept_id: String,
+    ) -> Result<Option<serde_json::Value>> {
+        self.inner
+            .lookup_concept(&collection_id, &concept_id)
+            .map(serde_json::to_value)
+            .transpose()
+            .map_err(|e| napi::Error::from_reason(e.to_string()))
+    }
+
+    /// A label value by its value id: `{id, value, conceptId, language}`.
+    #[napi]
+    pub fn lookup_value(
+        &self,
+        collection_id: String,
+        value_id: String,
+    ) -> Result<Option<serde_json::Value>> {
+        self.inner
+            .lookup_value_info(&collection_id, &value_id)
+            .map(serde_json::to_value)
+            .transpose()
+            .map_err(|e| napi::Error::from_reason(e.to_string()))
+    }
+
+    /// The concept a value id belongs to, if any.
+    #[napi]
+    pub fn get_concept_id_for_value(
+        &self,
+        collection_id: String,
+        value_id: String,
+    ) -> Option<String> {
+        self.inner
+            .get_concept_id_for_value(&collection_id, &value_id)
+            .map(|s| s.to_string())
+    }
+
+    /// Whether a value id is in a collection.
+    #[napi]
+    pub fn validate_value(&self, collection_id: String, value_id: String) -> bool {
+        self.inner.validate_value(&collection_id, &value_id)
+    }
+
+    /// Add the collections in SKOS RDF/XML: their ids.
+    #[napi]
+    pub fn add_collections_from_skos_xml(
+        &mut self,
+        xml_content: String,
+        base_uri: String,
+    ) -> Result<Vec<String>> {
+        let collections = alizarin_core::skos::parse_skos_to_collections(&xml_content, &base_uri)
+            .map_err(napi::Error::from_reason)?;
+        Ok(self.inner.add_from_skos_collections(&collections))
+    }
+}
+
+// =============================================================================
+// Global RDM cache: core's, as WASM's and Python's. Tree conversion resolves
+// concept labels against it.
+// =============================================================================
+
+/// Set the global RDM cache to a copy of `cache`.
+#[napi]
+pub fn set_global_rdm_cache(cache: &NapiRdmCache) {
+    alizarin_core::set_global_rdm_cache(cache.inner.clone());
+}
+
+/// Whether a global RDM cache is set.
+#[napi]
+pub fn has_global_rdm_cache() -> bool {
+    alizarin_core::has_global_rdm_cache()
+}
+
+/// Clear the global RDM cache.
+#[napi]
+pub fn clear_global_rdm_cache() {
+    alizarin_core::clear_global_rdm_cache();
+}
+
+/// Add SKOS XML collections to the global RDM cache: their ids.
+#[napi]
+pub fn add_to_global_rdm_cache_from_skos_xml(
+    xml_content: String,
+    base_uri: String,
+) -> Result<Vec<String>> {
+    alizarin_core::add_to_global_rdm_cache_from_skos_xml(&xml_content, &base_uri)
+        .map_err(napi::Error::from_reason)
+}
+
+/// Add a collection (its concepts' JSON) to the global RDM cache.
+#[napi]
+pub fn add_collection_to_global_rdm_cache(
+    collection_id: String,
+    concepts_json: String,
+) -> Result<()> {
+    alizarin_core::add_collection_to_global_rdm_cache(&collection_id, &concepts_json)
+        .map_err(napi::Error::from_reason)
+}
+
+/// Remove a collection from the global RDM cache: whether it was there.
+#[napi]
+pub fn remove_from_global_rdm_cache(collection_id: String) -> bool {
+    alizarin_core::remove_from_global_rdm_cache(&collection_id)
+}
+
+/// A concept's label in the global RDM cache, if any.
+#[napi]
+pub fn global_rdm_lookup_label(
+    collection_id: String,
+    concept_id: String,
+    language: String,
+) -> Option<String> {
+    alizarin_core::global_rdm_lookup_label(&collection_id, &concept_id, &language)
+}
+
+/// Whether the global RDM cache has a collection.
+#[napi]
+pub fn global_rdm_has_collection(collection_id: String) -> bool {
+    alizarin_core::global_rdm_has_collection(&collection_id)
+}
+
+/// A concept's parent in the global RDM cache, if any.
+#[napi]
+pub fn global_rdm_get_parent_id(collection_id: String, concept_id: String) -> Option<String> {
+    alizarin_core::global_rdm_get_parent_id(&collection_id, &concept_id)
+}
+
+/// The global RDM cache's collection ids.
+#[napi]
+pub fn global_rdm_get_collection_ids() -> Vec<String> {
+    alizarin_core::global_rdm_get_collection_ids()
 }
 
 // =============================================================================

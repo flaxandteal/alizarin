@@ -14,6 +14,28 @@ use crate::rdm_namespace::generate_value_uuid;
 // RDM Value (label with its own ID)
 // =============================================================================
 
+/// A label value as the bindings return it from a value lookup: its id, text,
+/// concept and language (the StaticValue view models read).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RdmValueInfo {
+    pub id: String,
+    pub value: String,
+    pub concept_id: String,
+    pub language: String,
+}
+
+impl From<&RdmValue> for RdmValueInfo {
+    fn from(value: &RdmValue) -> Self {
+        RdmValueInfo {
+            id: value.id.clone(),
+            value: value.value.clone(),
+            concept_id: value.concept_id.clone(),
+            language: value.language.clone(),
+        }
+    }
+}
+
 /// A label value with its own ID (for StaticValue compatibility)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RdmValue {
@@ -651,6 +673,13 @@ impl RdmCache {
         self.collections
             .get(collection_id)
             .and_then(|c| c.get_value_by_id(value_id))
+    }
+
+    /// [`Self::lookup_value`] as every binding's `lookupValue` / `lookup_value`
+    /// returns it.
+    pub fn lookup_value_info(&self, collection_id: &str, value_id: &str) -> Option<RdmValueInfo> {
+        self.lookup_value(collection_id, value_id)
+            .map(RdmValueInfo::from)
     }
 
     /// Get concept ID from value ID

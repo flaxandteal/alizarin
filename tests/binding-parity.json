@@ -1109,8 +1109,8 @@
           "napi": null,
           "python": "add_collection",
           "why": {
-            "wasm": "gap: RdmCache's methods differ per binding (A-7)",
-            "napi": "gap: RdmCache's methods differ per binding (A-7)"
+            "wasm": "gap: Python-only collection editing and label search, not yet on WASM/NAPI (A-7)",
+            "napi": "gap: Python-only collection editing and label search, not yet on WASM/NAPI (A-7)"
           }
         },
         {
@@ -1120,11 +1120,8 @@
         },
         {
           "wasm": "addCollectionsFromSkosXml",
-          "napi": null,
-          "python": "add_from_skos_xml",
-          "why": {
-            "napi": "gap: RdmCache's methods differ per binding (A-7)"
-          }
+          "napi": "addCollectionsFromSkosXml",
+          "python": "add_from_skos_xml"
         },
         {
           "wasm": "clear",
@@ -1136,8 +1133,8 @@
           "napi": null,
           "python": "clear_collection",
           "why": {
-            "wasm": "gap: RdmCache's methods differ per binding (A-7)",
-            "napi": "gap: RdmCache's methods differ per binding (A-7)"
+            "wasm": "gap: Python-only collection editing and label search, not yet on WASM/NAPI (A-7)",
+            "napi": "gap: Python-only collection editing and label search, not yet on WASM/NAPI (A-7)"
           }
         },
         {
@@ -1145,8 +1142,8 @@
           "napi": null,
           "python": "fetch_if_missing",
           "why": {
-            "wasm": "gap: RdmCache's methods differ per binding (A-7)",
-            "napi": "gap: RdmCache's methods differ per binding (A-7)"
+            "wasm": "gap: Python-only collection editing and label search, not yet on WASM/NAPI (A-7)",
+            "napi": "gap: Python-only collection editing and label search, not yet on WASM/NAPI (A-7)"
           }
         },
         {
@@ -1154,25 +1151,19 @@
           "napi": null,
           "python": "get_collection",
           "why": {
-            "wasm": "gap: RdmCache's methods differ per binding (A-7)",
-            "napi": "gap: RdmCache's methods differ per binding (A-7)"
+            "wasm": "gap: Python-only collection editing and label search, not yet on WASM/NAPI (A-7)",
+            "napi": "gap: Python-only collection editing and label search, not yet on WASM/NAPI (A-7)"
           }
         },
         {
           "wasm": "getCollectionIds",
-          "napi": null,
-          "python": "get_collection_ids",
-          "why": {
-            "napi": "gap: RdmCache's methods differ per binding (A-7)"
-          }
+          "napi": "getCollectionIds",
+          "python": "get_collection_ids"
         },
         {
           "wasm": "getConceptIdForValue",
-          "napi": null,
-          "python": "get_concept_id_for_value",
-          "why": {
-            "napi": "gap: RdmCache's methods differ per binding (A-7)"
-          }
+          "napi": "getConceptIdForValue",
+          "python": "get_concept_id_for_value"
         },
         {
           "wasm": "getParentId",
@@ -1197,8 +1188,8 @@
           "napi": "loadCollectionJson",
           "python": null,
           "why": {
-            "wasm": "gap: RdmCache's methods differ per binding (A-7)",
-            "python": "gap: RdmCache's methods differ per binding (A-7)"
+            "wasm": "gap: NAPI's own collection loaders (collection JSON, SKOS JSON), not on WASM/Python (A-7)",
+            "python": "gap: NAPI's own collection loaders (collection JSON, SKOS JSON), not on WASM/Python (A-7)"
           }
         },
         {
@@ -1206,8 +1197,8 @@
           "napi": "loadFromSkosJson",
           "python": null,
           "why": {
-            "wasm": "gap: RdmCache's methods differ per binding (A-7)",
-            "python": "gap: RdmCache's methods differ per binding (A-7)"
+            "wasm": "gap: NAPI's own collection loaders (collection JSON, SKOS JSON), not on WASM/Python (A-7)",
+            "python": "gap: NAPI's own collection loaders (collection JSON, SKOS JSON), not on WASM/Python (A-7)"
           }
         },
         {
@@ -1215,8 +1206,8 @@
           "napi": null,
           "python": "loader",
           "why": {
-            "wasm": "gap: RdmCache's methods differ per binding (A-7)",
-            "napi": "gap: RdmCache's methods differ per binding (A-7)"
+            "wasm": "gap: Python-only collection editing and label search, not yet on WASM/NAPI (A-7)",
+            "napi": "gap: Python-only collection editing and label search, not yet on WASM/NAPI (A-7)"
           }
         },
         {
@@ -1224,8 +1215,8 @@
           "napi": null,
           "python": "lookup_all_by_label",
           "why": {
-            "wasm": "gap: RdmCache's methods differ per binding (A-7)",
-            "napi": "gap: RdmCache's methods differ per binding (A-7)"
+            "wasm": "gap: Python-only collection editing and label search, not yet on WASM/NAPI (A-7)",
+            "napi": "gap: Python-only collection editing and label search, not yet on WASM/NAPI (A-7)"
           }
         },
         {
@@ -1233,58 +1224,42 @@
           "napi": null,
           "python": "lookup_by_label",
           "why": {
-            "wasm": "gap: RdmCache's methods differ per binding (A-7)",
-            "napi": "gap: RdmCache's methods differ per binding (A-7)"
+            "wasm": "gap: Python-only collection editing and label search, not yet on WASM/NAPI (A-7)",
+            "napi": "gap: Python-only collection editing and label search, not yet on WASM/NAPI (A-7)"
           }
         },
         {
           "wasm": "lookupConcept",
-          "napi": null,
-          "python": "lookup_concept",
-          "why": {
-            "napi": "gap: RdmCache's methods differ per binding (A-7)"
-          }
+          "napi": "lookupConcept",
+          "python": "lookup_concept"
         },
         {
           "wasm": "lookupLabel",
-          "napi": null,
-          "python": null,
-          "why": {
-            "napi": "gap: RdmCache's methods differ per binding (A-7)",
-            "python": "gap: RdmCache's methods differ per binding (A-7)"
-          }
+          "napi": "lookupLabel",
+          "python": "lookup_label"
         },
         {
           "wasm": "lookupValue",
-          "napi": null,
-          "python": "lookup_value",
-          "why": {
-            "napi": "gap: RdmCache's methods differ per binding (A-7)"
-          }
+          "napi": "lookupValue",
+          "python": "lookup_value"
         },
         {
           "wasm": "removeCollection",
           "napi": "removeCollection",
-          "python": null,
-          "why": {
-            "python": "gap: RdmCache's methods differ per binding (A-7)"
-          }
+          "python": "remove_collection"
         },
         {
           "wasm": "resolveLabels",
           "napi": "resolveLabels",
-          "python": null,
-          "why": {
-            "python": "gap: RdmCache's methods differ per binding (A-7)"
-          }
+          "python": "resolve_labels"
         },
         {
           "wasm": null,
           "napi": null,
           "python": "search_all",
           "why": {
-            "wasm": "gap: RdmCache's methods differ per binding (A-7)",
-            "napi": "gap: RdmCache's methods differ per binding (A-7)"
+            "wasm": "gap: Python-only collection editing and label search, not yet on WASM/NAPI (A-7)",
+            "napi": "gap: Python-only collection editing and label search, not yet on WASM/NAPI (A-7)"
           }
         },
         {
@@ -1292,8 +1267,8 @@
           "napi": null,
           "python": "update_collection",
           "why": {
-            "wasm": "gap: RdmCache's methods differ per binding (A-7)",
-            "napi": "gap: RdmCache's methods differ per binding (A-7)"
+            "wasm": "gap: Python-only collection editing and label search, not yet on WASM/NAPI (A-7)",
+            "napi": "gap: Python-only collection editing and label search, not yet on WASM/NAPI (A-7)"
           }
         },
         {
@@ -1301,8 +1276,8 @@
           "napi": null,
           "python": "update_collection_nested",
           "why": {
-            "wasm": "gap: RdmCache's methods differ per binding (A-7)",
-            "napi": "gap: RdmCache's methods differ per binding (A-7)"
+            "wasm": "gap: Python-only collection editing and label search, not yet on WASM/NAPI (A-7)",
+            "napi": "gap: Python-only collection editing and label search, not yet on WASM/NAPI (A-7)"
           }
         },
         {
@@ -1310,17 +1285,14 @@
           "napi": null,
           "python": "validate_concept",
           "why": {
-            "wasm": "gap: RdmCache's methods differ per binding (A-7)",
-            "napi": "gap: RdmCache's methods differ per binding (A-7)"
+            "wasm": "gap: Python-only collection editing and label search, not yet on WASM/NAPI (A-7)",
+            "napi": "gap: Python-only collection editing and label search, not yet on WASM/NAPI (A-7)"
           }
         },
         {
           "wasm": "validateValue",
-          "napi": null,
-          "python": "validate_value",
-          "why": {
-            "napi": "gap: RdmCache's methods differ per binding (A-7)"
-          }
+          "napi": "validateValue",
+          "python": "validate_value"
         }
       ]
     },
@@ -3147,28 +3119,22 @@
   "functions": {
     "add_collection_to_global_rdm_cache": {
       "wasm": "addCollectionToGlobalRdmCache",
-      "napi": null,
-      "python": "add_collection_to_global_cache",
-      "why": {
-        "napi": "gap: the global RDM cache functions differ per binding (A-6)"
-      }
+      "napi": "addCollectionToGlobalRdmCache",
+      "python": "add_collection_to_global_cache"
     },
     "add_from_skos_json_to_global_cache": {
       "wasm": null,
       "napi": null,
       "python": "add_from_skos_json_to_global_cache",
       "why": {
-        "wasm": "gap: the global RDM cache functions differ per binding (A-6)",
-        "napi": "gap: the global RDM cache functions differ per binding (A-6)"
+        "wasm": "gap: Python-only global-cache reads and collection editing, not yet on WASM/NAPI (A-6)",
+        "napi": "gap: Python-only global-cache reads and collection editing, not yet on WASM/NAPI (A-6)"
       }
     },
     "add_to_global_rdm_cache_from_skos_xml": {
       "wasm": "addToGlobalRdmCacheFromSkosXml",
-      "napi": null,
-      "python": "add_from_skos_xml_to_global_cache",
-      "why": {
-        "napi": "gap: the global RDM cache functions differ per binding (A-6)"
-      }
+      "napi": "addToGlobalRdmCacheFromSkosXml",
+      "python": "add_from_skos_xml_to_global_cache"
     },
     "apply_aggregate_functions_from_file": {
       "wasm": null,
@@ -3281,11 +3247,8 @@
     },
     "clear_global_rdm_cache": {
       "wasm": "clearGlobalRdmCache",
-      "napi": null,
-      "python": "clear_global_rdm_cache",
-      "why": {
-        "napi": "gap: the global RDM cache functions differ per binding (A-6)"
-      }
+      "napi": "clearGlobalRdmCache",
+      "python": "clear_global_rdm_cache"
     },
     "clear_rdm_namespace": {
       "wasm": "clearRdmNamespace",
@@ -3452,8 +3415,8 @@
       "napi": null,
       "python": "compose_collections_from_csv_in_global_cache",
       "why": {
-        "wasm": "gap: the global RDM cache functions differ per binding (A-6)",
-        "napi": "gap: the global RDM cache functions differ per binding (A-6)"
+        "wasm": "gap: Python-only global-cache reads and collection editing, not yet on WASM/NAPI (A-6)",
+        "napi": "gap: Python-only global-cache reads and collection editing, not yet on WASM/NAPI (A-6)"
       }
     },
     "compose_collections_in_global_cache": {
@@ -3461,8 +3424,8 @@
       "napi": null,
       "python": "compose_collections_in_global_cache",
       "why": {
-        "wasm": "gap: the global RDM cache functions differ per binding (A-6)",
-        "napi": "gap: the global RDM cache functions differ per binding (A-6)"
+        "wasm": "gap: Python-only global-cache reads and collection editing, not yet on WASM/NAPI (A-6)",
+        "napi": "gap: Python-only global-cache reads and collection editing, not yet on WASM/NAPI (A-6)"
       }
     },
     "compose_resource_layers": {
@@ -3607,8 +3570,8 @@
       "napi": null,
       "python": "get_global_rdm_cache",
       "why": {
-        "wasm": "gap: the global RDM cache functions differ per binding (A-6)",
-        "napi": "gap: the global RDM cache functions differ per binding (A-6)"
+        "wasm": "gap: Python-only global-cache reads and collection editing, not yet on WASM/NAPI (A-6)",
+        "napi": "gap: Python-only global-cache reads and collection editing, not yet on WASM/NAPI (A-6)"
       }
     },
     "get_graph_json": {
@@ -3683,46 +3646,42 @@
         "napi": "gap: core's widget registry (registry.rs) is bound only in Python"
       }
     },
-    "global_rdm_get_collection_ids": {
-      "wasm": "globalRdmGetCollectionIds",
-      "napi": null,
-      "python": null,
-      "why": {
-        "napi": "gap: the global RDM cache functions differ per binding (A-6)",
-        "python": "gap: the global RDM cache functions differ per binding (A-6)"
-      }
-    },
-    "global_rdm_get_parent_id": {
-      "wasm": "globalRdmGetParentId",
-      "napi": null,
-      "python": "global_rdm_get_parent_id",
-      "why": {
-        "napi": "gap: the global RDM cache functions differ per binding (A-6)"
-      }
-    },
-    "global_rdm_has_collection": {
-      "wasm": "globalRdmHasCollection",
-      "napi": null,
-      "python": "global_rdm_has_collection",
-      "why": {
-        "napi": "gap: the global RDM cache functions differ per binding (A-6)"
-      }
-    },
-    "global_rdm_lookup_label": {
-      "wasm": "globalRdmLookupLabel",
+    "global_rdm_concept_pref_label": {
+      "wasm": null,
       "napi": null,
       "python": "global_rdm_concept_pref_label",
       "why": {
-        "napi": "gap: the global RDM cache functions differ per binding (A-6)"
+        "wasm": "gap: Python-only global-cache reads and collection editing, not yet on WASM/NAPI (A-6)",
+        "napi": "gap: Python-only global-cache reads and collection editing, not yet on WASM/NAPI (A-6)"
       }
+    },
+    "global_rdm_get_collection_ids": {
+      "wasm": "globalRdmGetCollectionIds",
+      "napi": "globalRdmGetCollectionIds",
+      "python": "global_rdm_get_collection_ids"
+    },
+    "global_rdm_get_parent_id": {
+      "wasm": "globalRdmGetParentId",
+      "napi": "globalRdmGetParentId",
+      "python": "global_rdm_get_parent_id"
+    },
+    "global_rdm_has_collection": {
+      "wasm": "globalRdmHasCollection",
+      "napi": "globalRdmHasCollection",
+      "python": "global_rdm_has_collection"
+    },
+    "global_rdm_lookup_label": {
+      "wasm": "globalRdmLookupLabel",
+      "napi": "globalRdmLookupLabel",
+      "python": "global_rdm_lookup_label"
     },
     "global_rdm_lookup_value": {
       "wasm": null,
       "napi": null,
       "python": "global_rdm_lookup_value",
       "why": {
-        "wasm": "gap: the global RDM cache functions differ per binding (A-6)",
-        "napi": "gap: the global RDM cache functions differ per binding (A-6)"
+        "wasm": "gap: Python-only global-cache reads and collection editing, not yet on WASM/NAPI (A-6)",
+        "napi": "gap: Python-only global-cache reads and collection editing, not yet on WASM/NAPI (A-6)"
       }
     },
     "has_derive_provider": {
@@ -3754,11 +3713,8 @@
     },
     "has_global_rdm_cache": {
       "wasm": "hasGlobalRdmCache",
-      "napi": null,
-      "python": "has_global_rdm_cache",
-      "why": {
-        "napi": "gap: the global RDM cache functions differ per binding (A-6)"
-      }
+      "napi": "hasGlobalRdmCache",
+      "python": "has_global_rdm_cache"
     },
     "has_rdm_namespace": {
       "wasm": "hasRdmNamespace",
@@ -3958,12 +3914,8 @@
     },
     "remove_from_global_rdm_cache": {
       "wasm": "removeFromGlobalRdmCache",
-      "napi": null,
-      "python": null,
-      "why": {
-        "napi": "gap: the global RDM cache functions differ per binding (A-6)",
-        "python": "gap: the global RDM cache functions differ per binding (A-6)"
-      }
+      "napi": "removeFromGlobalRdmCache",
+      "python": "remove_from_global_rdm_cache"
     },
     "render_display_with_extension": {
       "wasm": null,
@@ -4029,11 +3981,8 @@
     },
     "set_global_rdm_cache": {
       "wasm": "setGlobalRdmCache",
-      "napi": null,
-      "python": "set_global_rdm_cache",
-      "why": {
-        "napi": "gap: the global RDM cache functions differ per binding (A-6)"
-      }
+      "napi": "setGlobalRdmCache",
+      "python": "set_global_rdm_cache"
     },
     "set_rdm_namespace": {
       "wasm": "setRdmNamespace",
@@ -4103,8 +4052,8 @@
       "napi": null,
       "python": "update_collection_in_global_cache",
       "why": {
-        "wasm": "gap: the global RDM cache functions differ per binding (A-6)",
-        "napi": "gap: the global RDM cache functions differ per binding (A-6)"
+        "wasm": "gap: Python-only global-cache reads and collection editing, not yet on WASM/NAPI (A-6)",
+        "napi": "gap: Python-only global-cache reads and collection editing, not yet on WASM/NAPI (A-6)"
       }
     },
     "update_collection_nested_in_global_cache": {
@@ -4112,8 +4061,8 @@
       "napi": null,
       "python": "update_collection_nested_in_global_cache",
       "why": {
-        "wasm": "gap: the global RDM cache functions differ per binding (A-6)",
-        "napi": "gap: the global RDM cache functions differ per binding (A-6)"
+        "wasm": "gap: Python-only global-cache reads and collection editing, not yet on WASM/NAPI (A-6)",
+        "napi": "gap: Python-only global-cache reads and collection editing, not yet on WASM/NAPI (A-6)"
       }
     },
     "validate_model_csvs": {

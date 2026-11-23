@@ -78,19 +78,39 @@ pub fn has_global_rdm_cache() -> bool {
 // the whole cache): what the ORM's concept view models resolve through.
 
 /// A value as `{id, value, conceptId, language}`, as `RustRdmCache.lookup_value`.
+/// A value as core's `RdmValueInfo`, as WASM's and NAPI's lookups give it.
 fn value_dict(py: Python, value: &alizarin_core::rdm_cache::RdmValue) -> PyResult<PyObject> {
-    let dict = pyo3::types::PyDict::new_bound(py);
-    dict.set_item("id", &value.id)?;
-    dict.set_item("value", &value.value)?;
-    dict.set_item("conceptId", &value.concept_id)?;
-    dict.set_item("language", &value.language)?;
-    Ok(dict.into())
+    pythonize::pythonize(py, &alizarin_core::RdmValueInfo::from(value))
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
 
 /// Whether the global RDM cache holds collection `collection_id`.
 #[pyfunction]
 pub fn global_rdm_has_collection(collection_id: &str) -> bool {
-    alizarin_core::get_global_rdm_cache_arc().is_some_and(|c| c.has_collection(collection_id))
+    alizarin_core::global_rdm_has_collection(collection_id)
+}
+
+/// A concept's label in the global RDM cache, if any (WASM's and NAPI's
+/// globalRdmLookupLabel).
+#[pyfunction]
+pub fn global_rdm_lookup_label(
+    collection_id: &str,
+    concept_id: &str,
+    language: &str,
+) -> Option<String> {
+    alizarin_core::global_rdm_lookup_label(collection_id, concept_id, language)
+}
+
+/// The global RDM cache's collection ids (none without a cache).
+#[pyfunction]
+pub fn global_rdm_get_collection_ids() -> Vec<String> {
+    alizarin_core::global_rdm_get_collection_ids()
+}
+
+/// Remove a collection from the global RDM cache: whether it was there.
+#[pyfunction]
+pub fn remove_from_global_rdm_cache(collection_id: &str) -> bool {
+    alizarin_core::remove_from_global_rdm_cache(collection_id)
 }
 
 /// Value `value_id` of collection `collection_id` in the global RDM cache, as
@@ -1601,17 +1621,11 @@ impl RdmCache {
         collection_id: &str,
         value_id: &str,
     ) -> PyResult<Option<PyObject>> {
-        match self.inner.lookup_value(collection_id, value_id) {
-            Some(value) => {
-                let dict = pyo3::types::PyDict::new_bound(py);
-                dict.set_item("id", &value.id)?;
-                dict.set_item("value", &value.value)?;
-                dict.set_item("conceptId", &value.concept_id)?;
-                dict.set_item("language", &value.language)?;
-                Ok(Some(dict.into()))
-            }
-            None => Ok(None),
-        }
+        // Core's RdmValueInfo, as WASM's and NAPI's lookupValue.
+        self.inner
+            .lookup_value(collection_id, value_id)
+            .map(|value| value_dict(py, value))
+            .transpose()
     }
 
     /// Get concept ID from value ID
@@ -1667,6 +1681,41 @@ impl RdmCache {
     /// Clear a specific collection
     fn clear_collection(&mut self, collection_id: &str) {
         self.inner.remove_collection(collection_id);
+    }
+
+    /// Remove a collection: whether it was there (WASM's and NAPI's removeCollection).
+    fn remove_collection(&mut self, collection_id: &str) -> bool {
+        self.inner.remove_collection(collection_id)
+    }
+
+    /// A concept's label in a language, if any (WASM's and NAPI's lookupLabel).
+    fn lookup_label(
+        &self,
+        collection_id: &str,
+        concept_id: &str,
+        language: &str,
+    ) -> Option<String> {
+        self.inner.lookup_label(collection_id, concept_id, language)
+    }
+
+    /// Resolve the labels in a tree to concept ids, each alias's collection
+    /// given by `alias_to_collection` (WASM's and NAPI's resolveLabels).
+    #[pyo3(signature = (tree_json, alias_to_collection, strict=false))]
+    fn resolve_labels(
+        &self,
+        py: Python,
+        tree_json: &str,
+        alias_to_collection: HashMap<String, String>,
+        strict: bool,
+    ) -> PyResult<PyObject> {
+        let tree: serde_json::Value = serde_json::from_str(tree_json).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Invalid tree JSON: {e}"))
+        })?;
+        let resolved =
+            label_resolution::resolve_labels(tree, &alias_to_collection, &self.inner, strict)
+                .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.message))?;
+        pythonize::pythonize(py, &resolved)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
     }
 
     /// Get number of cached collections
@@ -1834,6 +1883,9 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(clear_global_rdm_cache, m)?)?;
     m.add_function(wrap_pyfunction!(has_global_rdm_cache, m)?)?;
     m.add_function(wrap_pyfunction!(global_rdm_has_collection, m)?)?;
+    m.add_function(wrap_pyfunction!(global_rdm_lookup_label, m)?)?;
+    m.add_function(wrap_pyfunction!(global_rdm_get_collection_ids, m)?)?;
+    m.add_function(wrap_pyfunction!(remove_from_global_rdm_cache, m)?)?;
     m.add_function(wrap_pyfunction!(global_rdm_lookup_value, m)?)?;
     m.add_function(wrap_pyfunction!(global_rdm_get_parent_id, m)?)?;
     m.add_function(wrap_pyfunction!(global_rdm_concept_pref_label, m)?)?;

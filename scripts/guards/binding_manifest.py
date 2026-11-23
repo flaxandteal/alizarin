@@ -59,7 +59,7 @@ METHOD_RENAMES = {
         ("from_graph_json", {"wasm": "fromGraphJson", "napi": "buildFromGraphJson", "python": "load_graph_json"}),
     ],
     "rdmCache": [
-        ("add_collections_from_skos_xml", {"wasm": "addCollectionsFromSkosXml", "python": "add_from_skos_xml"}),
+        ("add_collections_from_skos_xml", {"wasm": "addCollectionsFromSkosXml", "napi": "addCollectionsFromSkosXml", "python": "add_from_skos_xml"}),
         ("length", {"wasm": "length", "napi": "collectionCount"}),
     ],
 }
@@ -88,17 +88,20 @@ FUNCTION_RENAMES = {
     "has_extension_handler": {"wasm": "hasExtensionHandler", "napi": "hasExtensionHandler", "python": "has_type_handler"},
     "coerce_with_extension": {"napi": "extensionCoerce", "python": "coerce_with_extension"},
     "render_display_with_extension": {"napi": "extensionRenderDisplay", "python": "render_display_with_extension"},
-    "add_collection_to_global_rdm_cache": {"wasm": "addCollectionToGlobalRdmCache", "python": "add_collection_to_global_cache"},
-    "add_to_global_rdm_cache_from_skos_xml": {"wasm": "addToGlobalRdmCacheFromSkosXml", "python": "add_from_skos_xml_to_global_cache"},
+    "add_collection_to_global_rdm_cache": {"wasm": "addCollectionToGlobalRdmCache", "napi": "addCollectionToGlobalRdmCache",
+                                           "python": "add_collection_to_global_cache"},
+    "add_to_global_rdm_cache_from_skos_xml": {"wasm": "addToGlobalRdmCacheFromSkosXml", "napi": "addToGlobalRdmCacheFromSkosXml",
+                                              "python": "add_from_skos_xml_to_global_cache"},
     "get_registered_extension_mutations": {"wasm": "getRegisteredExtensionMutations", "python": "list_extension_mutations"},
-    "global_rdm_lookup_label": {"wasm": "globalRdmLookupLabel", "python": "global_rdm_concept_pref_label"},
 }
 
 ECO_FS = "ecosystem: reads or writes the filesystem, which WASM has not"
 GAP_FS = "gap: Node has a filesystem; NAPI lacks this file-based form"
 ECO_PLAIN_JSON = "ecosystem: core's JSON as plain objects, built by js/backend.ts createStatic* (constructStatic)"
 ECO_DATACLASS = "ecosystem: Python dataclasses in python/alizarin/static_types.py, read and written through core"
-GAP_RDM_GLOBAL = "gap: the global RDM cache functions differ per binding (A-6)"
+GAP_RDM_GLOBAL = "gap: Python-only global-cache reads and collection editing, not yet on WASM/NAPI (A-6)"
+GAP_RDM_EDITING = "gap: Python-only collection editing and label search, not yet on WASM/NAPI (A-7)"
+GAP_RDM_NAPI_LOADERS = "gap: NAPI's own collection loaders (collection JSON, SKOS JSON), not on WASM/Python (A-7)"
 GAP_EXTENSIONS = "gap: the extension registry functions differ per binding (A-6, G)"
 
 # Why a binding lacks something (PARITY-RESEARCH.md A-6/A-7). Keys are
@@ -193,8 +196,8 @@ REASONS = [
     ("op:staticDomainValue.to_dict", {"wasm": "gap: JS StaticDomainValue has no toJSON, so no core serialisation (A-7)",
                                       "napi": "gap: JS StaticDomainValue has no toJSON, so no core serialisation (A-7)"}),
     ("op:pseudoNode.*", {"python": "gap: Python's PseudoNode exposes the other node fields only through `node` (A-7)"}),
-    ("op:rdmCache.*", {"wasm": "gap: RdmCache's methods differ per binding (A-7)", "napi": "gap: RdmCache's methods differ per binding (A-7)",
-                       "python": "gap: RdmCache's methods differ per binding (A-7)"}),
+    ("op:rdmCache.load_*", {"wasm": GAP_RDM_NAPI_LOADERS, "python": GAP_RDM_NAPI_LOADERS}),
+    ("op:rdmCache.*", {"wasm": GAP_RDM_EDITING, "napi": GAP_RDM_EDITING}),
     ("op:resourceRegistry.load_prebuild_business_data", {"wasm": "ecosystem: WASM has no filesystem"}),
     ("op:resourceRegistry.*", {"wasm": "gap: the resource registry's methods differ per binding (A-7)",
                                "napi": "gap: the resource registry's methods differ per binding (A-7)",

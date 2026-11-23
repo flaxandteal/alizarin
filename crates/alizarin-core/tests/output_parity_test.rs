@@ -185,6 +185,46 @@ fn outputs() -> BTreeMap<String, String> {
     ns::clear_rdm_namespace();
     put("ids".into(), canonical(&ids));
 
+    // RDM cache lookups over collection.json, on a cache and on the global
+    // cache, as every binding's lookups return them.
+    let collection: serde_json::Value = serde_json::from_str(&read("collection.json")).unwrap();
+    let (cid, monument, fort) = (
+        "parity-collection",
+        "c0000000-0000-4000-8000-000000000001",
+        "c0000000-0000-4000-8000-000000000002",
+    );
+    let mut cache = alizarin_core::RdmCache::new();
+    cache
+        .add_collection_from_json(cid, &collection["concepts"].to_string())
+        .unwrap();
+    let rdm = serde_json::json!({
+        "collectionIds": cache.get_collection_ids(),
+        "labelEn": cache.lookup_label(cid, fort, "en"),
+        "labelGa": cache.lookup_label(cid, fort, "ga"),
+        "labelMissing": cache.lookup_label(cid, "nope", "en"),
+        "concept": cache.lookup_concept(cid, fort),
+        "value": cache.lookup_value_info(cid, "v0000000-0000-4000-8000-000000000004"),
+        "conceptIdForValue": cache.get_concept_id_for_value(cid, "v0000000-0000-4000-8000-000000000004"),
+        "validValue": cache.validate_value(cid, "v0000000-0000-4000-8000-000000000003"),
+        "invalidValue": cache.validate_value(cid, "nope"),
+        "parent": cache.get_parent_id(cid, fort),
+        "topParent": cache.get_parent_id(cid, monument),
+    });
+    put("rdm".into(), canonical(&rdm));
+    alizarin_core::set_global_rdm_cache(cache);
+    let global = serde_json::json!({
+        "has": alizarin_core::has_global_rdm_cache(),
+        "collectionIds": alizarin_core::global_rdm_get_collection_ids(),
+        "hasCollection": alizarin_core::global_rdm_has_collection(cid),
+        "label": alizarin_core::global_rdm_lookup_label(cid, fort, "ga"),
+        "parent": alizarin_core::global_rdm_get_parent_id(cid, fort),
+        "removed": alizarin_core::remove_from_global_rdm_cache(cid),
+        "removedAgain": alizarin_core::remove_from_global_rdm_cache(cid),
+        "hasCollectionAfter": alizarin_core::global_rdm_has_collection(cid),
+    });
+    alizarin_core::clear_global_rdm_cache();
+    put("rdm:global".into(), canonical(&global));
+
     // A graph and its business data built from CSVs (csv/): the graph with
     // its collections, then the resources, multi-valued tile ids fixed by
     // the tile namespace.

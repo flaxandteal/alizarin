@@ -339,6 +339,13 @@ set_global_rdm_cache = _alizarin_rust.set_global_rdm_cache
 get_global_rdm_cache = _alizarin_rust.get_global_rdm_cache
 clear_global_rdm_cache = _alizarin_rust.clear_global_rdm_cache
 has_global_rdm_cache = _alizarin_rust.has_global_rdm_cache
+global_rdm_has_collection = _alizarin_rust.global_rdm_has_collection
+global_rdm_lookup_label = _alizarin_rust.global_rdm_lookup_label
+global_rdm_lookup_value = _alizarin_rust.global_rdm_lookup_value
+global_rdm_concept_pref_label = _alizarin_rust.global_rdm_concept_pref_label
+global_rdm_get_parent_id = _alizarin_rust.global_rdm_get_parent_id
+global_rdm_get_collection_ids = _alizarin_rust.global_rdm_get_collection_ids
+remove_from_global_rdm_cache = _alizarin_rust.remove_from_global_rdm_cache
 add_collection_to_global_cache = _alizarin_rust.add_collection_to_global_cache
 add_from_skos_xml_to_global_cache = _alizarin_rust.add_from_skos_xml_to_global_cache
 add_from_skos_json_to_global_cache = _alizarin_rust.add_from_skos_json_to_global_cache
@@ -558,6 +565,13 @@ __all__ = [
     "get_global_rdm_cache",
     "clear_global_rdm_cache",
     "has_global_rdm_cache",
+    "global_rdm_has_collection",
+    "global_rdm_lookup_label",
+    "global_rdm_lookup_value",
+    "global_rdm_concept_pref_label",
+    "global_rdm_get_parent_id",
+    "global_rdm_get_collection_ids",
+    "remove_from_global_rdm_cache",
     "add_collection_to_global_cache",
     "add_from_skos_xml_to_global_cache",
     "add_from_skos_json_to_global_cache",

@@ -559,6 +559,44 @@ pub fn add_to_global_rdm_cache_from_skos_xml(
     Ok(add_to_global_rdm_cache_from_skos(&collections))
 }
 
+/// Add a collection, given as its concepts' JSON, to the global RDM cache
+/// (auto-creates it if needed). Every binding's `addCollectionToGlobalRdmCache`.
+pub fn add_collection_to_global_rdm_cache(
+    collection_id: &str,
+    concepts_json: &str,
+) -> Result<(), String> {
+    ensure_global_rdm_cache(|cache| cache.add_collection_from_json(collection_id, concepts_json))
+}
+
+/// Remove a collection from the global RDM cache: whether it was there.
+pub fn remove_from_global_rdm_cache(collection_id: &str) -> bool {
+    with_global_rdm_cache_mut(|cache| cache.remove_collection(collection_id)).unwrap_or(false)
+}
+
+/// A concept's label in the global RDM cache, if it and the cache exist.
+pub fn global_rdm_lookup_label(
+    collection_id: &str,
+    concept_id: &str,
+    language: &str,
+) -> Option<String> {
+    with_global_rdm_cache(|cache| cache.lookup_label(collection_id, concept_id, language)).flatten()
+}
+
+/// Whether the global RDM cache has a collection.
+pub fn global_rdm_has_collection(collection_id: &str) -> bool {
+    with_global_rdm_cache(|cache| cache.has_collection(collection_id)).unwrap_or(false)
+}
+
+/// A concept's parent in the global RDM cache, if any.
+pub fn global_rdm_get_parent_id(collection_id: &str, concept_id: &str) -> Option<String> {
+    with_global_rdm_cache(|cache| cache.get_parent_id(collection_id, concept_id)).flatten()
+}
+
+/// The global RDM cache's collection ids (none without a cache).
+pub fn global_rdm_get_collection_ids() -> Vec<String> {
+    with_global_rdm_cache(|cache| cache.get_collection_ids()).unwrap_or_default()
+}
+
 // ============================================================================
 // Global Extension Type Registry
 // ============================================================================
