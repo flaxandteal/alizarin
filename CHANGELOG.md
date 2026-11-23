@@ -8,6 +8,16 @@ entries is tracked in `PARITY-RESEARCH.md`.
 ## Unreleased
 
 ### Added
+- Fixed: on WASM, editing an extension datatype's value (clm `reference`,
+  filelist `file-list`, …) stored it uncoerced: core's edit path reads the
+  global extension registry, which only NAPI's and Python's C-ABI registration
+  filled. WASM's `registerExtensionHandler` and `unregisterExtensionHandler`
+  now keep it in step, so edits coerce identically on every binding.
+- `@alizarin/filelist` renders display through alizarin-filelist-core's
+  `renderFileListDisplay` (as NAPI and Python do), not a TypeScript copy.
+- Tests: clm and filelist values through the ORM on WASM, NAPI and Python
+  (`tests/dual-backend/extensions.test.ts`, `test_extensions.py`), on the
+  extensions' current builds: the NAPI extension builds had no test before.
 - Fixed: two managers (or model wrappers) over one graph shared, and
   overwrote, one set of permissions and prunes, on every binding: the later
   `initialize` default or `setPermittedNodegroups` replaced the earlier's, so

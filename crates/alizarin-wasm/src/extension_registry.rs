@@ -216,6 +216,9 @@ pub fn register_extension_handler(datatype: &str, options: JsValue) -> Result<()
             },
         );
     });
+    // Core's edit and conversion paths read the global registry, as the C-ABI
+    // registration on NAPI and Python fills it.
+    alizarin_core::set_global_extension_registry(build_extension_registry());
     alizarin_core::extension_type_registry::bump_handlers_generation();
 
     Ok(())
@@ -233,6 +236,7 @@ pub fn unregister_extension_handler(datatype: &str) {
     JS_TYPE_HANDLERS.with(|handlers| {
         handlers.borrow_mut().remove(datatype);
     });
+    alizarin_core::set_global_extension_registry(build_extension_registry());
     alizarin_core::extension_type_registry::bump_handlers_generation();
 }
 

@@ -1,6 +1,6 @@
 import { utils, viewModels, registerExtensionHandler, wasmReady } from "alizarin";
 import type { interfaces, staticTypes } from "alizarin";
-import { initSync, coerceFileList } from "../../wasm/pkg/alizarin_filelist_wasm";
+import { initSync, coerceFileList, renderFileListDisplay } from "../../wasm/pkg/alizarin_filelist_wasm";
 import wasmBytes from "../../wasm/pkg/alizarin_filelist_wasm_bg.wasm";
 type IPseudo = interfaces.IPseudo;
 type IViewModel = interfaces.IViewModel;
@@ -171,30 +171,12 @@ wasmReady.then(() => {
   // Initialize the filelist WASM module (bytes are inlined by vite at build time)
   initSync(wasmBytes);
 
+  // Coercion and display are alizarin-filelist-core's (WASM), the same Rust
+  // as the napi/python handlers.
   registerExtensionHandler('file-list', {
     coerce: (value: unknown) => coerceFileList(value),
-    renderDisplay: (tileData: unknown, language: string) => {
-      if (!tileData) return null;
-
-      if (Array.isArray(tileData)) {
-        if (tileData.length === 0) return null;
-
-        const displayStrings = tileData.map((item: unknown) => {
-          if (!item || typeof item !== 'object') return null;
-          const file = new FileListItem(item as FileListItemData);
-          return file.toDisplayString(language);
-        }).filter((s): s is string => s !== null);
-
-        return displayStrings.join(', ');
-      }
-
-      if (typeof tileData === 'object' && tileData !== null) {
-        const file = new FileListItem(tileData as FileListItemData);
-        return file.toDisplayString(language);
-      }
-
-      return null;
-    },
+    renderDisplay: (tileData: unknown, language: string) =>
+      tileData ? renderFileListDisplay(tileData, language) : null,
   });
 });
 
