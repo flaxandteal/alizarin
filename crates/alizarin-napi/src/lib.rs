@@ -477,29 +477,21 @@ impl NapiStaticResourceRegistry {
             .map_err(|e| napi::Error::from_reason(e.to_string()))
     }
 
-    /// Insert full resources from a business_data JSON file string.
+    /// Insert full resources from a business_data JSON file string: the
+    /// string form of loadFromBusinessDataBytes, read by the same core reader.
     #[napi]
     pub fn merge_from_business_data_json(
         &mut self,
         business_data_json: String,
         store_full: Option<bool>,
     ) -> Result<()> {
-        // Parse the business_data wrapper to extract resources
-        let file: serde_json::Value = serde_json::from_str(&business_data_json)
-            .map_err(|e| napi::Error::from_reason(e.to_string()))?;
-
-        let resources_val = file
-            .get("business_data")
-            .and_then(|bd| bd.get("resources"))
-            .ok_or_else(|| {
-                napi::Error::from_reason("JSON missing business_data.resources".to_string())
-            })?;
-
-        let resources: Vec<StaticResource> = serde_json::from_value(resources_val.clone())
-            .map_err(|e| napi::Error::from_reason(format!("Failed to parse resources: {}", e)))?;
-
         self.inner
-            .merge_from_resources(&resources, store_full.unwrap_or(true), true);
+            .load_from_business_data_bytes(
+                business_data_json.as_bytes(),
+                store_full.unwrap_or(true),
+                true,
+            )
+            .map_err(|e| napi::Error::from_reason(e.to_string()))?;
         Ok(())
     }
 
@@ -685,6 +677,31 @@ impl NapiStaticResourceRegistry {
                     .map_err(|e| napi::Error::from_reason(format!("Serialization failed: {}", e)))
             })
             .collect()
+    }
+
+    /// Every full resource as JSON objects (summary-only entries skipped), as
+    /// WASM's and Python's getAllFull.
+    #[napi]
+    pub fn get_all_full(&self) -> Result<Vec<serde_json::Value>> {
+        self.inner
+            .iter_full()
+            .map(|(_, r)| {
+                serde_json::to_value(r)
+                    .map_err(|e| napi::Error::from_reason(format!("Serialization failed: {}", e)))
+            })
+            .collect()
+    }
+
+    /// Whether the registry holds no resources.
+    #[napi(getter)]
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
+    /// A known resource's graph id, if any.
+    #[napi]
+    pub fn get_graph_id(&self, resource_id: String) -> Option<String> {
+        self.inner.get_graph_id(&resource_id).map(|s| s.to_string())
     }
 
     /// Get a summary for a resource (works for both summary and full entries), or null if unknown.

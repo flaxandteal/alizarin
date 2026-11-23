@@ -1060,9 +1060,21 @@ impl ResourceRegistry {
     ) -> PyResult<PyObject> {
         let graph = get_registered_graph(graph_id)?;
 
+        // Extension datatypes render through the registered handlers, as on
+        // WASM and NAPI.
+        let ext_registry = build_extension_registry();
+        let ctx = alizarin_core::type_serialization::SerializationContext {
+            extension_registry: Some(&ext_registry),
+            ..alizarin_core::type_serialization::SerializationContext::empty()
+        };
         let index = self
             .inner
-            .get_value_to_resources_index(&graph, node_identifier, flatten_localized)
+            .get_value_to_resources_index_with_context(
+                &graph,
+                node_identifier,
+                flatten_localized,
+                Some(&ctx),
+            )
             .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
 
         pythonize::pythonize(py, &index).map_err(|e| {
@@ -1071,6 +1083,58 @@ impl ResourceRegistry {
                 e
             ))
         })
+    }
+
+    /// Values of `extract_node` in the tiles whose `filter_node` display
+    /// value contains any of `filter_values` (both nodes in one nodegroup),
+    /// as WASM's and NAPI's getFilteredTileValues. `required_scope` keeps only
+    /// resources with that `__scopes` entry.
+    #[pyo3(signature = (graph_id, filter_node, filter_values, extract_node, flatten_localized=true, required_scope=None))]
+    #[allow(clippy::too_many_arguments)]
+    fn get_filtered_tile_values(
+        &self,
+        py: Python,
+        graph_id: &str,
+        filter_node: &str,
+        filter_values: Vec<String>,
+        extract_node: &str,
+        flatten_localized: bool,
+        required_scope: Option<&str>,
+    ) -> PyResult<PyObject> {
+        let graph = get_registered_graph(graph_id)?;
+        let filter_refs: Vec<&str> = filter_values.iter().map(|s| s.as_str()).collect();
+        let ext_registry = build_extension_registry();
+        let ctx = alizarin_core::type_serialization::SerializationContext {
+            extension_registry: Some(&ext_registry),
+            ..alizarin_core::type_serialization::SerializationContext::empty()
+        };
+        let values = self
+            .inner
+            .get_filtered_tile_values(
+                &graph,
+                filter_node,
+                &filter_refs,
+                extract_node,
+                flatten_localized,
+                Some(&ctx),
+                required_scope,
+            )
+            .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
+        pythonize::pythonize(py, &values)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
+    }
+
+    /// Entry and tile counts, as WASM's and NAPI's memoryStats.
+    fn memory_stats(&self, py: Python) -> PyResult<PyObject> {
+        pythonize::pythonize(py, &self.inner.memory_stats())
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
+    }
+
+    /// memory_stats with estimated byte sizes (expensive: re-serialises
+    /// everything), as WASM's and NAPI's memoryStatsDetailed.
+    fn memory_stats_detailed(&self, py: Python) -> PyResult<PyObject> {
+        pythonize::pythonize(py, &self.inner.memory_stats_detailed())
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
     }
 }
 

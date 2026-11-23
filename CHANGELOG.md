@@ -8,6 +8,17 @@ entries is tracked in `PARITY-RESEARCH.md`.
 ## Unreleased
 
 ### Added
+- Resource registry parity: NAPI gains `getAllFull`, `isEmpty` and
+  `getGraphId`; WASM and Python gain `getFilteredTileValues` /
+  `get_filtered_tile_values`; Python gains `memory_stats` and
+  `memory_stats_detailed`. Golden route `registry:reads` holds the reads to
+  one output on all three.
+- Fixed: WASM's and Python's `getValueToResourcesIndex` now render extension
+  datatypes through the registered handlers, as NAPI's did, so an index over
+  (say) a reference node is the same on every binding.
+- NAPI's `mergeFromBusinessDataJson` reads through core's business data
+  reader (as `loadFromBusinessDataBytes`), not its own: it now accepts what
+  that reader accepts and fills `tiles_loaded` and descriptors the same way.
 - Docs: "Batch and ETL" (`docs/batch-etl.mdx`): business data loaded in
   bulk into the registry, read raw (`getFull`, `hasFull`, `contains`, …) or
   through the ORM with no resource files, `isPublic` and `__scopes`, and the

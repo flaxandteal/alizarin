@@ -818,7 +818,10 @@ export declare class NapiStaticResourceRegistry {
    * no WASM linear memory limit, and panics produce real stack traces.
    */
   loadFromBusinessDataBytes(bytes: Buffer, storeFull?: boolean | undefined | null, includeCaches?: boolean | undefined | null): Array<any>
-  /** Insert full resources from a business_data JSON file string. */
+  /**
+   * Insert full resources from a business_data JSON file string: the
+   * string form of loadFromBusinessDataBytes, read by the same core reader.
+   */
   mergeFromBusinessDataJson(businessDataJson: string, storeFull?: boolean | undefined | null): void
   /** Build an inverted index: visibility value -> [resource IDs]. */
   getValueToResourcesIndex(graph: NapiStaticGraph, nodeIdentifier: string, flattenLocalized?: boolean | undefined | null, rdmCache?: NapiRdmCache | undefined | null): Record<string, Array<string>>
@@ -871,6 +874,15 @@ export declare class NapiStaticResourceRegistry {
    * skipped; a null, undefined or unknown graph id gives an empty array.
    */
   getAllFullForGraph(graphId?: string | undefined | null): Array<any>
+  /**
+   * Every full resource as JSON objects (summary-only entries skipped), as
+   * WASM's and Python's getAllFull.
+   */
+  getAllFull(): Array<any>
+  /** Whether the registry holds no resources. */
+  get isEmpty(): boolean
+  /** A known resource's graph id, if any. */
+  getGraphId(resourceId: string): string | null
   /** Get a summary for a resource (works for both summary and full entries), or null if unknown. */
   getSummary(resourceId: string): any | null
   /** Get diagnostic stats about registry contents (entry counts, tile counts, etc.) */

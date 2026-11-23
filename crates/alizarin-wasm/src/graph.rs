@@ -2714,16 +2714,60 @@ impl StaticResourceRegistry {
         node_identifier: &str,
         flatten_localized: Option<bool>,
     ) -> Result<JsValue, JsValue> {
+        // Extension datatypes render through the JS-registered handlers, as
+        // NAPI's through its registered ones.
+        let ext_registry = crate::extension_registry::build_extension_registry();
+        let ctx = alizarin_core::type_serialization::SerializationContext {
+            extension_registry: Some(&ext_registry),
+            ..alizarin_core::type_serialization::SerializationContext::empty()
+        };
         let index = self
             .0
-            .get_value_to_resources_index(
+            .get_value_to_resources_index_with_context(
                 &graph.0,
                 node_identifier,
                 flatten_localized.unwrap_or(true),
+                Some(&ctx),
             )
             .map_err(|e| JsValue::from_str(&e))?;
 
         crate::js_json::to_value(&index)
+            .map_err(|e| JsValue::from_str(&format!("Failed to serialize result: {}", e)))
+    }
+
+    /// Values of `extractNode` in the tiles whose `filterNode` display value
+    /// contains any of `filterValues` (both nodes in one nodegroup), as NAPI's
+    /// getFilteredTileValues. `requiredScope` keeps only resources with that
+    /// `__scopes` entry.
+    #[wasm_bindgen(js_name = getFilteredTileValues)]
+    pub fn get_filtered_tile_values(
+        &self,
+        graph: &StaticGraph,
+        filter_node: &str,
+        filter_values: Vec<String>,
+        extract_node: &str,
+        flatten_localized: Option<bool>,
+        required_scope: Option<String>,
+    ) -> Result<JsValue, JsValue> {
+        let filter_refs: Vec<&str> = filter_values.iter().map(|s| s.as_str()).collect();
+        let ext_registry = crate::extension_registry::build_extension_registry();
+        let ctx = alizarin_core::type_serialization::SerializationContext {
+            extension_registry: Some(&ext_registry),
+            ..alizarin_core::type_serialization::SerializationContext::empty()
+        };
+        let values = self
+            .0
+            .get_filtered_tile_values(
+                &graph.0,
+                filter_node,
+                &filter_refs,
+                extract_node,
+                flatten_localized.unwrap_or(true),
+                Some(&ctx),
+                required_scope.as_deref(),
+            )
+            .map_err(|e| JsValue::from_str(&e))?;
+        crate::js_json::to_value(&values)
             .map_err(|e| JsValue::from_str(&format!("Failed to serialize result: {}", e)))
     }
 }

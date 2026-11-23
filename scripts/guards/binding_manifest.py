@@ -58,6 +58,11 @@ METHOD_RENAMES = {
         ("from_graph", {"wasm": "fromGraph", "napi": "buildFromGraph", "python": None}),
         ("from_graph_json", {"wasm": "fromGraphJson", "napi": "buildFromGraphJson", "python": "load_graph_json"}),
     ],
+    # Python's take the JSON string, as the JS bindings' *Json forms.
+    "resourceRegistry": [
+        ("populate_caches_from_json", {"wasm": "populateCachesFromJson", "napi": "populateCachesFromJson", "python": "populate_caches"}),
+        ("merge_from_resources_json", {"wasm": "mergeFromResourcesJson", "napi": "mergeFromResourcesJson", "python": "merge_from_resources"}),
+    ],
     "rdmCache": [
         ("add_collections_from_skos_xml", {"wasm": "addCollectionsFromSkosXml", "napi": "addCollectionsFromSkosXml", "python": "add_from_skos_xml"}),
         ("length", {"wasm": "length", "napi": "collectionCount"}),
@@ -199,9 +204,16 @@ REASONS = [
     ("op:rdmCache.load_*", {"wasm": GAP_RDM_NAPI_LOADERS, "python": GAP_RDM_NAPI_LOADERS}),
     ("op:rdmCache.*", {"wasm": GAP_RDM_EDITING, "napi": GAP_RDM_EDITING}),
     ("op:resourceRegistry.load_prebuild_business_data", {"wasm": "ecosystem: WASM has no filesystem"}),
-    ("op:resourceRegistry.*", {"wasm": "gap: the resource registry's methods differ per binding (A-7)",
-                               "napi": "gap: the resource registry's methods differ per binding (A-7)",
-                               "python": "gap: the resource registry's methods differ per binding (A-7)"}),
+    ("op:resourceRegistry.contains", {"python": "ecosystem: `resource_id in registry`"}),
+    ("op:resourceRegistry.length", {"python": "ecosystem: len(registry)"}),
+    ("op:resourceRegistry.insert_from_json", {"napi": "ecosystem: NAPI's insert takes JSON already",
+                                              "python": "ecosystem: Python's insert takes the JSON string already"}),
+    ("op:resourceRegistry.merge_from_business_data_json", {
+        "wasm": "ecosystem: NAPI's string form of loadFromBusinessDataBytes (the same core reader), kept for its callers",
+        "python": "ecosystem: NAPI's string form of loadFromBusinessDataBytes (the same core reader), kept for its callers"}),
+    ("op:resourceRegistry.populate_caches", {"napi": "ecosystem: takes WASM StaticResource objects; NAPI takes JSON (populate_caches_from_json)",
+                                             "python": "ecosystem: takes WASM StaticResource objects; Python takes JSON (populate_caches_from_json)"}),
+    ("op:resourceRegistry.merge_from_resources", {"python": "ecosystem: takes resource objects; Python takes the JSON string (merge_from_resources_json)"}),
 ]
 
 

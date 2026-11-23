@@ -81,14 +81,24 @@ to feed a public build should always write `__scopes`.
 
 | | JS (WASM and NAPI) | Python |
 |---|---|---|
-| Held at all (full or summary) | `registry.contains(id)` | — |
+| Held at all (full or summary) | `registry.contains(id)` | `id in registry` |
 | Held with tiles | `registry.hasFull(id)` | `registry.has_full(id)` |
 | The resource with its tiles, or `null` | `registry.getFull(id)` | `registry.get_full(id)` |
 | Its summary (`resourceinstance` only) | `registry.getSummary(id)` | `registry.get_summary(id)` |
+| Its graph id | `registry.getGraphId(id)` | `registry.get_graph_id(id)` |
+| Every full resource | `registry.getAllFull()` | `registry.get_all_full()` |
 | Every full resource of a graph | `registry.getAllFullForGraph(graphId)` | `registry.get_all_full_for_graph(graphId)` |
-| How many | `registry.length` | — |
-| Value index for one node | `registry.getNodeValuesIndex(graph, node)` | `registry.get_node_values_index(...)` |
-| Tile values filtered by another node | NAPI only: `registry.getFilteredTileValues(...)` | — |
+| How many; none? | `registry.length`, `registry.isEmpty` | `len(registry)`, `registry.is_empty` |
+| Node values per resource | `registry.getNodeValuesIndex(graph, node)` | `registry.get_node_values_index(graphId, node)` |
+| Resources per node value | `registry.getValueToResourcesIndex(graph, node)` | `registry.get_value_to_resources_index(graphId, node, True)` |
+| Values of one node where another matches | `registry.getFilteredTileValues(graph, filterNode, values, extractNode, flatten?, scope?)` | `registry.get_filtered_tile_values(graphId, ...)` |
+| Entry and tile counts | `registry.memoryStats()` | `registry.memory_stats()` |
+
+The JS methods take the graph object (`Model.graph`); Python's take a
+registered graph's id. The last four render values the way display does,
+extension datatypes included; `getFilteredTileValues` with a scope keeps only
+resources whose `__scopes` include it. These outputs are held identical on
+all three bindings (golden route `registry:reads`).
 
 ```ts
 const person = staticStore.registry.getFull('193750d0-e4b8-527d-8dc2-cbfb4cd31e72');

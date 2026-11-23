@@ -319,6 +319,28 @@ function routes(): [string, string, () => any][] {
     () => createResourceRegistry().loadFromBusinessDataBytes(fs.readFileSync(path.join(DIR, "business-data.json")), true, true),
   ]);
   out.push([
+    "registry reads",
+    "registry:reads",
+    () => {
+      const registry = createResourceRegistry();
+      for (const file of ["business-data.json", "resource.json"]) {
+        registry.loadFromBusinessDataBytes(fs.readFileSync(path.join(DIR, file)), true, true);
+      }
+      const PUBLIC = "0b0b0b0b-0000-4000-8000-000000000003";
+      return {
+        allFull: registry.getAllFull().map((r: any) => r.resourceinstance.resourceinstanceid).sort(),
+        contains: [registry.contains(PUBLIC), registry.contains("nope")],
+        filtered: registry.getFilteredTileValues(graph, "name", ["Fort"], "name", true, null),
+        filteredPublic: registry.getFilteredTileValues(graph, "name", ["Fort"], "name", true, "public"),
+        graphId: registry.getGraphId(PUBLIC),
+        isEmpty: registry.isEmpty,
+        length: registry.length,
+        memoryStats: registry.memoryStats(),
+        valueIndex: registry.getValueToResourcesIndex(graph, "name", true),
+      };
+    },
+  ]);
+  out.push([
     "createStaticTile(empty)",
     "tile:empty",
     () => createStaticTile({ nodegroup_id: resourceFixture.tiles[0].nodegroup_id, resourceinstance_id: RESOURCE_ID, data: {} }),

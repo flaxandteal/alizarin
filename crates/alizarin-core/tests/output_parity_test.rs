@@ -270,6 +270,39 @@ fn outputs() -> BTreeMap<String, String> {
         .unwrap();
     put("business_data:refs".into(), canonical(&refs));
 
+    // A registry's own reads, after loading business-data.json (two
+    // resources, one public) and resource.json (tiles with names): every
+    // binding's registry methods over the same contents.
+    let mut registry = alizarin_core::StaticResourceRegistry::new();
+    for file in ["business-data.json", "resource.json"] {
+        registry
+            .load_from_business_data_bytes(read(file).as_bytes(), true, true)
+            .unwrap();
+    }
+    let mut all_full: Vec<String> = registry
+        .iter_full()
+        .map(|(_, r)| r.resourceinstance.resourceinstanceid.clone())
+        .collect();
+    all_full.sort();
+    let public = "0b0b0b0b-0000-4000-8000-000000000003";
+    let filtered = |scope: Option<&str>| {
+        registry
+            .get_filtered_tile_values(&graph, "name", &["Fort"], "name", true, None, scope)
+            .unwrap()
+    };
+    let reads = serde_json::json!({
+        "allFull": all_full,
+        "contains": [registry.contains(public), registry.contains("nope")],
+        "filtered": filtered(None),
+        "filteredPublic": filtered(Some("public")),
+        "graphId": registry.get_graph_id(public),
+        "isEmpty": registry.is_empty(),
+        "length": registry.len(),
+        "memoryStats": registry.memory_stats(),
+        "valueIndex": registry.get_value_to_resources_index(&graph, "name", true).unwrap(),
+    });
+    put("registry:reads".into(), canonical(&reads));
+
     // populateCaches over the fixture resource (it references nothing), and a
     // path resolved through the fixture graph.
     let mut registry = alizarin_core::StaticResourceRegistry::new();

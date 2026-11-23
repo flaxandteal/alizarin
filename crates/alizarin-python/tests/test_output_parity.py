@@ -115,6 +115,28 @@ def routes():
 
     out.append(("load_from_business_data_bytes", "business_data:refs", business_data_refs))
 
+    def registry_reads():
+        registry = alizarin.ResourceRegistry()
+        for name in ["business-data.json", "resource.json"]:
+            with open(os.path.join(DATA_DIR, name), "rb") as f:
+                registry.load_from_business_data_bytes(f.read())
+        public = "0b0b0b0b-0000-4000-8000-000000000003"
+        gid = GRAPH["graphid"]
+        return {
+            "allFull": sorted(r["resourceinstance"]["resourceinstanceid"] for r in registry.get_all_full()),
+            # Python spells contains and length `in` and len().
+            "contains": [public in registry, "nope" in registry],
+            "filtered": registry.get_filtered_tile_values(gid, "name", ["Fort"], "name"),
+            "filteredPublic": registry.get_filtered_tile_values(gid, "name", ["Fort"], "name", required_scope="public"),
+            "graphId": registry.get_graph_id(public),
+            "isEmpty": registry.is_empty,
+            "length": len(registry),
+            "memoryStats": registry.memory_stats(),
+            "valueIndex": registry.get_value_to_resources_index(gid, "name", True),
+        }
+
+    out.append(("registry reads", "registry:reads", registry_reads))
+
     def populate_caches():
         registry = alizarin.ResourceRegistry()
         registry.merge_from_resources(json.dumps([RESOURCE]), True)

@@ -1317,16 +1317,13 @@
           "napi": "contains",
           "python": null,
           "why": {
-            "python": "gap: the resource registry's methods differ per binding (A-7)"
+            "python": "ecosystem: `resource_id in registry`"
           }
         },
         {
           "wasm": "getAllFull",
-          "napi": null,
-          "python": "get_all_full",
-          "why": {
-            "napi": "gap: the resource registry's methods differ per binding (A-7)"
-          }
+          "napi": "getAllFull",
+          "python": "get_all_full"
         },
         {
           "wasm": "getAllFullForGraph",
@@ -1334,13 +1331,9 @@
           "python": "get_all_full_for_graph"
         },
         {
-          "wasm": null,
+          "wasm": "getFilteredTileValues",
           "napi": "getFilteredTileValues",
-          "python": null,
-          "why": {
-            "wasm": "gap: the resource registry's methods differ per binding (A-7)",
-            "python": "gap: the resource registry's methods differ per binding (A-7)"
-          }
+          "python": "get_filtered_tile_values"
         },
         {
           "wasm": "getFull",
@@ -1349,11 +1342,8 @@
         },
         {
           "wasm": "getGraphId",
-          "napi": null,
-          "python": "get_graph_id",
-          "why": {
-            "napi": "gap: the resource registry's methods differ per binding (A-7)"
-          }
+          "napi": "getGraphId",
+          "python": "get_graph_id"
         },
         {
           "wasm": "getNodeValuesIndex",
@@ -1385,24 +1375,21 @@
           "napi": null,
           "python": null,
           "why": {
-            "napi": "gap: the resource registry's methods differ per binding (A-7)",
-            "python": "gap: the resource registry's methods differ per binding (A-7)"
+            "napi": "ecosystem: NAPI's insert takes JSON already",
+            "python": "ecosystem: Python's insert takes the JSON string already"
           }
         },
         {
           "wasm": "isEmpty",
-          "napi": null,
-          "python": "is_empty",
-          "why": {
-            "napi": "gap: the resource registry's methods differ per binding (A-7)"
-          }
+          "napi": "isEmpty",
+          "python": "is_empty"
         },
         {
           "wasm": "length",
           "napi": "length",
           "python": null,
           "why": {
-            "python": "gap: the resource registry's methods differ per binding (A-7)"
+            "python": "ecosystem: len(registry)"
           }
         },
         {
@@ -1426,56 +1413,48 @@
         {
           "wasm": "memoryStats",
           "napi": "memoryStats",
-          "python": null,
-          "why": {
-            "python": "gap: the resource registry's methods differ per binding (A-7)"
-          }
+          "python": "memory_stats"
         },
         {
           "wasm": "memoryStatsDetailed",
           "napi": "memoryStatsDetailed",
-          "python": null,
-          "why": {
-            "python": "gap: the resource registry's methods differ per binding (A-7)"
-          }
+          "python": "memory_stats_detailed"
         },
         {
           "wasm": null,
           "napi": "mergeFromBusinessDataJson",
           "python": null,
           "why": {
-            "wasm": "gap: the resource registry's methods differ per binding (A-7)",
-            "python": "gap: the resource registry's methods differ per binding (A-7)"
+            "wasm": "ecosystem: NAPI's string form of loadFromBusinessDataBytes (the same core reader), kept for its callers",
+            "python": "ecosystem: NAPI's string form of loadFromBusinessDataBytes (the same core reader), kept for its callers"
           }
         },
         {
           "wasm": "mergeFromResources",
           "napi": "mergeFromResources",
-          "python": "merge_from_resources"
+          "python": null,
+          "why": {
+            "python": "ecosystem: takes resource objects; Python takes the JSON string (merge_from_resources_json)"
+          }
         },
         {
           "wasm": "mergeFromResourcesJson",
           "napi": "mergeFromResourcesJson",
-          "python": null,
-          "why": {
-            "python": "gap: the resource registry's methods differ per binding (A-7)"
-          }
+          "python": "merge_from_resources"
         },
         {
           "wasm": "populateCaches",
           "napi": null,
-          "python": "populate_caches",
+          "python": null,
           "why": {
-            "napi": "gap: the resource registry's methods differ per binding (A-7)"
+            "napi": "ecosystem: takes WASM StaticResource objects; NAPI takes JSON (populate_caches_from_json)",
+            "python": "ecosystem: takes WASM StaticResource objects; Python takes JSON (populate_caches_from_json)"
           }
         },
         {
           "wasm": "populateCachesFromJson",
           "napi": "populateCachesFromJson",
-          "python": null,
-          "why": {
-            "python": "gap: the resource registry's methods differ per binding (A-7)"
-          }
+          "python": "populate_caches"
         }
       ]
     },
