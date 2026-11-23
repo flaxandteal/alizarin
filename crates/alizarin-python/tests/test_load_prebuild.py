@@ -30,7 +30,7 @@ def prebuild(tmp_path):
 
 @pytest.fixture
 def gm(prebuild):
-    gm = GraphManager()
+    gm = GraphManager(default_allow_all_nodegroups=True)
     loaded = gm.load_prebuild(prebuild)
     assert len(loaded["graph_ids"]) == 6
     assert PERSON_ID in loaded["resource_ids"]
@@ -74,3 +74,25 @@ async def test_references_resolve_through_the_registry(gm):
 async def test_a_models_resources_are_its_business_data(gm):
     people = await gm.load_graph("Person").all()
     assert PERSON_ID in [p.id for p in people]
+
+
+def test_the_manager_requires_a_default_permission():
+    # As TypeScript's initialize({defaultAllowAllNodegroups}).
+    with pytest.raises(TypeError, match="default_allow_all_nodegroups"):
+        GraphManager()
+
+
+@pytest.mark.asyncio
+async def test_a_deny_by_default_manager_hides_ungranted_nodegroups(prebuild):
+    gm = GraphManager(default_allow_all_nodegroups=False)
+    gm.load_prebuild(prebuild)
+    viewContext.graphManager = gm
+    try:
+        # getResource builds its model as load_graph does, so it is denied too.
+        person = await gm.getResource(PERSON_ID)
+        assert await person.contact_handle is None
+        gm.load_graph("Person").set_permitted_nodegroups({"contact_handle": True})
+        person = await gm.getResource(PERSON_ID)
+        assert await person.contact_handle == "+353-1-555-1004"
+    finally:
+        viewContext.graphManager = None

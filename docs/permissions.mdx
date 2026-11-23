@@ -1,0 +1,76 @@
+---
+title: Permissions
+description: Which nodegroups a model lets you read, and how to grant them
+---
+
+Each model has a permission per nodegroup. A value in a denied nodegroup
+reads as `null` (Python: `None`); the node is still in the model, so
+`__has('alias')` stays true. The JS examples below are run, on both JS
+backends, by `tests/dual-backend/docsLocalRecipe.test.ts`; the Python ones by
+`crates/alizarin-python/tests/test_load_prebuild.py`.
+
+## The default is required
+
+A nodegroup without its own rule follows the manager's default, and you must
+choose it:
+
+```ts
+// Every nodegroup readable (tools, ETL, tests on full exports):
+await graphManager.initialize({ defaultAllowAllNodegroups: true });
+
+// Each nodegroup denied until granted (anything filtering for a public view):
+await graphManager.initialize({ defaultAllowAllNodegroups: false });
+```
+
+```python
+gm = GraphManager(default_allow_all_nodegroups=True)
+```
+
+`initialize()` without it rejects, and `graphManager.get` before `initialize`
+throws, so an upgrade fails at this line rather than with fields silently
+reading `null`. Every model the manager builds (`loadGraph`, `get`,
+`getResource`) takes this default; `loadGraph(name, defaultAllow)` overrides it
+for one model. A model already loaded keeps its own, and
+`Model.setDefaultAllowAllNodegroups(bool)` changes it later.
+
+## Granting nodegroups
+
+```ts
+const Person = await graphManager.loadGraph('Person');
+Person.setDefaultAllowAllNodegroups(false);
+Person.setPermittedNodegroups(new Map([['contact_handle', true]]));
+
+const person = await Person.find('193750d0-e4b8-527d-8dc2-cbfb4cd31e72');
+await person.contact_handle;   // '+353-1-555-1004'
+await person.name;             // null: not granted
+```
+
+```python
+Person = gm.load_graph("Person")
+Person.set_permitted_nodegroups({"contact_handle": True})
+```
+
+Keys are a nodegroup id or the alias of the node that heads it. Nodegroups
+left out of the map follow the model's default, so with `true` a map denies
+only what it lists, and with `false` it grants only what it lists. The root
+is always permitted unless a rule says otherwise.
+
+A rule can also depend on a tile's own data: `{ path, allowed }` permits the
+nodegroup but only those of its tiles whose value at `path` (for example
+`.data.<nodeid>`) is one of `allowed`.
+
+## Exporting a filtered graph
+
+`Model.pruneGraph(keepFunctions?)` removes the denied nodegroups from the
+model's graph itself (keeping the functions whose ids are listed), and
+`Model.graph` is then the pruned graph: the way to write a public copy of a
+graph (`tests/graphManager.test.ts`, "pruneGraph"). (Older releases called
+this `exportGraph()`.) A model built directly
+with `new ResourceModelWrapper(wkrm, graph)` defaults to deny.
+
+## One model per graph
+
+Core keeps one model per graph id, and its permissions with it. Two managers
+that load the same graph therefore share one set of permissions, and the one
+set last wins: a public and a private view of one graph cannot be open in the
+same process yet (PARITY-RESEARCH.md, A-9).

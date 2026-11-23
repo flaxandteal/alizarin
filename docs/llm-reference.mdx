@@ -59,7 +59,9 @@ RDM.archesClient = archesClient;
 
 // initialize() populates graph metadata; loadGraph() throws without it.
 // (Do NOT `new GraphManager(client)` then loadGraph directly — that skips init.)
-await graphManager.initialize();
+// defaultAllowAllNodegroups: true makes every nodegroup readable; by default
+// each is denied (its values read as null) until granted.
+await graphManager.initialize({ defaultAllowAllNodegroups: true });
 
 const Person = await graphManager.loadGraph('Person');
 const people = await Person.all();

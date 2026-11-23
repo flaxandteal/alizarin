@@ -60,7 +60,7 @@ def place():
         },
     }]
 
-    gm = GraphManager()
+    gm = GraphManager(default_allow_all_nodegroups=True)
     gm.register_graph(graph)
     gm.register_resource({
         "resourceinstance": {

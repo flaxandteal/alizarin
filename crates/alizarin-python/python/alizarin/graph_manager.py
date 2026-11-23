@@ -298,10 +298,25 @@ class GraphManager:
     loaders (`registry.load_from_business_data_bytes`).
     """
 
-    def __init__(self):
-        """Initialize GraphManager with minimal state."""
+    def __init__(self, *, default_allow_all_nodegroups: bool):
+        """
+        Initialize GraphManager with minimal state.
+
+        Args:
+            default_allow_all_nodegroups: Required. Whether the models
+                load_graph (and getResource) build permit nodegroups without a
+                permission rule, as TypeScript's
+                initialize({defaultAllowAllNodegroups}). False: each is denied
+                (its values read as None) until granted.
+        """
+        if not isinstance(default_allow_all_nodegroups, bool):
+            raise TypeError(
+                "GraphManager needs default_allow_all_nodegroups=True (every nodegroup "
+                "readable) or False (each denied until granted with set_permitted_nodegroups)"
+            )
         from . import ResourceRegistry
 
+        self.default_allow_all_nodegroups = default_allow_all_nodegroups
         # Every resource this manager knows, held by core.
         self.registry = ResourceRegistry()
         # Track registered graph IDs
@@ -386,12 +401,14 @@ class GraphManager:
             "resource_ids": [ref["resourceinstanceid"] for ref in refs],
         }
 
-    def load_graph(self, model: str) -> Any:
+    def load_graph(self, model: str, default_allow: Optional[bool] = None) -> Any:
         """
         The ResourceModelWrapper for a registered graph, by its model class
         name (as WKRM.model_class_name: "DigitalObject"; case, spaces and
         punctuation aside, so "Digital Object" too) or its graph id, as
-        TypeScript's graphManager.loadGraph.
+        TypeScript's graphManager.loadGraph. Nodegroups without a permission
+        rule follow `default_allow`, else the manager's
+        `default_allow_all_nodegroups`; a model already loaded keeps its own.
 
         Raises:
             KeyError: naming the models known, if none matches.
@@ -415,7 +432,9 @@ class GraphManager:
                 f"(case and spaces aside) or its graph id; known: {names}"
             )
         if graph_id not in self._models:
-            self._models[graph_id] = ResourceModelWrapper.from_graph_id(graph_id)
+            if default_allow is None:
+                default_allow = self.default_allow_all_nodegroups
+            self._models[graph_id] = ResourceModelWrapper.from_graph_id(graph_id, default_allow)
         return self._models[graph_id]
 
     def _model_class_name(self, graph_id: str) -> str:
@@ -451,8 +470,6 @@ class GraphManager:
         Raises:
             ValueError: If resource or graph not found
         """
-        from .model_wrapper import ResourceModelWrapper
-
         from .static_types import StaticResource, from_core
 
         found = self.registry.get_full(resource_id)
@@ -466,11 +483,8 @@ class GraphManager:
         # Get graph ID
         graph_id = resource.resourceinstance.graph_id
 
-        # Load or get cached model
-        if graph_id not in self._models:
-            self._models[graph_id] = ResourceModelWrapper.from_graph_id(graph_id)
-
-        return await self._wrap_resource(resource, self._models[graph_id], lazy)
+        # The model as load_graph gives it, so it follows the manager's default.
+        return await self._wrap_resource(resource, self.load_graph(graph_id), lazy)
 
     async def all_for_model(
         self,

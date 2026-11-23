@@ -645,7 +645,7 @@ test("GraphManager accepts an injected store so two managers stay independent (L
   assert.notStrictEqual(gm1.staticStore, gm2.staticStore, "two managers must not share a store");
 });
 
-test("get() awaits initialize() so a first get() does not race the registry (C8)", async () => {
+test("get() waits for an initialize() in flight, so it does not race the registry (C8)", async () => {
   const graph: any = (GroupJSON as any).graph[0];
   const meta = new StaticGraphMeta({
     graphid: graph.graphid,
@@ -656,8 +656,9 @@ test("get() awaits initialize() so a first get() does not race the registry (C8)
     extra_fields: {},
   });
   const gm = new GraphManager(mockLayerClient(graph, meta));
-  // No explicit initialize() first — get() must await it internally. Before the
+  // initialize() started but not awaited: get() must wait for it. Before the
   // C8 fix, get() raced the (empty) registry and threw "Cannot find model requested".
+  const initializing = gm.initialize({ defaultAllowAllNodegroups: true });
   let err: unknown;
   try {
     const wrapper = await gm.get("Group");
@@ -668,6 +669,20 @@ test("get() awaits initialize() so a first get() does not race the registry (C8)
   const msg = err instanceof Error ? err.message : String(err ?? "");
   // get() must await initialize() before the registry lookup (C8).
   assert.isUndefined(err, msg);
+  await initializing;
+});
+
+test("initialize() requires defaultAllowAllNodegroups, and get() requires initialize()", async () => {
+  const graph: any = (GroupJSON as any).graph[0];
+  const meta = new StaticGraphMeta({ graphid: graph.graphid, name: graph.name || "Group", slug: "group" });
+  const gm = new GraphManager(mockLayerClient(graph, meta));
+  await expect(gm.get("Group")).rejects.toThrow(/before initialize\(\{ defaultAllowAllNodegroups \}\)/);
+  await expect(gm.initialize({} as any)).rejects.toThrow(/needs defaultAllowAllNodegroups/);
+  await gm.initialize({ defaultAllowAllNodegroups: false });
+  const Group = await gm.get("Group");
+  // Not allow-all: a nodegroup without a rule is denied.
+  const nodegroupId = [...Group.getNodegroupObjects().keys()].find((id) => id);
+  assert.isFalse(Group.isNodegroupPermitted(nodegroupId!, null));
 });
 
 test("get() loads a graph by a non-exact name on a cold cache (N1)", async () => {
@@ -681,6 +696,7 @@ test("get() loads a graph by a non-exact name on a cold cache (N1)", async () =>
     extra_fields: {},
   });
   const gm = new GraphManager(mockLayerClient(graph, meta));
+  await gm.initialize({ defaultAllowAllNodegroups: true });
   // "group" (lowercase, non-exact) with the graph NOT yet cached. get() resolves
   // the name via normalizeModelName, then delegates to loadGraph() — which, before
   // N1, re-resolved only the EXACT class name and threw

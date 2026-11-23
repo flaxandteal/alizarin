@@ -44,7 +44,7 @@ async def open_fixture(fixture):
         cache.add_collection_from_json(collection["id"], json.dumps(list(collection["concepts"].values())))
         alizarin.set_global_rdm_cache(cache)
     graph = load(fixture, "graph.json")
-    gm = GraphManager()
+    gm = GraphManager(default_allow_all_nodegroups=True)
     gm.register_graph(graph)
     data = load(fixture, "resource.json")
     gm.register_resource(data)

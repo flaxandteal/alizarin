@@ -73,6 +73,25 @@ entries is tracked in `PARITY-RESEARCH.md`.
   object by hand).
 
 ### Changed
+- **Breaking:** the default nodegroup permission must be chosen.
+  `graphManager.initialize({ defaultAllowAllNodegroups })` rejects without
+  it, and Python's `GraphManager(default_allow_all_nodegroups=...)` is
+  required (keyword-only). Every model the manager builds follows it:
+  `loadGraph` and `get` used to default to allow-all whatever `initialize`
+  said, while `getResource` followed it, so the option half-worked. To keep
+  the old reading behaviour, pass `true`; a public view passes `false` and
+  grants nodegroups with `setPermittedNodegroups`. `graphManager.get` before
+  `initialize` now throws instead of initialising with the defaults (a `get`
+  racing an `initialize` in flight still waits for it). See
+  `docs/permissions.mdx`.
+- Fixed: asking a model whose permissions were never set
+  (`isNodegroupPermitted`, `getPermittedNodegroups`) filled in all-true and
+  wrote it to the backend, turning a deny-by-default model allow-all. It now
+  reads the backend's own rules.
+- Python: `ResourceModelWrapper(wkrm, graph, default_allow=True)`,
+  `from_graph_id(graph_id, default_allow=True)` and
+  `set_default_allow_all_nodegroups`; `GraphManager.getResource` builds its
+  model as `load_graph` does.
 - Tiles to trees (`tilesToTree`, `cardsToTree`, `batchTilesToTrees`; Python
   `tiles_to_json_tree`, `cards_to_json_tree`, `batch_tiles_to_trees`) read a
   resource by one rule in core. **Breaking**, where it differed:

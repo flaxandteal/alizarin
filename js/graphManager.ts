@@ -54,6 +54,10 @@ class ConfigurationOptions {
   defaultAllowAllNodegroups: boolean = false;
 }
 
+/** `initialize`'s options: `defaultAllowAllNodegroups` is required, since a
+ *  model's unlisted nodegroups follow it (false: denied, values read null). */
+type InitializeOptions = Partial<ConfigurationOptions> & { defaultAllowAllNodegroups: boolean };
+
 export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrapper<RIVM> {
   wkri: RIVM;
   model: ResourceModelWrapper<RIVM>;
@@ -1204,16 +1208,15 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
     this._backend.setPermittedNodegroups(permsForBackend);
   }
 
-  // Defaults to visible, which helps reduce the risk of false sense of security
-  // from front-end filtering masking the presence of data transferred to it.
+  // Unset, these are the backend's: core gives each nodegroup its rule, else the
+  // model's default (the manager's required defaultAllowAllNodegroups), and the
+  // root. Not all-true, which turned a deny-by-default model allow-all.
   getPermittedNodegroups(): Map<string, PermissionValue> {
     if (!this.permittedNodegroups) {
-      // Auto-initializing with all-true permissions - this will overwrite any WASM-side permissions
-      const permissions: Map<string, PermissionValue> = new Map([...this.getNodegroupObjects()].map(
-        ([k, _]: [k: string, _: StaticNodegroup]) => [k ?? '', true]  // Ensure key is not null
-      ));
-      permissions.set("", true); // Have to have access to root node.
-      this.setPermittedNodegroups(permissions);
+      const fromBackend = this._backend.getPermittedNodegroups();
+      this.permittedNodegroups = new Map(
+        fromBackend instanceof Map ? fromBackend : Object.entries(fromBackend ?? {}),
+      );
     }
     const permittedNodegroups = this.permittedNodegroups;
     if (permittedNodegroups === undefined) {
@@ -1348,6 +1351,7 @@ function makeResourceModelWrapper<T extends IRIVM<T>>(
 
 class GraphManager {
   _initialized: boolean = false;
+  private _initializing: Promise<void> | undefined;
   archesClient: ArchesClient;
   // These are hydrated graphs - for metadata-only versions
   // of graphs, using wkrms[*].meta
@@ -1372,13 +1376,23 @@ class GraphManager {
     return pruneTiles;
   }
 
-  /** Load the graph list. Options default as in `ConfigurationOptions`:
-   * `graphs: null` (all graphs; or a list of graph ids), `eagerLoadGraphs:
-   * false`, `defaultAllowAllNodegroups: false`. */
-  async initialize(options: Partial<ConfigurationOptions> | undefined = undefined) {
-    if (this._initialized) {
-      return;
+  /** Load the graph list. `defaultAllowAllNodegroups` is required: whether
+   * the models `loadGraph` builds permit nodegroups without a permission rule
+   * (false: each is denied, its values null, until granted). The rest default
+   * as in `ConfigurationOptions`: `graphs: null` (all graphs; or a list of
+   * graph ids), `eagerLoadGraphs: false`. A second call returns the first's. */
+  initialize(options: InitializeOptions): Promise<void> {
+    if (typeof options?.defaultAllowAllNodegroups !== 'boolean') {
+      return Promise.reject(Error(
+        'graphManager.initialize needs defaultAllowAllNodegroups: true (every nodegroup ' +
+        'readable) or false (each denied until granted with setPermittedNodegroups)',
+      ));
     }
+    this._initializing ??= this.load(options);
+    return this._initializing;
+  }
+
+  private async load(options: InitializeOptions) {
     const configurationOptions: ConfigurationOptions = Object.assign(new ConfigurationOptions(), options);
     const graphJsons: GraphResult = await this.archesClient.getGraphs();
     this.defaultAllow = configurationOptions.defaultAllowAllNodegroups;
@@ -1439,7 +1453,11 @@ class GraphManager {
     );
   }
 
-  async loadGraph<RIVM extends IRIVM<RIVM>>(modelClass: ResourceInstanceViewModelConstructor<RIVM> | string, defaultAllow: boolean=true): Promise<ResourceModelWrapper<RIVM>> {
+  /** The model for a class name or graph id. Nodegroups without a permission
+   *  rule follow `defaultAllow`, else `initialize`'s `defaultAllowAllNodegroups`
+   *  (false: denied until granted). A model already loaded keeps its own. */
+  async loadGraph<RIVM extends IRIVM<RIVM>>(modelClass: ResourceInstanceViewModelConstructor<RIVM> | string, defaultAllow?: boolean): Promise<ResourceModelWrapper<RIVM>> {
+    defaultAllow = defaultAllow ?? this.defaultAllow;
     const modelClassName = typeof modelClass == 'string' ? modelClass : modelClass.name;
 
     const wkrm = this.resolveWkrm(modelClassName);
@@ -1472,7 +1490,7 @@ class GraphManager {
     return model.prototype.__;
   }
 
-  async get<RIVM extends IRIVM<RIVM>>(modelClass: ResourceInstanceViewModelConstructor<RIVM> | string, defaultAllow: boolean=true): Promise<ResourceModelWrapper<RIVM>> {
+  async get<RIVM extends IRIVM<RIVM>>(modelClass: ResourceInstanceViewModelConstructor<RIVM> | string, defaultAllow?: boolean): Promise<ResourceModelWrapper<RIVM>> {
     let modelClassName: string;
     if (typeof modelClass == 'string') {
       modelClassName = modelClass;
@@ -1480,9 +1498,12 @@ class GraphManager {
       modelClassName = modelClass.name;
     }
 
-    // Initialize as a fallback — MUST be awaited, or a get() that races the first
-    // initialize() sees an empty registry and throws "Cannot find model".
-    await this.initialize(undefined);
+    // Wait for an initialize() in flight, so a get() racing it does not see an
+    // empty registry; with none, there is no default to initialise with.
+    if (this._initializing === undefined) {
+      throw Error('graphManager.get before initialize({ defaultAllowAllNodegroups })');
+    }
+    await this._initializing;
     const wkrm = this.resolveWkrm(modelClassName);
     if (wkrm === undefined) {
       throw this.unknownModel(modelClassName);

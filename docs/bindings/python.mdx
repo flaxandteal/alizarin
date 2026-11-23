@@ -50,7 +50,9 @@ Resources live in the manager's resource registry (`gm.registry`, core's). Load 
 from alizarin.graph_manager import GraphManager
 from alizarin.view_models import viewContext
 
-gm = GraphManager()
+# Required: True makes every nodegroup readable; False denies each (its
+# values read as None) until granted with set_permitted_nodegroups.
+gm = GraphManager(default_allow_all_nodegroups=True)
 gm.load_prebuild("/path/to/prebuild")      # graphs/, reference_data/, business_data/
 # or: gm.register_graph(graph_dict); gm.register_resource(resource_dict)
 viewContext.graphManager = gm               # references resolve through it

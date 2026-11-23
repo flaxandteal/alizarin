@@ -40,7 +40,9 @@ const archesClient = new client.ArchesClientRemote('https://your-arches-instance
 graphManager.archesClient = archesClient;
 staticStore.archesClient = archesClient;
 RDM.archesClient = archesClient;
-await graphManager.initialize();
+// Every nodegroup readable; without this, each is denied until granted
+// (see /docs/permissions).
+await graphManager.initialize({ defaultAllowAllNodegroups: true });
 
 // Load a resource model
 const MonumentModel = await graphManager.get('Monument');
@@ -66,7 +68,7 @@ const archesClient = new client.ArchesClientRemoteStatic('/data/exports');
 graphManager.archesClient = archesClient;
 staticStore.archesClient = archesClient;
 RDM.archesClient = archesClient;
-await graphManager.initialize();
+await graphManager.initialize({ defaultAllowAllNodegroups: true });
 
 // Usage is identical to the remote client
 const PersonModel = await graphManager.get('Person');

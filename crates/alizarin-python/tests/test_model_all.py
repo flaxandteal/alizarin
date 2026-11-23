@@ -25,7 +25,7 @@ def load(path):
 
 @pytest.fixture
 def manager():
-    gm = GraphManager()
+    gm = GraphManager(default_allow_all_nodegroups=True)
     gm.register_graph(load("data/models/Group.json")["graph"][0])
     viewContext.graphManager = gm
     yield gm

@@ -34,7 +34,7 @@ describe("testing api", () => {
 
   beforeEach(async () => {
     fetchMock.mockReset();
-    await graphManager.initialize();
+    await graphManager.initialize({ defaultAllowAllNodegroups: true });
   });
 
   apiTest(

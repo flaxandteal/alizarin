@@ -38,7 +38,7 @@ async def resource():
     cache.add_collection_from_json(collection["id"], json.dumps(list(collection["concepts"].values())))
     alizarin.set_global_rdm_cache(cache)
 
-    gm = GraphManager()
+    gm = GraphManager(default_allow_all_nodegroups=True)
     gm.register_graph(load("graph.json"))
     data = load("resource.json")
     gm.register_resource(data)

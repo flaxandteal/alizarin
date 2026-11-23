@@ -45,7 +45,7 @@ def person_graph():
 @pytest.fixture
 def graph_manager(group_graph, person_graph):
     """Set up a GraphManager with both models and test resources."""
-    gm = GraphManager()
+    gm = GraphManager(default_allow_all_nodegroups=True)
 
     # Register both graphs
     group_graph_id = gm.register_graph(group_graph)

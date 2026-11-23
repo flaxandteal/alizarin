@@ -112,7 +112,7 @@ describe('doc examples execute against the sample data', () => {
     graphManager.archesClient = client;
     staticStore.archesClient = client;
     RDM.archesClient = client;
-    await graphManager.initialize();
+    await graphManager.initialize({ defaultAllowAllNodegroups: true });
   });
 
   for (const [name, mod] of Object.entries(EXAMPLES)) {

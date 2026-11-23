@@ -27,7 +27,8 @@ const archesClient = new client.ArchesClientRemoteStatic('/data');
 graphManager.archesClient = archesClient;
 staticStore.archesClient = archesClient;
 RDM.archesClient = archesClient;
-await graphManager.initialize();
+// Every nodegroup readable; by default each is denied until granted.
+await graphManager.initialize({ defaultAllowAllNodegroups: true });
 
 // Load a graph model and query resources
 const Person = await graphManager.loadGraph('Person');

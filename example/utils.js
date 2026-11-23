@@ -16,7 +16,7 @@ async function initializeAlizarin() {
   staticStore.archesClient = archesClient;
   RDM.archesClient = archesClient;
 
-  await graphManager.initialize();
+  await graphManager.initialize({ defaultAllowAllNodegroups: true });
   return graphManager;
 }
 

@@ -49,7 +49,7 @@ def town():
             "sortorder": 0,
         }
 
-    gm = GraphManager()
+    gm = GraphManager(default_allow_all_nodegroups=True)
     gm.register_graph(graph.to_dict())
     gm.register_resource({
         "resourceinstance": {
@@ -192,7 +192,7 @@ def with_events():
             "sortorder": sortorder,
         }
 
-    gm = GraphManager()
+    gm = GraphManager(default_allow_all_nodegroups=True)
     gm.register_graph(graph.to_dict())
     gm.register_resource({
         "resourceinstance": {
@@ -264,7 +264,7 @@ def with_kind():
     mutator.add_string_node("kind", "kind_note", "Kind note", "1", LITERAL, NOTE)
     graph = mutator.apply()
 
-    gm = GraphManager()
+    gm = GraphManager(default_allow_all_nodegroups=True)
     gm.register_graph(graph.to_dict())
     gm.register_resource(
         {

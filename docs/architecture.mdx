@@ -150,7 +150,7 @@ const archesClient = new client.ArchesClientRemote("https://my-arches-instance.o
 graphManager.archesClient = archesClient;
 staticStore.archesClient = archesClient;
 RDM.archesClient = archesClient;
-await graphManager.initialize();
+await graphManager.initialize({ defaultAllowAllNodegroups: true });
 
 // 2. Load a graph model
 const PersonModel = await graphManager.loadGraph("Person");

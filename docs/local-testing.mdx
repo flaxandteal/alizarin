@@ -59,7 +59,7 @@ graphManager.archesClient = local;
 staticStore.archesClient = local;
 RDM.archesClient = local;
 
-await graphManager.initialize();
+await graphManager.initialize({ defaultAllowAllNodegroups: true });
 ```
 
 Every resolver is optional; the defaults are the layout above, relative to

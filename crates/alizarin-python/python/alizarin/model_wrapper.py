@@ -64,12 +64,14 @@ class ResourceModelWrapper(Generic[RIVM]):
         "_permitted_nodegroups",
         "_nodes_by_alias",
         "_rust_model",
+        "_default_allow",
     )
 
     def __init__(
         self,
         wkrm: IWKRM,
         graph: StaticGraph,
+        default_allow: bool = True,
     ) -> None:
         """
         Initialize ResourceModelWrapper.
@@ -77,9 +79,12 @@ class ResourceModelWrapper(Generic[RIVM]):
         Args:
             wkrm: Well-Known Resource Model metadata
             graph: The StaticGraph for this model
+            default_allow: Whether nodegroups without a permission rule are
+                permitted (GraphManager.load_graph passes its own default).
         """
         self.wkrm: IWKRM = wkrm
         self.graph: StaticGraph = graph
+        self._default_allow = default_allow
 
         # Caches
         self.nodes: Optional[Dict[str, StaticNode]] = None
@@ -103,12 +108,19 @@ class ResourceModelWrapper(Generic[RIVM]):
         from . import register_graph, PyResourceModelWrapper
         # Ensure graph is registered (idempotent if already registered)
         register_graph(json.dumps(self.graph.to_dict()))
-        self._rust_model = PyResourceModelWrapper(self.graph.graphid)
+        self._rust_model = PyResourceModelWrapper(self.graph.graphid, self._default_allow)
+
+    def set_default_allow_all_nodegroups(self, default_allow: bool) -> None:
+        """Whether nodegroups without a permission rule are permitted, as
+        TypeScript's setDefaultAllowAllNodegroups."""
+        self._default_allow = default_allow
+        self._rust_model.set_default_allow_all_nodegroups(default_allow)
 
     @classmethod
     def from_graph_id(
         cls,
         graph_id: str,
+        default_allow: bool = True,
     ) -> "ResourceModelWrapper[RIVM]":
         """
         Create a ResourceModelWrapper from a registered graph ID.
@@ -143,7 +155,7 @@ class ResourceModelWrapper(Generic[RIVM]):
         graph = from_core(StaticGraph, graph_data)
         wkrm = WKRM.from_meta(graph.meta)
 
-        model = cls(wkrm, graph)
+        model = cls(wkrm, graph, default_allow)
         model.build_nodes()
         return model
 

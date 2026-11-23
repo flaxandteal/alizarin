@@ -54,7 +54,7 @@ def setup():
     managers = []
 
     def make(tiles_for):
-        gm = GraphManager()
+        gm = GraphManager(default_allow_all_nodegroups=True)
         graph_id = gm.register_graph(group_graph())
         resource_id = str(uuid.uuid4())
         gm.register_resource(
