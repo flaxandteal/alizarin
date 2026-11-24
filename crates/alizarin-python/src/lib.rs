@@ -428,6 +428,71 @@ fn batch_trees_to_tiles(
     })
 }
 
+/// Convert trees as `batch_trees_to_tiles` does, handing each tile and
+/// resource to an extension's row sink instead of returning them: how
+/// alizarin-pg writes COPY text from alizarin's own graph, extension handlers
+/// and RDM cache, with nothing copied at the boundary.
+///
+/// Args:
+///     trees_json: JSON array of alias-keyed trees
+///     graph_id: a registered graph
+///     sink: PyCapsule wrapping a `*const RowSinkInfo`, valid for the call
+///     (the rest as for `batch_trees_to_tiles`)
+///
+/// Returns:
+///     {resource_count, tile_count, errors, error_count, warnings, warning_count}
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+#[pyo3(signature = (trees_json, graph_id, sink, from_camel=false, strict=true, id_keys=None, resolve_markers=true, random_ids=false, skip_extensions=false, tile_namespace=None))]
+fn batch_trees_to_row_sink(
+    py: Python,
+    trees_json: String,
+    graph_id: String,
+    sink: &Bound<'_, PyCapsule>,
+    from_camel: bool,
+    strict: bool,
+    id_keys: Option<Vec<String>>,
+    resolve_markers: bool,
+    random_ids: bool,
+    skip_extensions: bool,
+    tile_namespace: Option<String>,
+) -> PyResult<PyObject> {
+    let graph = get_registered_graph(&graph_id)?;
+    let opts = alizarin_core::BatchOptions {
+        graph_id: &graph_id,
+        from_camel,
+        strict,
+        random_ids,
+        resolve_markers,
+        id_keys: id_keys.as_deref(),
+        scopes: None,
+        tile_namespace: tile_namespace.as_deref(),
+    };
+    let ext_registry = (!skip_extensions).then(build_extension_registry);
+    let ptr = sink.pointer() as *const alizarin_extension_api::RowSinkInfo;
+    // SAFETY: ptr comes from PyCapsule::pointer(), set by the extension over a
+    // RowSinkInfo that it keeps alive for this call; core checks its ABI
+    // fingerprint before reading anything else.
+    let output = unsafe {
+        alizarin_core::row_sink_abi::batch_trees_to_row_sink_from_json(
+            &trees_json,
+            &graph,
+            &opts,
+            ext_registry.as_ref(),
+            None,
+            ptr,
+        )
+    }
+    .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
+
+    pythonize::pythonize(py, &output).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+            "Failed to convert to Python: {}",
+            e
+        ))
+    })
+}
+
 /// A static type's dict as core serialises it: the one definition of
 /// alizarin's output, which WASM and NAPI give too (pinned by
 /// tests/data/output-parity/expected.json). The dataclasses' `to_dict`s return
@@ -2356,6 +2421,7 @@ fn alizarin(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     // Batch conversion functions (parallel processing with Rayon)
     m.add_function(wrap_pyfunction!(batch_trees_to_tiles, m)?)?;
+    m.add_function(wrap_pyfunction!(batch_trees_to_row_sink, m)?)?;
     m.add_function(wrap_pyfunction!(batch_tiles_to_trees, m)?)?;
     m.add_function(wrap_pyfunction!(compose_resource_layers, m)?)?;
     m.add_function(wrap_pyfunction!(resource_lifecycle_state, m)?)?;

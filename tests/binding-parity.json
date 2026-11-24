@@ -3156,6 +3156,15 @@
       "napi": "batchTilesToTrees",
       "python": "batch_tiles_to_trees"
     },
+    "batch_trees_to_row_sink": {
+      "wasm": null,
+      "napi": null,
+      "python": "batch_trees_to_row_sink",
+      "why": {
+        "wasm": "ecosystem: a C-ABI row sink, for alizarin-pg, which ships for Python only (G-4)",
+        "napi": "ecosystem: a C-ABI row sink, for alizarin-pg, which ships for Python only (G-4)"
+      }
+    },
     "batch_trees_to_tiles": {
       "wasm": "batchTreesToTiles",
       "napi": "batchTreesToTiles",

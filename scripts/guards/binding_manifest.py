@@ -117,6 +117,9 @@ REASONS = [
     ("fn:init_sync", {"napi": "ecosystem: wasm-bindgen bootstrap; native modules initialise on import",
                       "python": "ecosystem: wasm-bindgen bootstrap; native modules initialise on import"}),
     ("fn:main", {"napi": "ecosystem: wasm-bindgen start function", "python": "ecosystem: wasm-bindgen start function"}),
+    ("fn:batch_trees_to_row_sink", {
+        "wasm": "ecosystem: a C-ABI row sink, for alizarin-pg, which ships for Python only (G-4)",
+        "napi": "ecosystem: a C-ABI row sink, for alizarin-pg, which ships for Python only (G-4)"}),
     ("fn:*rscv_timings", {"napi": "ecosystem: WASM-build timing instrumentation (js/tracing)",
                           "python": "ecosystem: WASM-build timing instrumentation (js/tracing)"}),
     ("class:wasmSpan", {"napi": "ecosystem: WASM-build timing instrumentation (js/tracing)",

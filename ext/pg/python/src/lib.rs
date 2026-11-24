@@ -1,33 +1,76 @@
-use std::collections::HashMap;
-use std::sync::Arc;
+//! `batch_trees_to_pg_copy`: trees to COPY text, converted by alizarin itself.
+//!
+//! This module converts nothing and links no alizarin-core (only pg core's
+//! field writers and the ABI types): a copy of core here would have its own,
+//! empty, graph, extension and RDM registries. It passes alizarin's
+//! `batch_trees_to_row_sink` a [`RowSinkInfo`], and alizarin hands back each
+//! converted tile and resource as a row of slices borrowed from its own
+//! memory, which are escaped straight into the COPY buffers here.
 
-use rayon::prelude::*;
+use std::ffi::c_void;
 
-use alizarin_core::{
-    get_global_extension_registry, get_global_rdm_cache, get_graph, RdmCache, StaticGraph,
+use alizarin_extension_api::{abi_fingerprint, ResourceRow, RowSinkInfo, TileRow};
+use alizarin_pg_core::{
+    write_resource_fields, write_tile_fields, ResourceCopyOptions, ResourceFields, TileFields,
 };
 
-fn get_registered_graph(graph_id: &str) -> Result<Arc<StaticGraph>, String> {
-    get_graph(graph_id).ok_or_else(|| {
-        format!(
-            "Graph '{}' not registered. Call register_graph() first.",
-            graph_id
-        )
-    })
+/// The COPY text written so far, for the `tiles` and `resource_instances`
+/// tables.
+struct CopySink<'a> {
+    tiles: Vec<u8>,
+    resources: Vec<u8>,
+    opts: ResourceCopyOptions<'a>,
 }
 
-fn build_alias_to_collection_from_graph(
-    graph: &StaticGraph,
-    ext_registry: Option<&alizarin_core::ExtensionTypeRegistry>,
-) -> HashMap<String, String> {
-    alizarin_core::alias_to_collection_for_graph(graph, ext_registry)
+/// # Safety
+/// `ctx` must be the [`CopySink`] the [`RowSinkInfo`] was built over, and
+/// `row` a live [`TileRow`] (both guaranteed by the host for the call).
+unsafe extern "C" fn on_tile(ctx: *mut c_void, row: *const TileRow) {
+    let sink = &mut *(ctx as *mut CopySink);
+    let row = &*row;
+    let fields = TileFields {
+        tileid: row.tileid.as_str(),
+        resourceinstance_id: row.resourceinstance_id.as_str().unwrap_or_default(),
+        parenttile_id: row.parenttile_id.as_str(),
+        tiledata: row.data_json.as_str().unwrap_or("{}"),
+        nodegroup_id: row.nodegroup_id.as_str().unwrap_or_default(),
+        sortorder: row.has_sortorder.then_some(row.sortorder),
+        provisionaledits: row.provisionaledits_json.as_str(),
+    };
+    // Writing to a Vec cannot fail.
+    let _ = write_tile_fields(&mut sink.tiles, &fields);
+}
+
+/// # Safety
+/// As [`on_tile`], for a [`ResourceRow`].
+unsafe extern "C" fn on_resource(ctx: *mut c_void, row: *const ResourceRow) {
+    let sink = &mut *(ctx as *mut CopySink);
+    let row = &*row;
+    let fields = ResourceFields {
+        resourceinstanceid: row.resourceinstanceid.as_str().unwrap_or_default(),
+        graph_id: row.graph_id.as_str().unwrap_or_default(),
+        graph_publication_id: row.graph_publication_id.as_str(),
+        name: row.name.as_str(),
+        description: row.description.as_str(),
+        map_popup: row.map_popup.as_str(),
+        descriptors_empty: row.descriptors_empty,
+        legacyid: row.legacyid.as_str(),
+        createdtime: row.createdtime.as_str(),
+        principaluser_id: row.has_principaluser_id.then_some(row.principaluser_id),
+        language: row.language.as_str().unwrap_or_default(),
+    };
+    // Writing to a Vec cannot fail.
+    let _ = write_resource_fields(&mut sink.resources, &fields, &sink.opts);
 }
 
 #[cfg(feature = "pyo3-ext")]
 mod python_module {
     use super::*;
     use pyo3::prelude::*;
-    use pyo3::types::PyModule;
+    use pyo3::types::{PyDict, PyModule};
+
+    /// The capsule's name: the capsule keeps this pointer, so it is static.
+    const SINK_CAPSULE_NAME: &[u8] = b"alizarin_pg.row_sink\0";
 
     #[pyfunction]
     #[allow(clippy::too_many_arguments)]
@@ -56,100 +99,56 @@ mod python_module {
         resolve_markers: bool,
         random_ids: bool,
     ) -> PyResult<PyObject> {
-        let trees: Vec<serde_json::Value> = serde_json::from_str(&trees_json).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse trees: {}", e))
-        })?;
-
-        if let Some(ref keys) = id_keys {
-            if keys.len() != trees.len() {
-                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                    "id_keys length ({}) must match trees length ({})",
-                    keys.len(),
-                    trees.len()
-                )));
-            }
-        }
-
-        let graph = get_registered_graph(&graph_id)
-            .map_err(PyErr::new::<pyo3::exceptions::PyKeyError, _>)?;
-
-        let ext_registry = get_global_extension_registry();
-
-        let mut alias_map = build_alias_to_collection_from_graph(&graph, ext_registry.as_ref());
-        let label_cache: Option<Arc<RdmCache>> = if alias_map.is_empty() {
-            None
-        } else {
-            get_global_rdm_cache().map(Arc::new)
+        let mut sink = CopySink {
+            tiles: Vec::new(),
+            resources: Vec::new(),
+            opts: ResourceCopyOptions {
+                graph_publication_id: graph_publication_id.as_deref(),
+                lifecycle_state_id: lifecycle_state_id.as_deref(),
+                created_time: created_time.as_deref(),
+            },
         };
-        if from_camel {
-            let camel_entries: Vec<_> = alias_map
-                .iter()
-                .map(|(k, v)| (alizarin_core::snake_to_camel(k), v.clone()))
-                .collect();
-            for (k, v) in camel_entries {
-                alias_map.insert(k, v);
+        let info = RowSinkInfo {
+            abi: abi_fingerprint(),
+            ctx: &mut sink as *mut CopySink as *mut c_void,
+            tile_fn: on_tile,
+            resource_fn: on_resource,
+        };
+
+        // SAFETY: the capsule points at `info`, which outlives the call below,
+        // the only use of the capsule; alizarin calls the sink only during it.
+        let capsule: Bound<'_, PyAny> = unsafe {
+            let capsule = pyo3::ffi::PyCapsule_New(
+                &info as *const RowSinkInfo as *mut c_void,
+                SINK_CAPSULE_NAME.as_ptr() as *const std::os::raw::c_char,
+                None,
+            );
+            if capsule.is_null() {
+                return Err(PyErr::fetch(py));
             }
-        }
-        let label_lookup = label_cache
-            .as_ref()
-            .map(|cache| (&alias_map, cache.as_ref()));
+            Bound::from_owned_ptr(py, capsule)
+        };
 
-        let results: Vec<Result<alizarin_core::StaticResource, String>> = trees
-            .into_par_iter()
-            .enumerate()
-            .map(|(i, tree)| {
-                let id_key_ref = id_keys.as_ref().map(|keys| keys[i].as_str());
+        let kwargs = PyDict::new_bound(py);
+        kwargs.set_item("from_camel", from_camel)?;
+        kwargs.set_item("strict", strict)?;
+        kwargs.set_item("id_keys", id_keys)?;
+        kwargs.set_item("resolve_markers", resolve_markers)?;
+        kwargs.set_item("random_ids", random_ids)?;
+        let batch = py
+            .import_bound("alizarin")?
+            .getattr("batch_trees_to_row_sink")?
+            .call((trees_json, graph_id, capsule), Some(&kwargs))?;
 
-                alizarin_core::convert_single_tree(
-                    &tree,
-                    &graph,
-                    &graph_id,
-                    id_key_ref,
-                    from_camel,
-                    strict,
-                    random_ids,
-                    ext_registry.as_ref(),
-                    label_lookup,
-                    resolve_markers,
-                    None,
-                )
-                .map_err(|e| format!("Tree {}: {}", i, e))
-            })
-            .collect();
-
-        let (successes, errors): (Vec<_>, Vec<_>) = results.into_iter().partition(Result::is_ok);
-        let resources: Vec<alizarin_core::StaticResource> =
-            successes.into_iter().map(Result::unwrap).collect();
-        let errors: Vec<String> = errors.into_iter().map(|e| e.unwrap_err()).collect();
-
-        if strict && !errors.is_empty() {
-            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                "Strict mode error: {}",
-                errors[0]
-            )));
-        }
-
-        let tiles_copy = alizarin_pg_core::tiles_to_copy(&resources);
-        let resources_copy = alizarin_pg_core::resources_to_copy(
-            &resources,
-            graph_publication_id.as_deref(),
-            lifecycle_state_id.as_deref(),
-            created_time.as_deref(),
-        );
-
-        let output = serde_json::json!({
-            "tiles_copy": tiles_copy,
-            "resources_copy": resources_copy,
-            "errors": errors,
-            "error_count": errors.len(),
-        });
-
-        pythonize::pythonize(py, &output).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                "Failed to convert to Python: {}",
-                e
-            ))
-        })
+        let tiles_copy = String::from_utf8(sink.tiles).expect("COPY output is always valid UTF-8");
+        let resources_copy =
+            String::from_utf8(sink.resources).expect("COPY output is always valid UTF-8");
+        let output = PyDict::new_bound(py);
+        output.set_item("tiles_copy", tiles_copy)?;
+        output.set_item("resources_copy", resources_copy)?;
+        output.set_item("errors", batch.get_item("errors")?)?;
+        output.set_item("error_count", batch.get_item("error_count")?)?;
+        Ok(output.into_any().unbind())
     }
 
     #[pymodule]

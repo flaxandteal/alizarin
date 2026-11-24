@@ -17,7 +17,8 @@ needs. This is a deliberate, supported contract as of 2.0, not partial work.
 | Layer composition (`composeResourceLayers`) | ✓ | ✓ | ✓ |
 | Resource lifecycle state / transitions | ✓ | ✓ | ✓ |
 | CSV → business_data (`buildResourcesFromBusinessCsv`) | ✓ | ✓ | ✓ |
-| `batch_trees_to_tiles` / `tiles_to_trees` | ✓ | ✓ | — |
+| `batch_trees_to_tiles` / `batch_tiles_to_trees` | ✓ | ✓ | ✓ |
+| Batch conversion into a C-ABI row sink (`batch_trees_to_row_sink`, for alizarin-pg) | — | ✓ | — |
 | `coerce*` value family (standalone) | ✓ | ✓ | — |
 | Card-display serialization (standalone fn) | ✓ | ✓ | —¹ |
 
@@ -36,11 +37,13 @@ you can call on NAPI results. Use `resourceTilesLoaded`, `summaryToMetadata` and
   ingestion (from strings; no filesystem) are all present.
 - **NAPI — Node ETL / builder.** Its consumer (e.g. starches-builder) ingests
   via **CSV → business_data** and edits through the instance-wrapper (the ORM's
-  `$commit()` over core `ResourceEdit`), then exports. It does **not** call standalone
-  `batch_trees_to_tiles`, `tiles_to_trees`, or per-value `coerce*` — verified: no
-  NAPI consumer references them. So those are **intentionally not exposed**.
+  `$commit()` over core `ResourceEdit`), then exports. It does **not** call
+  per-value `coerce*` — verified: no NAPI consumer references them. So those are
+  **intentionally not exposed**. (Batch tree conversion is exposed, as on the
+  other two.)
 - **Python — notebooks / interactive ETL.** The fullest surface, because
-  notebook users need every primitive directly.
+  notebook users need every primitive directly. It alone takes a row sink,
+  since alizarin-pg, its only user, ships for Python only.
 
 ## The shared-layer guarantee
 

@@ -18,6 +18,12 @@
 //! name (JSONB), descriptors (JSONB), legacyid, createdtime,
 //! resource_instance_lifecycle_state_id, principaluser_id.
 
+//!
+//! The `*_fields` writers take borrowed fields and need nothing of core: they
+//! are what a host's row sink feeds over the C ABI. The `StaticResource` API
+//! is behind the default `core` feature, for callers that link alizarin-core.
+
+#[cfg(feature = "core")]
 use alizarin_core::{get_current_language, StaticResource, StaticTile};
 use std::io;
 
@@ -48,31 +54,71 @@ pub struct ResourceCopyOptions<'a> {
     pub created_time: Option<&'a str>,
 }
 
+/// One `tiles` row, borrowed: what `write_tile_row` writes from a
+/// `StaticTile`, and what a host's row sink hands over the C ABI.
+/// `tiledata` and `provisionaledits` are JSON text.
+pub struct TileFields<'a> {
+    pub tileid: Option<&'a str>,
+    pub resourceinstance_id: &'a str,
+    pub parenttile_id: Option<&'a str>,
+    pub tiledata: &'a str,
+    pub nodegroup_id: &'a str,
+    pub sortorder: Option<i32>,
+    pub provisionaledits: Option<&'a str>,
+}
+
+/// One `resource_instances` row, borrowed, before [`ResourceCopyOptions`]
+/// are applied. The descriptors are in `language`; `descriptors_empty` is
+/// true if the resource has none at all (a slug or point counts).
+pub struct ResourceFields<'a> {
+    pub resourceinstanceid: &'a str,
+    pub graph_id: &'a str,
+    pub graph_publication_id: Option<&'a str>,
+    pub name: Option<&'a str>,
+    pub description: Option<&'a str>,
+    pub map_popup: Option<&'a str>,
+    pub descriptors_empty: bool,
+    pub legacyid: Option<&'a str>,
+    pub createdtime: Option<&'a str>,
+    pub principaluser_id: Option<i32>,
+    pub language: &'a str,
+}
+
 // ── Streaming (io::Write) API ───────────────────────────────────────────────
 
 /// Write a single tile as one COPY row to `w`.
+#[cfg(feature = "core")]
 pub fn write_tile_row<W: io::Write>(w: &mut W, tile: &StaticTile) -> io::Result<()> {
-    let tileid = tile.tileid.as_deref().unwrap_or("\\N");
-    let parenttileid = tile
-        .parenttile_id
-        .as_deref()
-        .filter(|s| !s.is_empty())
-        .unwrap_or("\\N");
-
     let tiledata = serde_json::to_string(&tile.data).unwrap_or_default();
-
-    let sortorder = tile
-        .sortorder
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| "0".to_string());
-
     let provisionaledits = tile
         .provisionaledits
         .as_ref()
-        .map(|p| {
-            let v = serde_json::Value::Array(p.clone());
-            copy_escape(&v.to_string())
-        })
+        .map(|p| serde_json::Value::Array(p.clone()).to_string());
+    write_tile_fields(
+        w,
+        &TileFields {
+            tileid: tile.tileid.as_deref(),
+            resourceinstance_id: &tile.resourceinstance_id,
+            parenttile_id: tile.parenttile_id.as_deref(),
+            tiledata: &tiledata,
+            nodegroup_id: &tile.nodegroup_id,
+            sortorder: tile.sortorder,
+            provisionaledits: provisionaledits.as_deref(),
+        },
+    )
+}
+
+/// Write one tile's fields as one COPY row to `w`.
+pub fn write_tile_fields<W: io::Write>(w: &mut W, tile: &TileFields<'_>) -> io::Result<()> {
+    let tileid = tile.tileid.unwrap_or("\\N");
+    let parenttileid = tile
+        .parenttile_id
+        .filter(|s| !s.is_empty())
+        .unwrap_or("\\N");
+    let sortorder = tile.sortorder.unwrap_or(0).to_string();
+    let provisionaledits = tile
+        .provisionaledits
+        .map(copy_escape)
         .unwrap_or_else(|| "\\N".to_string());
 
     w.write_all(tileid.as_bytes())?;
@@ -81,7 +127,7 @@ pub fn write_tile_row<W: io::Write>(w: &mut W, tile: &StaticTile) -> io::Result<
     w.write_all(TAB)?;
     w.write_all(parenttileid.as_bytes())?;
     w.write_all(TAB)?;
-    w.write_all(copy_escape(&tiledata).as_bytes())?;
+    w.write_all(copy_escape(tile.tiledata).as_bytes())?;
     w.write_all(TAB)?;
     w.write_all(tile.nodegroup_id.as_bytes())?;
     w.write_all(TAB)?;
@@ -93,6 +139,7 @@ pub fn write_tile_row<W: io::Write>(w: &mut W, tile: &StaticTile) -> io::Result<
 }
 
 /// Write all tiles for a single resource to `w`.
+#[cfg(feature = "core")]
 pub fn write_resource_tiles<W: io::Write>(w: &mut W, resource: &StaticResource) -> io::Result<()> {
     if let Some(ref tiles) = resource.tiles {
         for tile in tiles {
@@ -103,6 +150,7 @@ pub fn write_resource_tiles<W: io::Write>(w: &mut W, resource: &StaticResource) 
 }
 
 /// Write all tiles for a slice of resources to `w`.
+#[cfg(feature = "core")]
 pub fn write_all_tiles<W: io::Write>(w: &mut W, resources: &[StaticResource]) -> io::Result<()> {
     for resource in resources {
         write_resource_tiles(w, resource)?;
@@ -111,61 +159,73 @@ pub fn write_all_tiles<W: io::Write>(w: &mut W, resources: &[StaticResource]) ->
 }
 
 /// Write a single resource instance as one COPY row to `w`.
+#[cfg(feature = "core")]
 pub fn write_resource_instance_row<W: io::Write>(
     w: &mut W,
     resource: &StaticResource,
     opts: &ResourceCopyOptions<'_>,
 ) -> io::Result<()> {
     let ri = &resource.resourceinstance;
-
     let lang = get_current_language();
+    write_resource_fields(
+        w,
+        &ResourceFields {
+            resourceinstanceid: &ri.resourceinstanceid,
+            graph_id: &ri.graph_id,
+            graph_publication_id: ri.graph_publication_id.as_deref(),
+            name: ri.descriptors.name.as_deref(),
+            description: ri.descriptors.description.as_deref(),
+            map_popup: ri.descriptors.map_popup.as_deref(),
+            descriptors_empty: ri.descriptors.is_empty(),
+            legacyid: ri.legacyid.as_deref(),
+            createdtime: ri.createdtime.as_deref(),
+            principaluser_id: ri.principaluser_id,
+            language: &lang,
+        },
+        opts,
+    )
+}
 
-    let name_json = match &ri.descriptors.name {
-        Some(n) => {
-            copy_escape(&serde_json::json!({&lang: {"direction": "ltr", "value": n}}).to_string())
-        }
+/// Write one resource instance's fields as one COPY row to `w`.
+pub fn write_resource_fields<W: io::Write>(
+    w: &mut W,
+    ri: &ResourceFields<'_>,
+    opts: &ResourceCopyOptions<'_>,
+) -> io::Result<()> {
+    let lang = ri.language;
+    let localized = |s: &str| serde_json::json!({lang: {"direction": "ltr", "value": s}});
+
+    let name_json = match ri.name {
+        Some(n) => copy_escape(&localized(n).to_string()),
         None => "\\N".to_string(),
     };
 
-    let descriptors_json = if ri.descriptors.is_empty() {
+    let descriptors_json = if ri.descriptors_empty {
         "\\N".to_string()
     } else {
         let mut desc = serde_json::Map::new();
-        if let Some(ref n) = ri.descriptors.name {
-            desc.insert(
-                "name".to_string(),
-                serde_json::json!({&lang: {"direction": "ltr", "value": n}}),
-            );
+        if let Some(n) = ri.name {
+            desc.insert("name".to_string(), localized(n));
         }
-        if let Some(ref d) = ri.descriptors.description {
-            desc.insert(
-                "description".to_string(),
-                serde_json::json!({&lang: {"direction": "ltr", "value": d}}),
-            );
+        if let Some(d) = ri.description {
+            desc.insert("description".to_string(), localized(d));
         }
-        if let Some(ref mp) = ri.descriptors.map_popup {
-            desc.insert(
-                "map_popup".to_string(),
-                serde_json::json!({&lang: {"direction": "ltr", "value": mp}}),
-            );
+        if let Some(mp) = ri.map_popup {
+            desc.insert("map_popup".to_string(), localized(mp));
         }
         copy_escape(&serde_json::Value::Object(desc).to_string())
     };
 
     let legacyid = ri
         .legacyid
-        .as_deref()
         .map(copy_escape)
         .unwrap_or_else(|| "\\N".to_string());
 
-    let createdtime = opts
-        .created_time
-        .or(ri.createdtime.as_deref())
-        .unwrap_or("\\N");
+    let createdtime = opts.created_time.or(ri.createdtime).unwrap_or("\\N");
 
     let gpub_id = opts
         .graph_publication_id
-        .or(ri.graph_publication_id.as_deref())
+        .or(ri.graph_publication_id)
         .unwrap_or("\\N");
 
     let lc_state_id = opts.lifecycle_state_id.unwrap_or("\\N");
@@ -197,6 +257,7 @@ pub fn write_resource_instance_row<W: io::Write>(
 }
 
 /// Write all resource instance rows for a slice of resources to `w`.
+#[cfg(feature = "core")]
 pub fn write_all_resource_instances<W: io::Write>(
     w: &mut W,
     resources: &[StaticResource],
@@ -211,6 +272,7 @@ pub fn write_all_resource_instances<W: io::Write>(
 // ── Convenience (String) API ────────────────────────────────────────────────
 
 /// Produce PG COPY text for the `tiles` table.
+#[cfg(feature = "core")]
 pub fn tiles_to_copy(resources: &[StaticResource]) -> String {
     let mut buf = Vec::new();
     write_all_tiles(&mut buf, resources).expect("writing to Vec never fails");
@@ -218,6 +280,7 @@ pub fn tiles_to_copy(resources: &[StaticResource]) -> String {
 }
 
 /// Produce PG COPY text for the `resource_instances` table.
+#[cfg(feature = "core")]
 pub fn resources_to_copy(
     resources: &[StaticResource],
     graph_publication_id: Option<&str>,
@@ -234,7 +297,7 @@ pub fn resources_to_copy(
     String::from_utf8(buf).expect("COPY output is always valid UTF-8")
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "core"))]
 mod tests {
     use super::*;
     use alizarin_core::{StaticResourceDescriptors, StaticResourceMetadata};

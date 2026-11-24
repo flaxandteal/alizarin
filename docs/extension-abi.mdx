@@ -14,7 +14,7 @@ front-ends over it. The same ABI also carries
 [derive providers](#derive-providers) (a `DeriveProviderInfo`), whose host side
 lives in `alizarin-core` (`derive_abi`).
 
-This document is the committed contract for 2.0. `ABI_VERSION` is **5**.
+This document is the committed contract for 2.0. `ABI_VERSION` is **6**.
 
 > **How each binding registers the same `TypeHandlerInfo`:**
 > - **Python** — wraps the pointer in a `PyCapsule`; `import alizarin_clm` calls
@@ -77,7 +77,7 @@ structural knowledge into the handler.
 
 ```rust
 AbiFingerprint {
-    version: ABI_VERSION,                          // 5
+    version: ABI_VERSION,                          // 6
     value_size: size_of::<serde_json::Value>(),
     handler_info_size: size_of::<TypeHandlerInfo>(),
 }
@@ -121,6 +121,8 @@ and cut a coordinated release.
   `fold_remove`, `fold_may_match`).
 - **5** — added `DeriveProviderInfo` and `HostGraph`, so extensions can provide
   derive functions.
+- **6** — added `RowSinkInfo`, `TileRow`, `ResourceRow` and `StrRef`, so an
+  extension can take the host's batch conversion as borrowed rows.
 
 ## Derive providers
 
@@ -154,6 +156,29 @@ registers the same provider:
 
 `hasDeriveProvider(providerId)` (`has_derive_provider` in Python) reports
 whether one is registered.
+
+## Row sinks
+
+An extension that writes a bulk output from converted trees (alizarin-pg's
+COPY text) does not convert trees itself: a copy of core in its module would
+have its own, empty, graph, handler and RDM registries. alizarin-pg's Python
+module links no alizarin-core at all. It passes the host
+a `RowSinkInfo`: an `AbiFingerprint`, a `ctx` of its own, and two callbacks,
+`tile_fn(ctx, *const TileRow)` and `resource_fn(ctx, *const ResourceRow)`.
+
+The host converts the batch with its own registries, then calls the sink from
+the calling thread, in order: each resource's tiles, then the resource. A row
+is `#[repr(C)]`, its strings `StrRef`s (pointer and length, null for absent)
+borrowed from the host's converted resources and valid only for that call.
+Nothing is copied or parsed at the boundary, and there is nothing to free. A
+tile's data comes as JSON text (`data_json`), the one encoding the host does.
+A resource row carries the host's current language, which its descriptors are
+in.
+
+Python only, as alizarin-pg is: `alizarin.batch_trees_to_row_sink(trees_json,
+graph_id, capsule, …)` takes a capsule over the `RowSinkInfo` (and the other
+options of `batch_trees_to_tiles`, less `scopes`) and returns the counts and
+errors. The host checks the fingerprint before reading anything else.
 
 ## Writing an extension (sketch)
 

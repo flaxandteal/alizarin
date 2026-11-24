@@ -8,6 +8,19 @@ entries is tracked in `PARITY-RESEARCH.md`.
 ## Unreleased
 
 ### Added
+- Fixed: alizarin-pg's `batch_trees_to_pg_copy` could not work: its module
+  has its own copy of core, so a graph registered with alizarin was "not
+  registered", and extension handlers and concept labels were never applied.
+  It now has alizarin convert the batch (new `batch_trees_to_row_sink`, Python)
+  and hand each tile and resource back as borrowed C-ABI rows, written
+  straight into COPY text, with no copy or re-parse at the boundary. Same
+  signature and output; the module no longer links a copy of core.
+  `alizarin-pg-core`'s `StaticResource` API is now behind its default `core`
+  feature, beside new borrowed-field writers (`write_tile_fields`,
+  `write_resource_fields`).
+- **Breaking** (extension authors): extension `ABI_VERSION` is 6 (adds
+  `RowSinkInfo`). Extensions built against 5 are refused; rebuild them
+  against this alizarin.
 - Fixed: on WASM, editing an extension datatype's value (clm `reference`,
   filelist `file-list`, …) stored it uncoerced: core's edit path reads the
   global extension registry, which only NAPI's and Python's C-ABI registration

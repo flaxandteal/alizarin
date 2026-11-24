@@ -30,7 +30,7 @@ pub mod js_json;
 /// the shared struct layouts or function signatures below. Extensions stamp
 /// their compiled fingerprint into [`TypeHandlerInfo`]; the host refuses to load
 /// an extension whose [`AbiFingerprint`] does not match its own.
-pub const ABI_VERSION: u32 = 5;
+pub const ABI_VERSION: u32 = 6;
 
 /// A compatibility token an extension embeds so the host can confirm — once, at
 /// load — that both sides share the same ABI before any raw pointers cross the
@@ -595,6 +595,105 @@ pub struct DeriveProviderInfo {
 // Shared between threads only as fn pointers and 'static ids.
 unsafe impl Send for DeriveProviderInfo {}
 unsafe impl Sync for DeriveProviderInfo {}
+
+// =============================================================================
+// Row sinks
+// =============================================================================
+//
+// A bulk output an extension writes (e.g. alizarin-pg's COPY text) from the
+// host's own batch conversion: the host converts trees with its registries,
+// then hands each tile and resource to the sink as a row of borrowed slices
+// into its own memory. Nothing is copied or parsed at the boundary; the only
+// encoding is a tile's data as JSON text, which the row carries.
+
+/// A borrowed UTF-8 string, valid only for the call it is passed to. A null
+/// `ptr` means absent.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct StrRef {
+    pub ptr: *const u8,
+    pub len: usize,
+}
+
+impl StrRef {
+    /// Absent.
+    pub const NONE: StrRef = StrRef {
+        ptr: std::ptr::null(),
+        len: 0,
+    };
+
+    /// Borrow `s`.
+    pub fn new(s: &str) -> Self {
+        StrRef {
+            ptr: s.as_ptr(),
+            len: s.len(),
+        }
+    }
+
+    /// Borrow `s`, or absent.
+    pub fn opt(s: Option<&str>) -> Self {
+        s.map(StrRef::new).unwrap_or(StrRef::NONE)
+    }
+
+    /// The string, or `None` if absent.
+    ///
+    /// # Safety
+    /// A non-null `ptr` must point to `len` bytes of UTF-8 that outlive `'a`.
+    pub unsafe fn as_str<'a>(self) -> Option<&'a str> {
+        (!self.ptr.is_null())
+            .then(|| std::str::from_utf8_unchecked(std::slice::from_raw_parts(self.ptr, self.len)))
+    }
+}
+
+/// One tile, as the host converted it. `data_json` is the tile's data and
+/// `provisionaledits_json` its provisional edits (absent if none), as JSON.
+#[repr(C)]
+pub struct TileRow {
+    pub tileid: StrRef,
+    pub resourceinstance_id: StrRef,
+    pub parenttile_id: StrRef,
+    pub nodegroup_id: StrRef,
+    pub data_json: StrRef,
+    pub provisionaledits_json: StrRef,
+    pub sortorder: i32,
+    pub has_sortorder: bool,
+}
+
+/// One resource instance, as the host converted it. `language` is the host's
+/// current language, which the descriptors are in. `descriptors_empty` is
+/// true if it has no descriptors at all (a slug or point counts).
+#[repr(C)]
+pub struct ResourceRow {
+    pub resourceinstanceid: StrRef,
+    pub graph_id: StrRef,
+    pub graph_publication_id: StrRef,
+    pub name: StrRef,
+    pub description: StrRef,
+    pub map_popup: StrRef,
+    pub descriptors_empty: bool,
+    pub legacyid: StrRef,
+    pub createdtime: StrRef,
+    pub principaluser_id: i32,
+    pub has_principaluser_id: bool,
+    pub language: StrRef,
+}
+
+/// Take one tile row; `row` and its slices are valid only for the call.
+pub type TileRowFn = unsafe extern "C" fn(ctx: *mut c_void, row: *const TileRow);
+
+/// Take one resource row; `row` and its slices are valid only for the call.
+pub type ResourceRowFn = unsafe extern "C" fn(ctx: *mut c_void, row: *const ResourceRow);
+
+/// A row sink an extension passes to the host's batch conversion. The host
+/// calls it from the calling thread, in order: each resource's tiles, then
+/// the resource. `ctx` is the extension's, passed back on every call.
+#[repr(C)]
+pub struct RowSinkInfo {
+    pub abi: AbiFingerprint,
+    pub ctx: *mut c_void,
+    pub tile_fn: TileRowFn,
+    pub resource_fn: ResourceRowFn,
+}
 
 /// Callback to lookup a concept by ID in the RDM cache
 ///

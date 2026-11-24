@@ -1936,7 +1936,7 @@ pub fn batch_convert_trees<L: crate::label_resolution::ConceptLookup + Sync>(
 /// What lets tree conversion resolve concept labels to ids: the graph's
 /// resolvable aliases (with their camelCase forms when `from_camel`), and
 /// `cache`, else the global RDM cache. `None` if either is missing.
-fn label_resolution(
+pub(crate) fn label_resolution(
     graph: &StaticGraph,
     ext_registry: Option<&ExtensionTypeRegistry>,
     from_camel: bool,

@@ -41,6 +41,7 @@ pub mod rdm_cache;
 pub mod rdm_namespace;
 pub mod registry;
 pub mod resource_edit;
+pub mod row_sink_abi;
 pub use resource_edit::{EditOp, ResourceEdit, TileDelta, TileRef};
 pub mod shared_mut;
 pub mod skos;

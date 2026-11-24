@@ -31,6 +31,7 @@ cards_to_json_tree = _alizarin_rust.cards_to_json_tree
 build_tree_from_tiles = _alizarin_rust.build_tree_from_tiles
 json_tree_to_tiles = _alizarin_rust.json_tree_to_tiles
 batch_trees_to_tiles = _alizarin_rust.batch_trees_to_tiles
+batch_trees_to_row_sink = _alizarin_rust.batch_trees_to_row_sink
 batch_tiles_to_trees = _alizarin_rust.batch_tiles_to_trees
 compose_resource_layers = _alizarin_rust.compose_resource_layers
 resource_lifecycle_state = _alizarin_rust.resource_lifecycle_state
@@ -446,6 +447,7 @@ __all__ = [
     "build_tree_from_tiles",
     "json_tree_to_tiles",
     "batch_trees_to_tiles",
+    "batch_trees_to_row_sink",
     "compose_resource_layers",
     "resource_lifecycle_state",
     "transition_resource_lifecycle",
