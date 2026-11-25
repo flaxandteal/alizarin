@@ -22,6 +22,9 @@
 
 use std::ffi::c_void;
 
+pub mod handler;
+pub use handler::{ExtensionError, IndexClass, IndexSpec, ValidationResult};
+
 /// Cycle-safe JSON arguments from JavaScript, for WASM bindings (`wasm` feature).
 #[cfg(feature = "wasm")]
 pub mod js_json;
