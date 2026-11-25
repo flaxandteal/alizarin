@@ -123,11 +123,14 @@ fn ring_centroid(ring: &Value) -> Option<(f64, f64)> {
 /// name at least one, each in the target nodegroup.
 pub const OUTPUT_ROLES: [&str; 4] = ["zone", "hemisphere", "easting", "northing"];
 
+/// The datatypes an output node may have.
+pub const OUTPUT_DATATYPES: [&str; 3] = ["number", "non-localized-string", "string"];
+
 /// The UTM derive provider. Projects the declared `geometry` node's value and
 /// writes each declared output (`zone`, `hemisphere`, `easting`, `northing`)
-/// into its own node of one tile in the target nodegroup, coerced for that
-/// node's datatype. As arches-her's GeoJSON-to-BNG function: its config names
-/// its input and output nodes.
+/// into its own node of one tile in the target nodegroup, as a raw value the
+/// host coerces for that node's datatype. As arches-her's GeoJSON-to-BNG
+/// function: its config names its input and output nodes.
 ///
 /// A resource without a geometry value gets no tile (so a stored rerun drops
 /// an earlier one); a value with no projectable geometry is an error.
@@ -180,16 +183,16 @@ impl ExtDeriveProvider for UtmDeriveProvider {
                 "easting" => json!((utm.easting * 100.0).round() / 100.0),
                 _ => json!((utm.northing * 100.0).round() / 100.0),
             };
-            let coerced = alizarin_core::type_coercion::coerce_value_with_registry(
-                &node.datatype,
-                &value,
-                None,
-                None,
-            );
-            if let Some(error) = coerced.error {
-                return Err(format!("utm: output '{role}' ({}): {error}", node.datatype));
+            // Raw: the host coerces it for the node's datatype, in its own
+            // language. These are the datatypes a UTM value can be written as.
+            if !OUTPUT_DATATYPES.contains(&node.datatype.as_str()) {
+                return Err(format!(
+                    "utm: output '{role}' is a {} node; UTM writes {}",
+                    node.datatype,
+                    OUTPUT_DATATYPES.join(", ")
+                ));
             }
-            data.insert(node.nodeid.clone(), coerced.tile_data);
+            data.insert(node.nodeid.clone(), value);
         }
 
         // A nested target hangs off the same parent as the geometry, as
@@ -475,7 +478,7 @@ mod tests {
     }
 
     #[test]
-    fn outputs_are_coerced_for_their_nodes_datatype() {
+    fn outputs_are_raw_values_and_only_for_datatypes_utm_can_write() {
         let graph = utm_graph(serde_json::json!({ "zone": "zone" }));
         let config = resolved_config(&[
             (
@@ -495,13 +498,28 @@ mod tests {
                 &config,
             )
             .unwrap();
-        // A translatable string node gets a translatable value; a number, a number.
-        let hemisphere = tiles[0].data["hemisphere"]
-            .as_object()
-            .expect("translatable");
-        let (_, entry) = hemisphere.iter().next().expect("one language");
-        assert_eq!(entry["value"], "N");
+        // Raw: the host makes the string translatable, in its own language.
+        assert_eq!(tiles[0].data["hemisphere"], "N");
         assert_eq!(tiles[0].data["zone"], 30);
+
+        let config = resolved_config(&[
+            (
+                "geometry",
+                "boundary",
+                "boundary-ng",
+                "geojson-feature-collection",
+            ),
+            ("zone", "zone", "utm-ng", "concept"),
+        ]);
+        let err = UtmDeriveProvider
+            .derive(
+                "r1",
+                &GraphLookupView(&graph),
+                &[london_tile(None)],
+                &config,
+            )
+            .unwrap_err();
+        assert!(err.contains("'zone' is a concept node"), "{err}");
     }
 
     #[test]

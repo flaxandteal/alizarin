@@ -135,7 +135,11 @@ impl DeriveProvider for JsDeriveProvider {
                 e.as_string().unwrap_or_else(|| format!("{e:?}"))
             )
         })?;
-        crate::js_json::from_value(result)
-            .map_err(|e| format!("derive provider {}: derived tiles: {e}", self.provider_id))
+        let mut derived: Vec<StaticTile> = crate::js_json::from_value(result)
+            .map_err(|e| format!("derive provider {}: derived tiles: {e}", self.provider_id))?;
+        // A JS provider has neither this host's language nor its handlers.
+        // SAFETY: still within this call, while `graph` is borrowed.
+        alizarin_core::derive_abi::coerce_derived_tiles(unsafe { &*graph }, &mut derived)?;
+        Ok(derived)
     }
 }

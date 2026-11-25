@@ -42,7 +42,7 @@ pub mod js_json;
 /// the shared struct layouts or function signatures below. Extensions stamp
 /// their compiled fingerprint into [`TypeHandlerInfo`]; the host refuses to load
 /// an extension whose [`AbiFingerprint`] does not match its own.
-pub const ABI_VERSION: u32 = 6;
+pub const ABI_VERSION: u32 = 7;
 
 /// A compatibility token an extension embeds so the host can confirm — once, at
 /// load — that both sides share the same ABI before any raw pointers cross the

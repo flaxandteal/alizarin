@@ -74,9 +74,48 @@ impl<P: ExtDeriveProvider> DeriveProvider for InProcess<P> {
         tiles: &[StaticTile],
         config: &DeriveConfig,
     ) -> Result<Vec<StaticTile>, String> {
-        self.0
-            .derive(resource_id, &GraphLookupView(graph), tiles, config)
+        let mut derived = self
+            .0
+            .derive(resource_id, &GraphLookupView(graph), tiles, config)?;
+        coerce_derived_tiles(graph, &mut derived)?;
+        Ok(derived)
     }
+}
+
+/// Coerce each value a provider outside this host derived (across the C
+/// ABI, from JS, or an [`ExtDeriveProvider`] in-process) for its node's
+/// datatype, with this host's language and extension handlers: such a
+/// provider returns raw values, as it has neither. A value already in its
+/// datatype's shape comes back unchanged, so a provider that coerces its
+/// own output is not harmed. A key that names no node is left alone.
+pub fn coerce_derived_tiles(
+    graph: &dyn GraphLookup,
+    tiles: &mut [StaticTile],
+) -> Result<(), String> {
+    let registry = crate::get_global_extension_registry();
+    for tile in tiles.iter_mut() {
+        for (nodeid, value) in tile.data.iter_mut() {
+            let Some(node) = graph.get_node_by_id(nodeid) else {
+                continue;
+            };
+            let config = serde_json::to_value(&node.config).ok();
+            let coerced = crate::type_coercion::coerce_value_with_registry(
+                &node.datatype,
+                value,
+                config.as_ref(),
+                registry.as_ref(),
+            );
+            if let Some(error) = coerced.error {
+                return Err(format!(
+                    "derived value for node '{}' ({}): {error}",
+                    node.alias.as_deref().unwrap_or(nodeid),
+                    node.datatype
+                ));
+            }
+            *value = coerced.tile_data;
+        }
+    }
+    Ok(())
 }
 
 // =============================================================================
@@ -161,7 +200,9 @@ impl DeriveProvider for AbiDeriveProvider {
             );
             let outcome = read_result(&result);
             (self.free_fn)(result);
-            outcome
+            let mut derived = outcome?;
+            coerce_derived_tiles(graph, &mut derived)?;
+            Ok(derived)
         }
     }
 }
@@ -386,6 +427,37 @@ mod tests {
         bad.abi.version += 1;
         let err = unsafe { register_derive_provider_from_ptr(&bad) }.unwrap_err();
         assert!(err.contains("ABI mismatch"), "{err}");
+    }
+
+    /// What `coerce_derived_tiles` relies on: a provider that already coerced
+    /// its output (as JS providers do) gets it back unchanged.
+    #[test]
+    fn coercing_a_coerced_value_changes_nothing() {
+        use crate::type_coercion::coerce_value_with_registry as coerce;
+        let irish = json!({"language": "ga"});
+        let cases = [
+            ("number", json!(30), None),
+            ("number", json!(699320.12), None),
+            ("non-localized-string", json!(30), None),
+            ("non-localized-string", json!("N"), None),
+            ("string", json!("N"), Some(&irish)),
+            ("edtf", json!("2020-01"), None),
+            ("date", json!("2020-01-02"), None),
+            ("url", json!("https://example.org"), None),
+            (
+                "geojson-feature-collection",
+                json!({"type": "FeatureCollection", "features": [{"type": "Feature",
+                    "properties": {}, "geometry": {"type": "Point", "coordinates": [1, 2]}}]}),
+                None,
+            ),
+        ];
+        for (datatype, raw, config) in cases {
+            let once = coerce(datatype, &raw, config, None);
+            assert!(once.error.is_none(), "{datatype}: {:?}", once.error);
+            let twice = coerce(datatype, &once.tile_data, config, None);
+            assert!(twice.error.is_none(), "{datatype}: {:?}", twice.error);
+            assert_eq!(twice.tile_data, once.tile_data, "{datatype}");
+        }
     }
 
     #[test]

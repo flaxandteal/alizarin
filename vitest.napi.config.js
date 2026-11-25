@@ -39,9 +39,11 @@ export default defineConfig({
     testTimeout: 30000,
     include: ["tests/**/*.test.ts"],
     exclude: [...configDefaults.exclude, ...NAPI_EXCLUDED],
-    pool: "threads",
+    // A process per file: the native module's state (current language,
+    // registries) is per process, so worker threads would share it and race.
+    pool: "forks",
     poolOptions: {
-      threads: {
+      forks: {
         execArgv: ["--experimental-wasm-modules"],
       },
     },

@@ -26,6 +26,7 @@ import { ResourceModelWrapper, GraphMutator } from '../../js/graphManager';
 import type { ResourceInstanceWrapper } from '../../js/graphManager';
 import { ResourceInstanceViewModel } from '../../js/viewModels/ResourceInstanceViewModel';
 import { createStaticGraph } from '../../js/static-types';
+import { getCurrentLanguage, setCurrentLanguage } from '../../js/utils';
 
 const CRM = "http://www.cidoc-crm.org/cidoc-crm/";
 const COMPUTE_TILES = "60000000-0000-0000-0000-000000000002";
@@ -53,12 +54,15 @@ beforeAll(async () => {
   }
 });
 
-/** A place with a `location` geometry and an `easting` UTM declares as stored. */
-async function place(): Promise<{ asset: any; node: (alias: string) => any }> {
+/** A place with a `location` geometry and a node for UTM's `role` output, of
+ *  `datatype`, declared as stored. */
+async function place(
+  role = "easting", datatype = "number",
+): Promise<{ asset: any; node: (alias: string) => any }> {
   const mutator = new GraphMutator(createStaticGraph({ name: "Place", author: "Test" }));
   const add = (mutator as any)._addGenericNode.bind(mutator);
   add(null, "location", "Location", "1", "geojson-feature-collection", `${CRM}E53_Place`, `${CRM}P168_place_is_defined_by`);
-  add(null, "easting", "Easting", "1", "number", `${CRM}E54_Dimension`, `${CRM}P43_has_dimension`);
+  add(null, role, role, "1", datatype, `${CRM}E54_Dimension`, `${CRM}P43_has_dimension`);
   const raw = JSON.parse(JSON.stringify(mutator.apply()));
   const node = (alias: string) => raw.nodes.find((n: any) => n.alias === alias);
   raw.functions_x_graphs = [{
@@ -67,10 +71,10 @@ async function place(): Promise<{ asset: any; node: (alias: string) => any }> {
     graph_id: raw.graphid,
     config: {
       provider: "utm",
-      nodegroup: node("easting").nodegroup_id,
+      nodegroup: node(role).nodegroup_id,
       mode: "stored",
       sources: [node("location").nodegroup_id],
-      nodes: { geometry: "location", easting: "easting" },
+      nodes: { geometry: "location", [role]: role },
     },
   }];
   const graph = parseStaticGraph(JSON.stringify({ graph: [raw] }));
@@ -114,6 +118,22 @@ describe(`UTM through the derive bridge [${getBackend()} backend]`, () => {
     expect(Math.abs(easting.data[node("easting").nodeid] - 699_320)).toBeLessThan(50);
     // Stored with the resource, so it reads back like any value.
     expect(Math.abs(Number(await asset.easting) - 699_320)).toBeLessThan(50);
+  });
+
+  test("a derived string is in the host's language", async () => {
+    // The provider runs in geo's own module (or JS); the value is still keyed
+    // by the language set here, in the host.
+    const previous = getCurrentLanguage();
+    setCurrentLanguage("ga");
+    try {
+      const { asset, node } = await place("hemisphere", "string");
+      asset.location = LONDON;
+      const delta = asset.$commit();
+      const tile = delta.upserted.find((t: any) => t.nodegroup_id === node("hemisphere").nodegroup_id);
+      expect(tile.data[node("hemisphere").nodeid]).toEqual({ ga: { value: "N", direction: "ltr" } });
+    } finally {
+      setCurrentLanguage(previous);
+    }
   });
 
   test("clearing the geometry removes the derived tile", async () => {

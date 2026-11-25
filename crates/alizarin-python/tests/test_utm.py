@@ -33,17 +33,16 @@ LONDON = {
 }
 
 
-@pytest.fixture
-def place():
-    """A place with a `location` geometry and an `easting` that UTM fills,
-    declared in stored mode, with no tiles yet."""
+def _place(role, datatype):
+    """A place with a `location` geometry and a node for UTM's `role` output,
+    of `datatype`, declared in stored mode, with no tiles yet."""
     path = os.path.join(os.path.dirname(__file__), "../../../tests/data/models/Group.json")
     with open(path) as f:
         base = StaticGraph.from_dict(json.load(f)["graph"][0])
     mutator = GraphMutator(base)
     mutator._add_node(None, "location", "Location", "1", "geojson-feature-collection",
                       f"{CRM}E53_Place", f"{CRM}P168_place_is_defined_by", None, None, None)
-    mutator._add_node(None, "easting", "Easting", "1", "number",
+    mutator._add_node(None, role, role.title(), "1", datatype,
                       f"{CRM}E54_Dimension", f"{CRM}P43_has_dimension", None, None, None)
     graph = mutator.apply().to_dict()
     nodes = {n["alias"]: n for n in graph["nodes"] if n.get("alias")}
@@ -53,10 +52,10 @@ def place():
         "graph_id": graph["graphid"],
         "config": {
             "provider": "utm",
-            "nodegroup": nodes["easting"]["nodegroup_id"],
+            "nodegroup": nodes[role]["nodegroup_id"],
             "mode": "stored",
             "sources": [nodes["location"]["nodegroup_id"]],
-            "nodes": {"geometry": "location", "easting": "easting"},
+            "nodes": {"geometry": "location", role: role},
         },
     }]
 
@@ -71,7 +70,24 @@ def place():
         "tiles": [],
     })
     viewContext.graphManager = gm
-    yield gm, nodes
+    return gm, nodes
+
+
+@pytest.fixture
+def place():
+    """A place whose `easting` (a number) UTM fills."""
+    yield _place("easting", "number")
+    viewContext.graphManager = None
+
+
+@pytest.fixture
+def irish_place():
+    """A place whose `hemisphere` (a translatable string) UTM fills, with the
+    host's language Irish."""
+    previous = alizarin.get_current_language()
+    alizarin.set_current_language("ga")
+    yield _place("hemisphere", "string")
+    alizarin.set_current_language(previous)
     viewContext.graphManager = None
 
 
@@ -102,3 +118,17 @@ async def test_clearing_the_geometry_removes_the_derived_tile(place):
     town.location = None
     delta = town.commit()
     assert len(delta["removed"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_derived_string_is_in_the_hosts_language(irish_place):
+    # The provider runs in geo's own module; the value is still keyed by the
+    # language set here, in the host.
+    gm, nodes = irish_place
+    town = await gm.getResource(RESOURCE_ID, lazy=False)
+    town.location = LONDON
+    delta = town.commit()
+
+    hemisphere_ng = nodes["hemisphere"]["nodegroup_id"]
+    tile = next(t for t in delta["upserted"] if t["nodegroup_id"] == hemisphere_ng)
+    assert tile["data"][nodes["hemisphere"]["nodeid"]] == {"ga": {"value": "N", "direction": "ltr"}}
