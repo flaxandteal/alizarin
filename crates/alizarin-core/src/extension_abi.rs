@@ -801,27 +801,36 @@ unsafe extern "C" fn rdm_lookup_by_id(
             Err(_) => return false,
         };
 
-    // Look up the concept
-    if let Some(concept) = cache.lookup_concept(collection_id, concept_id) {
-        // Serialize to JSON
-        let json = serde_json::json!({
-            "id": concept.id,
-            "pref_label": concept.pref_label,
-            "alt_labels": concept.alt_labels,
-            "scope_notes": concept.scope_note,
-            "narrower": concept.narrower,
-        });
-
-        if let Ok(json_bytes) = serde_json::to_vec(&json) {
-            let len = json_bytes.len();
-            let ptr = Box::into_raw(json_bytes.into_boxed_slice()) as *mut u8;
-            *concept_json_ptr = ptr;
-            *concept_json_len = len;
-            return true;
-        }
+    match cache.lookup_concept(collection_id, concept_id) {
+        Some(concept) => write_concept_json(concept, concept_json_ptr, concept_json_len),
+        None => false,
     }
+}
 
-    false
+/// Hand an extension `concept` as JSON, through the lookup callbacks' out
+/// pointers (freed by [`free_concept_json`]). Its stored URI goes with it, so
+/// the extension keeps it rather than synthesising one.
+unsafe fn write_concept_json(
+    concept: &crate::rdm_cache::RdmConcept,
+    concept_json_ptr: *mut *mut u8,
+    concept_json_len: *mut usize,
+) -> bool {
+    let json = serde_json::json!({
+        "id": concept.id,
+        "uri": concept.uri,
+        "pref_label": concept.pref_label,
+        "alt_labels": concept.alt_labels,
+        "scope_notes": concept.scope_note,
+        "narrower": concept.narrower,
+    });
+    match serde_json::to_vec(&json) {
+        Ok(json_bytes) => {
+            *concept_json_len = json_bytes.len();
+            *concept_json_ptr = Box::into_raw(json_bytes.into_boxed_slice()) as *mut u8;
+            true
+        }
+        Err(_) => false,
+    }
 }
 
 /// C ABI callback to look up a concept by label in the RDM cache
@@ -855,27 +864,10 @@ unsafe extern "C" fn rdm_lookup_by_label(
         Err(_) => return false,
     };
 
-    // Look up the concept by label
-    if let Some(concept) = cache.lookup_by_label(collection_id, label) {
-        // Serialize to JSON
-        let json = serde_json::json!({
-            "id": concept.id,
-            "pref_label": concept.pref_label,
-            "alt_labels": concept.alt_labels,
-            "scope_notes": concept.scope_note,
-            "narrower": concept.narrower,
-        });
-
-        if let Ok(json_bytes) = serde_json::to_vec(&json) {
-            let len = json_bytes.len();
-            let ptr = Box::into_raw(json_bytes.into_boxed_slice()) as *mut u8;
-            *concept_json_ptr = ptr;
-            *concept_json_len = len;
-            return true;
-        }
+    match cache.lookup_by_label(collection_id, label) {
+        Some(concept) => write_concept_json(concept, concept_json_ptr, concept_json_len),
+        None => false,
     }
-
-    false
 }
 
 /// C ABI callback to free concept JSON returned by lookup functions

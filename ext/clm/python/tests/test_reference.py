@@ -795,6 +795,43 @@ class TestFullRustIntegration:
         print(f"Created {len(resource['tiles'])} tiles")
         print(f"Reference data in tile: {json.dumps(ref_data, indent=2)}")
 
+    def test_json_tree_to_tiles_keeps_a_stored_concept_uri(self, person_graph_json, person_graph_data):
+        """A concept's stored URI reaches the reference through the C ABI's
+        RDM lookup callbacks, rather than a synthesised CLM item URI."""
+        import alizarin
+        import alizarin_clm  # noqa: F401 - registers handler
+        from alizarin import (
+            RustRdmCollection, RustRdmConcept, RustRdmCache,
+            set_global_rdm_cache, clear_global_rdm_cache,
+        )
+
+        stored_uri = "http://vocab.example.org/concept/a1b2c3d4"
+        concept = RustRdmConcept("a1b2c3d4-e5f6-7890-abcd-ef1234567890", {"en": "Test Reference Value"})
+        concept.uri = stored_uri
+        collection = RustRdmCollection("2730d609-3a8d-49dc-bf51-6ac34e80294a")
+        collection.add_concept(concept)
+        cache = RustRdmCache()
+        cache.add_collection(collection)
+        set_global_rdm_cache(cache)
+
+        try:
+            graph_id = alizarin.register_graph(person_graph_json)
+            result = alizarin.json_tree_to_tiles(
+                tree_json=json.dumps({"test": ["Test Reference Value"]}),
+                resource_id="test-person-uri",
+                graph_id=graph_id,
+            )
+        finally:
+            clear_global_rdm_cache()
+
+        reference_node_id = next(
+            n["nodeid"] for n in person_graph_data["nodes"]
+            if n.get("alias") == "test" and n.get("datatype") == "reference"
+        )
+        tiles = result["business_data"]["resources"][0]["tiles"]
+        ref_data = next(t["data"][reference_node_id] for t in tiles if reference_node_id in t["data"])
+        assert ref_data[0]["uri"] == stored_uri
+
     def test_full_rust_pipeline_json_to_tiles_to_coercion(self, person_graph_json, person_graph_data):
         """
         Test complete Rust pipeline:
