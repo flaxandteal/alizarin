@@ -14,6 +14,9 @@ needs. This is a deliberate, supported contract as of 2.0, not partial work.
 | RDM cache lookups, global RDM cache | ✓ | ✓ | ✓ |
 | RDM collection editing / label search | — | — | ✓ |
 | Extension coerce / render / resolve | ✓ | ✓ | ✓ |
+| Extension derive providers (geo's `utm`), derived values coerced by the host | ✓ | ✓ | ✓ |
+| Extension graph mutations (`registerExtensionMutation`, `applyMutationsWithExtensions`; clm's `reference_change_collection`) | ✓ | ✓ | ✓ |
+| clm base URI (`setClmBaseUri`, from `@alizarin/clm` / `alizarin_clm`) | ✓ | ✓ | ✓ |
 | Layer composition (`composeResourceLayers`) | ✓ | ✓ | ✓ |
 | Resource lifecycle state / transitions | ✓ | ✓ | ✓ |
 | CSV → business_data (`buildResourcesFromBusinessCsv`) | ✓ | ✓ | ✓ |

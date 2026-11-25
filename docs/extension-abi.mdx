@@ -1,6 +1,6 @@
 ---
 title: Extension ABI
-description: Frozen C ABI contract for out-of-tree datatype extensions and derive providers (ABI v5)
+description: Frozen C ABI contract for out-of-tree datatype extensions, derive providers and graph mutations (ABI v7)
 ---
 
 Out-of-tree datatype extensions plug into alizarin through a small C ABI. An
@@ -11,10 +11,24 @@ no extension dependencies**: extensions plug in at the boundary, never by
 compile-time linking. The machinery that reads a `TypeHandlerInfo` and calls its
 fn-pointers lives once in `alizarin-core` (`extension_abi`); the bindings are thin
 front-ends over it. The same ABI also carries
-[derive providers](#derive-providers) (a `DeriveProviderInfo`), whose host side
-lives in `alizarin-core` (`derive_abi`).
+[derive providers](#derive-providers) (a `DeriveProviderInfo`) and
+[graph mutations](#graph-mutations) (a `MutationHandlerInfo`), whose host sides
+live in `alizarin-core` (`derive_abi`, `mutation_abi`).
 
-This document is the committed contract for 2.0. `ABI_VERSION` is **6**.
+**An extension links no alizarin-core.** Its module is loaded beside the
+host's, so a copy of core in it would have its own, empty, globals — current
+language, graph, extension and RDM registries — and whatever it read from them
+would be silently wrong. Extensions build against `alizarin-extension-api`
+alone: the ABI types, plus the plain data both sides name (`StaticTile`,
+`StaticNode`, `StaticNodegroup`, `StaticTranslatableString`, `DeriveConfig`,
+`IndexSpec`, `ValidationResult`, `ExtensionError`, …), which core re-exports.
+The host's state reaches an extension only through the calls below. An
+extension's core crate may keep an in-process `ExtensionTypeHandler` behind a
+`core` feature, for a Rust program that links core itself; its bindings take
+it with `default-features = false`, and `scripts/guards/no_second_core.py`
+checks in CI that no binding links core.
+
+This document is the committed contract for 2.0. `ABI_VERSION` is **7**.
 
 > **How each binding registers the same `TypeHandlerInfo`:**
 > - **Python** — wraps the pointer in a `PyCapsule`; `import alizarin_clm` calls
@@ -77,13 +91,17 @@ structural knowledge into the handler.
 
 ```rust
 AbiFingerprint {
-    version: ABI_VERSION,                          // 6
+    version: ABI_VERSION,                          // 7
     value_size: size_of::<serde_json::Value>(),
     handler_info_size: size_of::<TypeHandlerInfo>(),
+    derive_info_size: size_of::<DeriveProviderInfo>(),
+    mutation_info_size: size_of::<MutationHandlerInfo>(),
 }
 ```
 
-The host checks `info.abi == abi_fingerprint()` **at registration**. A mismatch
+Every info an extension hands over (`TypeHandlerInfo`, `DeriveProviderInfo`,
+`MutationHandlerInfo`, `RowSinkInfo`) carries it, and the host checks
+`info.abi == abi_fingerprint()` **at registration**. A mismatch
 is refused with an error **before any pointer is dereferenced** — so a stale
 extension fails loudly at load, never corrupting memory.
 
@@ -123,6 +141,11 @@ and cut a coordinated release.
   derive functions.
 - **6** — added `RowSinkInfo`, `TileRow`, `ResourceRow` and `StrRef`, so an
   extension can take the host's batch conversion as borrowed rows.
+- **7** — a derive provider returns **raw** values and the host coerces them
+  (before, the provider coerced them itself, in its own copy of core's
+  language); `MutationHandlerInfo` carries an `AbiFingerprint`, which gained
+  `mutation_info_size`. The extension side of derive moved from
+  `alizarin_core::derive_abi` to `alizarin-extension-api`.
 
 ## Derive providers
 
@@ -138,13 +161,24 @@ nodegroup, datatype and alias — all **by pointer**, plus a `HostGraph`: a
 `lookup(ctx, kind, key)` callback answering the graph's root
 (`LOOKUP_ROOT`), a node by alias or id, or a nodegroup by id. Nothing
 graph-sized crosses the boundary; a provider that needs listings (every node,
-edges, cards) must run in-process. The result is the derived tiles as a JSON
-array, freed via `free_fn`.
+edges, cards) must run in-process, or a new lookup kind added. The result is
+the derived tiles as a JSON array, freed via `free_fn`.
 
-The extension side is written once against core's `DeriveProvider` trait:
-`alizarin_core::derive_abi::derive_with` adapts the C call to it, and
-`derive_provider_info(id, derive_fn)` builds the static info. Each binding
-registers the same provider:
+**A provider returns raw values; the host coerces them.** Each derived value
+goes in as the plain value it is (a number, a string), and the host coerces it
+to its node's datatype with its own current language and extension handlers —
+a `string` node gets the value under the host's language, which a provider,
+holding no copy of core, cannot know. A value already in its datatype's shape
+comes through unchanged, so a provider that coerces its own output is not
+harmed.
+
+The extension side is written once, against `alizarin-extension-api`'s
+`ExtDeriveProvider` trait: its graph argument is a `DeriveLookup`, the
+`lookup(kind, key)` above with typed helpers (`root()`, `node(id)`,
+`node_by_alias(alias)`, `nodegroup(id)`). `derive_with` adapts the C call to
+it, and `derive_provider_info(id, derive_fn)` builds the static info. In a
+Rust program that links core, `alizarin_core::derive_abi::InProcess(provider)`
+registers the same provider in-process. Each binding registers it:
 
 - **Python** — `alizarin.register_derive_provider(capsule)`, returning the
   provider id.
@@ -156,6 +190,34 @@ registers the same provider:
 
 `hasDeriveProvider(providerId)` (`has_derive_provider` in Python) reports
 whether one is registered.
+
+## Graph mutations
+
+An extension can add a graph mutation (e.g. `clm.reference_change_collection`),
+applied by name from a `MutationRequest`'s `Extension` entries, as a
+`MutationHandlerInfo`: an `AbiFingerprint`, the mutation's name, a
+`handler_fn` and its two free fns, and a conformance level. The host
+serialises its graph and the entry's params to JSON, calls `handler_fn`, and
+parses the graph it writes back (freed by the extension's `free_output_fn`);
+an error comes back in the `MutationResult`.
+
+The extension side implements `alizarin-extension-api`'s `ExtMutationHandler`
+— `apply(&mut graph_json, &params)` — and `mutate_with` adapts the C call to
+it; `mutation_handler_info(name, handler_fn, conformance)` builds the static
+info. Each binding registers it, into one registry on Python and NAPI:
+
+- **Python** — `alizarin.register_extension_mutation(name, capsule)` (or a
+  Python function, for a mutation written in Python).
+- **NAPI** — `registerExtensionMutation(ptr)` on `@alizarin/napi`, returning
+  the name.
+- **WASM** — `registerExtensionMutation(name, (graph, params) => graph,
+  conformance)` from `alizarin`, the extension's WASM build exporting the same
+  transform.
+
+Then `applyMutationsWithExtensions(graph, mutationsJson)`
+(`apply_mutations_with_extensions`), `hasExtensionMutation`,
+`getRegisteredExtensionMutations` (`list_extension_mutations`, sorted) and
+`unregisterExtensionMutation`, on every binding.
 
 ## Row sinks
 
@@ -184,7 +246,9 @@ errors. The host checks the fingerprint before reading anything else.
 
 Build the `TypeHandlerInfo` once in the extension's **core** crate
 (`ext/<x>/core`, module `c_abi`), so the Python and NAPI bindings share a single
-copy of the `extern "C"` wrappers:
+copy of the `extern "C"` wrappers. The core crate depends on
+`alizarin-extension-api`; anything that needs `alizarin-core` sits behind its
+`core` feature, and the bindings depend on it with `default-features = false`:
 
 ```rust
 // ext/<x>/core/src/c_abi.rs — a Once-initialised static (a constructor sets abi +
@@ -207,8 +271,11 @@ Each binding hands that pointer to the host:
 The in-tree extensions are the reference implementations: `ext/clm` (coerce +
 display + resolve_markers + index_spec + node_config + display_as_list — a
 `reference` is a controlled-list value, so it head-indexes as
-`ConceptHierarchical`, exactly like the core `concept` datatype), `ext/filelist`
-(coerce + display), `ext/geo` (validate + fold, and the `utm` derive provider).
+`ConceptHierarchical`, exactly like the core `concept` datatype — and the
+`clm.reference_change_collection` mutation), `ext/filelist` (coerce +
+display), `ext/geo` (validate + fold, and the `utm` derive provider).
+`tests/data/extension-registrations.json` lists what each registers, and the
+dual-backend and Python tests check every binding against it.
 
 ## Packaging (npm)
 
@@ -218,18 +285,31 @@ portable WASM, one artifact for all). To keep a **single import** for consumers,
 the JS/WASM package `@alizarin/<x>` lists `@alizarin/<x>-napi` (and
 `@alizarin/napi`) as **optional peer dependencies**
 (`peerDependenciesMeta: { optional: true }` — npm won't auto-install them) and
-wires them at runtime only when present:
+wires them at runtime only when present. What the native package registers is
+in one place, its `registration.js` (`register(host)`); its `register.js`
+(the package's `main`) calls it with `@alizarin/napi` on import, so importing
+it is the whole of the wiring:
+
+```js
+// @alizarin/<x>-napi registration.js
+const binding = require('./index.js')
+function register(host) {
+  host.registerExtensionHandler(binding.xHandlerPtr())
+  // and whatever else it provides, e.g. geo's:
+  // host.registerDeriveProvider(binding.utmDeriveProviderPtr())
+}
+module.exports = { binding, register }
+```
 
 ```ts
-// @alizarin/<x> entry, after its WASM registration:
+// @alizarin/<x> entry, after its WASM registration (WASM backend only):
 try {
-  const napi = await import("@alizarin/napi");
-  const ext  = await import("@alizarin/<x>-napi");
-  napi.registerExtensionHandler(ext.xHandlerPtr());
-  // and, for an extension with a derive provider (as geo's utm):
-  // napi.registerDeriveProvider(ext.xDeriveProviderPtr());
+  await import("@alizarin/<x>-napi");  // registers with @alizarin/napi
 } catch { /* WASM-only consumer, or the napi ext isn't installed */ }
 ```
+
+Tests call `registration.js`'s `register` against the host they have loaded,
+so what they check is what the package does.
 
 A browser/WASM consumer of `@alizarin/<x>` pulls **no** native binary; a NAPI
 consumer adds `@alizarin/<x>-napi` to its deps and the same `import

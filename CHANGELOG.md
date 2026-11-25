@@ -8,6 +8,54 @@ entries is tracked in `PARITY-RESEARCH.md`.
 ## Unreleased
 
 ### Added
+- No extension module links a copy of alizarin-core any more
+  (`notes/extension-interface-split.md`): clm, filelist and geo build against
+  `alizarin-extension-api`, which now holds the plain data both sides name
+  (`StaticTile`, `StaticNode`, `StaticNodegroup`, `StaticTranslatableString`,
+  `StaticEdge`, `DeriveConfig`, `IndexSpec`, `ValidationResult`,
+  `ExtensionError`, …), re-exported by core at the same paths. A copy of core
+  in an extension had its own, empty, language and registries. A CI guard
+  (`scripts/guards/no_second_core.py`) keeps it so.
+- Fixed: geo's UTM wrote a translatable (`string`) output in English
+  whatever the host's language. The host now coerces every derived value, in
+  its own language and with its own extension handlers.
+- Fixed: `@alizarin/geo-napi` registered geo's handler but not its UTM derive
+  provider, and `@alizarin/filelist` never registered `@alizarin/filelist-napi`
+  on the NAPI backend. `@alizarin/geo` on NAPI no longer rejects (unhandled)
+  registering its WASM build's provider.
+- Fixed: a concept's stored URI was dropped when clm resolved references
+  across the C ABI (Python, NAPI), so a built CLM item URI replaced it.
+- clm's base URI can be set on every binding: `setClmBaseUri`,
+  `getClmBaseUri`, `clearClmBaseUri` from `@alizarin/clm` (and the
+  `@alizarin/clm-napi` module), as `alizarin_clm.set_clm_base_uri`; the JS
+  view models build URIs with clm's Rust on it rather than a hardcoded
+  `http://localhost:8000/…`.
+- Extension graph mutations on every binding: NAPI gains
+  `registerExtensionMutation` (a native pointer), `unregisterExtensionMutation`,
+  `hasExtensionMutation`, `getRegisteredExtensionMutations` and
+  `applyMutationsWithExtensions`; Python gains `unregister_extension_mutation`,
+  and `register_extension_mutation` also takes an extension's capsule;
+  `alizarin` (JS) gains `registerExtensionMutation`/`hasExtensionMutation`.
+  Listings are sorted on every binding. `clm.reference_change_collection` is
+  one implementation (clm core), registered by importing clm on all three.
+- Fixed (build): every extension's Python library was named `_rust`, so in
+  the shared target directory one extension's build could package another's.
+- **Breaking** (extension authors): extension `ABI_VERSION` is 7. A derive
+  provider returns raw values, which the host coerces; it implements
+  `alizarin_extension_api::ExtDeriveProvider` (over a `DeriveLookup`), and
+  `derive_with`/`derive_provider_info`/`free_derive_result` moved from
+  `alizarin_core::derive_abi` to `alizarin_extension_api`
+  (`alizarin_core::derive_abi::InProcess` runs one in-process).
+  `CallbackGraph` is gone. `MutationHandlerInfo` carries an `AbiFingerprint`,
+  which gained `mutation_info_size`. Rebuild extensions against this
+  alizarin.
+- **Breaking** (Rust): `DeriveConfig::resolve_nodes(graph)` is
+  `resolve_derive_nodes(&config, graph)`; `StaticTile::ensure_id` is gone
+  (the bindings' `ensureId` remains); `alizarin_geo_core::utm::register_global`
+  is gone (register through the host). clm/filelist/geo cores'
+  `ExtensionTypeHandler` impls, `register` and `create_*_handler` are behind
+  their default `core` feature; `alizarin_clm` and `alizarin_filelist` (Rust)
+  no longer re-export them, and clm Python's `mutations` feature is gone.
 - Fixed: alizarin-pg's `batch_trees_to_pg_copy` could not work: its module
   has its own copy of core, so a graph registered with alizarin was "not
   registered", and extension handlers and concept labels were never applied.
