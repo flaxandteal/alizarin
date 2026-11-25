@@ -1,23 +1,34 @@
 //! Shared CLM (Controlled List Manager) reference type logic.
 //!
-//! This crate provides the core types and `ExtensionTypeHandler` implementation
-//! for the "reference" datatype. It is used by:
-//! - `alizarin-napi` (Node.js bindings)
-//! - `ext/clm/python` (Python extension, via C ABI wrappers)
-//! - `ext/clm/js` (JS extension)
+//! This crate provides the core types for the "reference" datatype, and its
+//! C-ABI handler ([`c_abi`]). It is used by:
+//! - `ext/clm/napi` (Node.js bindings, via the C ABI)
+//! - `ext/clm/python` (Python extension, via the C ABI)
+//! - `ext/clm/wasm` (the JS extension's WASM build)
+//!
+//! Those take it with `default-features = false`: they link no alizarin-core,
+//! whose globals (RDM cache, registries) would be their own, empty, copy.
+//! The `core` feature (on by default) adds the in-process
+//! `ExtensionTypeHandler`, for a Rust program that links core itself.
 
 /// Shared C-ABI `TypeHandlerInfo` builder for the python + napi bindings.
 pub mod c_abi;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::sync::{Arc, RwLock};
+#[cfg(feature = "core")]
+use std::sync::Arc;
+use std::sync::RwLock;
 
-use alizarin_core::extension_type_registry::{
-    ExtensionError, ExtensionTypeHandler, HandlerCapabilities, IndexClass, IndexSpec,
-};
+#[cfg(feature = "core")]
+use alizarin_core::extension_type_registry::{ExtensionTypeHandler, HandlerCapabilities};
+#[cfg(feature = "core")]
 use alizarin_core::type_coercion::CoercionResult;
+#[cfg(feature = "core")]
 use alizarin_core::type_serialization::{ExternalResolver, SerializationContext};
+#[cfg(feature = "core")]
+use alizarin_extension_api::ExtensionError;
+use alizarin_extension_api::{IndexClass, IndexSpec};
 
 // =============================================================================
 // CLM Base URI Configuration
@@ -373,6 +384,7 @@ pub fn render_reference_display_tile(value: &Value, lang: Option<&str>) -> Strin
 /// Render a reference value to a display string, resolving bare list-item UUIDs
 /// and `__needs_rdm_lookup` markers through `resolver` when the value has not
 /// already been resolved to a [`StaticReference`].
+#[cfg(feature = "core")]
 pub fn render_reference_display_value_resolved(
     tile_data: &Value,
     lang: Option<&str>,
@@ -540,6 +552,7 @@ where
 /// Convenience wrapper around `resolve_reference_markers_with_lookups` that uses
 /// `alizarin_core::with_global_rdm_cache` for lookups. Suitable for standalone
 /// (non-FFI) use where the global cache is in the same binary.
+#[cfg(feature = "core")]
 pub fn resolve_reference_markers(tile_data: &Value, language: &str) -> Result<Value, String> {
     resolve_reference_markers_with_lookups(
         tile_data,
@@ -652,13 +665,15 @@ pub fn build_static_reference_from_concept(
 // ExtensionTypeHandler Implementation
 // =============================================================================
 
-/// Reference type handler implementing `ExtensionTypeHandler`.
+/// Reference type handler implementing `ExtensionTypeHandler`, in-process
+/// (`core` feature).
 ///
-/// Provides coercion and display rendering for the "reference" datatype.
-/// Marker resolution is not included here as it requires external callbacks
-/// (RDM lookups) that are platform-specific.
+/// Provides coercion and display rendering for the "reference" datatype, and
+/// marker resolution through the in-process global RDM cache.
+#[cfg(feature = "core")]
 pub struct ReferenceTypeHandler;
 
+#[cfg(feature = "core")]
 impl ExtensionTypeHandler for ReferenceTypeHandler {
     fn capabilities(&self) -> HandlerCapabilities {
         HandlerCapabilities {
@@ -761,6 +776,7 @@ pub fn reference_node_config(config: &Value) -> Value {
 }
 
 /// Create an `Arc<dyn ExtensionTypeHandler>` for the reference type.
+#[cfg(feature = "core")]
 pub fn create_reference_handler() -> Arc<dyn ExtensionTypeHandler> {
     Arc::new(ReferenceTypeHandler)
 }
@@ -772,6 +788,7 @@ pub const DATATYPE_NAME: &str = "reference";
 ///
 /// One-call convenience for Rust consumers wiring the `"reference"` datatype:
 /// `alizarin_clm_core::register(&mut registry)`.
+#[cfg(feature = "core")]
 pub fn register(registry: &mut alizarin_core::extension_type_registry::ExtensionTypeRegistry) {
     registry.register(
         DATATYPE_NAME.to_string(),

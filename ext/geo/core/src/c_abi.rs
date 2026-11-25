@@ -10,7 +10,7 @@
 use std::ffi::c_void;
 use std::sync::Once;
 
-use alizarin_core::extension_type_registry::ExtensionError;
+use alizarin_extension_api::ExtensionError;
 use alizarin_extension_api::{
     FoldFn, FoldIdentityFn, FoldMayMatchFn, FoldMergeFn, FoldRemoveFn, FoldResult, FreeFoldFn,
     FreeValidateFn, TypeHandlerInfo, ValidateFn, ValidateResult,

@@ -5,12 +5,17 @@ edition = "2021"
 license = "AGPL-3.0-or-later"
 description = "Shared CLM (Controlled List Manager) reference type logic for Alizarin"
 
+[features]
+default = ["core"]
+# The in-process ExtensionTypeHandler; the C ABI and WASM paths need no core.
+core = ["dep:alizarin-core"]
+
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 regex = "1.10"
 lazy_static = "1.4"
 uuid = "1.0"
-alizarin-core = { path = "../../../crates/alizarin-core", version = "=2.0.0-alpha.148" }
+alizarin-core = { path = "../../../crates/alizarin-core", version = "=2.0.0-alpha.148", optional = true }
 # C-ABI TypeHandlerInfo builder (shared by the python + napi bindings).
 alizarin-extension-api = { path = "../../../crates/alizarin-extension-api", version = "=2.0.0-alpha.148" }

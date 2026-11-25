@@ -14,7 +14,7 @@
 
 use std::collections::BTreeSet;
 
-use alizarin_core::extension_type_registry::ExtensionError;
+use alizarin_extension_api::ExtensionError;
 use serde_json::{json, Value};
 
 /// The empty geometry summary.

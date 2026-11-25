@@ -12,8 +12,17 @@
 //! [`fold`]) for `alizarin_core::fold`. Coercion/indexing stay with core.
 //! `register` this handler for [`DATATYPE_NAME`] and the a129 validation pass
 //! will call it.
+//!
+//! The bindings (python, napi, wasm) take this crate with
+//! `default-features = false` and use its C ABI ([`c_abi`]): they link no
+//! alizarin-core, whose globals (language, registries) would be their own,
+//! empty, copy. The `core` feature (on by default) adds the in-process
+//! handler and [`utm::register_functions`], for a Rust program that links
+//! core itself.
 
-use std::sync::{Arc, RwLock};
+#[cfg(feature = "core")]
+use std::sync::Arc;
+use std::sync::RwLock;
 
 use serde_json::Value;
 
@@ -26,9 +35,13 @@ pub mod fold;
 /// Shared C-ABI `TypeHandlerInfo` builder for the python + napi bindings.
 pub mod c_abi;
 
+#[cfg(feature = "core")]
 use alizarin_core::extension_type_registry::{
-    ExtensionError, ExtensionTypeHandler, HandlerCapabilities, RemoveStep, ValidationResult,
+    ExtensionTypeHandler, HandlerCapabilities, RemoveStep,
 };
+#[cfg(feature = "core")]
+use alizarin_extension_api::ExtensionError;
+use alizarin_extension_api::ValidationResult;
 
 /// The datatype name this handler registers for.
 pub const DATATYPE_NAME: &str = "geojson-feature-collection";
@@ -64,9 +77,12 @@ pub fn reset_coord_limit() {
     set_coord_limit(Some(DEFAULT_COORD_LIMIT));
 }
 
-/// Handler for the `geojson-feature-collection` datatype (validation and fold).
+/// Handler for the `geojson-feature-collection` datatype (validation and
+/// fold), in-process (`core` feature).
+#[cfg(feature = "core")]
 pub struct GeoTypeHandler;
 
+#[cfg(feature = "core")]
 impl ExtensionTypeHandler for GeoTypeHandler {
     fn capabilities(&self) -> HandlerCapabilities {
         HandlerCapabilities {
@@ -284,11 +300,13 @@ fn check_position(pos: &[f64], feature_idx: usize, errors: &mut Vec<String>) {
 }
 
 /// Create an `Arc<dyn ExtensionTypeHandler>` for the geospatial type.
+#[cfg(feature = "core")]
 pub fn create_geo_handler() -> Arc<dyn ExtensionTypeHandler> {
     Arc::new(GeoTypeHandler)
 }
 
 /// Register the geospatial handler for [`DATATYPE_NAME`] into `registry`.
+#[cfg(feature = "core")]
 pub fn register(registry: &mut alizarin_core::extension_type_registry::ExtensionTypeRegistry) {
     registry.register(DATATYPE_NAME.to_string(), Arc::new(GeoTypeHandler));
 }

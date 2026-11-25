@@ -72,8 +72,9 @@ lazy_static::lazy_static! {
 
     /// Global graph-attached function registry (Derive / Descriptor / Aggregate
     /// providers). Seeded with core's built-ins (`default_functions_registry`,
-    /// i.e. the fold Aggregate); provider crates add theirs at binding init (e.g.
-    /// `alizarin_geo_core::register_functions`). Consulted by the load-time derive
+    /// i.e. the fold Aggregate); extensions add theirs at binding init, through
+    /// `derive_abi::register_derive_provider_from_ptr` (e.g. geo's UTM). Consulted
+    /// by the load-time derive
     /// hook and by `apply_aggregate_functions_to_resource`.
     static ref GLOBAL_FUNCTIONS_REGISTRY: RwLock<FunctionsRegistry> =
         RwLock::new(crate::graph::default_functions_registry());
@@ -687,8 +688,8 @@ pub fn clear_global_extension_registry() {
 
 // ============================================================================
 
-/// Mutate the global graph-attached function registry in place — used by
-/// provider crates at init (e.g. `alizarin_geo_core::register_functions`).
+/// Mutate the global graph-attached function registry in place — used when a
+/// derive provider registers (e.g. `derive_abi::register_derive_provider_from_ptr`).
 pub fn with_global_functions_registry_mut<R>(
     f: impl FnOnce(&mut FunctionsRegistry) -> R,
 ) -> Option<R> {

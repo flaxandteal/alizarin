@@ -11,11 +11,13 @@
 //! compute the UTM zone and hand proj4rs the corresponding proj-string.
 
 use std::collections::BTreeMap;
+#[cfg(feature = "core")]
 use std::sync::Arc;
 
 use proj4rs::Proj;
 use serde_json::{json, Value};
 
+#[cfg(feature = "core")]
 use alizarin_core::{FunctionsRegistry, RegisteredFunction};
 use alizarin_extension_api::{
     DeriveConfig, DeriveLookup, ExtDeriveProvider, ResolvedNode, StaticTile,
@@ -216,7 +218,10 @@ impl ExtDeriveProvider for UtmDeriveProvider {
     }
 }
 
-/// Register the UTM derive function under [`PROVIDER_KEY`] into a given registry.
+/// Register the UTM derive function under [`PROVIDER_KEY`] into a given
+/// registry, in-process (`core` feature). The bindings register it with the
+/// host through [`crate::c_abi::utm_derive_provider_info`] instead.
+#[cfg(feature = "core")]
 pub fn register_functions(registry: &mut FunctionsRegistry) {
     registry.register(
         PROVIDER_KEY,
@@ -242,12 +247,6 @@ pub fn derive_json(
         serde_json::from_value(config).map_err(|e| format!("utm: config: {e}"))?;
     let derived = UtmDeriveProvider.derive(resource_id, &lookup, &tiles, &config)?;
     serde_json::to_value(derived).map_err(|e| format!("utm: {e}"))
-}
-
-/// Register the UTM derive function into alizarin-core's **global** function
-/// registry — call once at binding init so the load-time derive hook can find it.
-pub fn register_global() {
-    alizarin_core::with_global_functions_registry_mut(register_functions);
 }
 
 #[cfg(test)]
@@ -582,25 +581,5 @@ mod tests {
         assert_eq!(utm_tile.data["hemisphere"], "N");
         assert!(utm_tile.data["easting"].as_f64().unwrap() > 0.0);
         assert_eq!(utm_tile.data.len(), 3);
-    }
-
-    /// The plain-ORM path: `register_global()` populates alizarin-core's global
-    /// registry, and the load-time hook reads it via `get_global_functions_registry()`.
-    #[test]
-    fn global_registry_round_trip() {
-        alizarin_core::clear_global_functions_registry();
-        // Reset to core's built-ins, so no utm provider → derive is a no-op.
-        assert!(alizarin_core::get_global_functions_registry()
-            .derive(PROVIDER_KEY)
-            .is_none());
-
-        register_global();
-        let reg = alizarin_core::get_global_functions_registry();
-        assert!(
-            reg.derive(PROVIDER_KEY).is_some(),
-            "utm provider is globally registered"
-        );
-
-        alizarin_core::clear_global_functions_registry();
     }
 }

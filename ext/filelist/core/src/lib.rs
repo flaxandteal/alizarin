@@ -1,10 +1,14 @@
 //! Shared file-list type logic.
 //!
-//! This crate provides the core types and `ExtensionTypeHandler` implementation
-//! for the "file-list" datatype. It is used by:
-//! - `alizarin-napi` (Node.js bindings)
-//! - `ext/filelist/python` (Python extension, via C ABI wrappers)
-//! - `ext/filelist/js` (JS extension)
+//! This crate provides the core types for the "file-list" datatype, and its
+//! C-ABI handler ([`c_abi`]). It is used by:
+//! - `ext/filelist/napi` (Node.js bindings, via the C ABI)
+//! - `ext/filelist/python` (Python extension, via the C ABI)
+//! - `ext/filelist/wasm` (the JS extension's WASM build)
+//!
+//! Those take it with `default-features = false`, linking no alizarin-core.
+//! The `core` feature (on by default) adds the in-process
+//! `ExtensionTypeHandler`, for a Rust program that links core itself.
 
 /// Shared C-ABI `TypeHandlerInfo` builder for the python + napi bindings.
 pub mod c_abi;
@@ -12,11 +16,14 @@ pub mod c_abi;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
+#[cfg(feature = "core")]
 use std::sync::Arc;
 
+#[cfg(feature = "core")]
 use alizarin_core::extension_type_registry::{
     ExtensionError, ExtensionTypeHandler, HandlerCapabilities,
 };
+#[cfg(feature = "core")]
 use alizarin_core::type_coercion::CoercionResult;
 
 // =============================================================================
@@ -325,9 +332,12 @@ pub fn render_filelist_display_value(
 // ExtensionTypeHandler Implementation
 // =============================================================================
 
-/// File-list type handler implementing `ExtensionTypeHandler`.
+/// File-list type handler implementing `ExtensionTypeHandler`, in-process
+/// (`core` feature).
+#[cfg(feature = "core")]
 pub struct FileListTypeHandler;
 
+#[cfg(feature = "core")]
 impl ExtensionTypeHandler for FileListTypeHandler {
     fn capabilities(&self) -> HandlerCapabilities {
         HandlerCapabilities {
@@ -370,6 +380,7 @@ impl ExtensionTypeHandler for FileListTypeHandler {
 }
 
 /// Create an `Arc<dyn ExtensionTypeHandler>` for the file-list type.
+#[cfg(feature = "core")]
 pub fn create_filelist_handler() -> Arc<dyn ExtensionTypeHandler> {
     Arc::new(FileListTypeHandler)
 }
@@ -380,6 +391,7 @@ pub const DATATYPE_NAME: &str = "file-list";
 /// Register the file-list handler for [`DATATYPE_NAME`] into `registry`.
 ///
 /// One-call convenience for Rust consumers wiring the `"file-list"` datatype.
+#[cfg(feature = "core")]
 pub fn register(registry: &mut alizarin_core::extension_type_registry::ExtensionTypeRegistry) {
     registry.register(
         DATATYPE_NAME.to_string(),
