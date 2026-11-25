@@ -5,8 +5,9 @@
 //!
 //! ## Mutations
 //!
-//! When the `mutations` feature is enabled, this crate also provides:
-//! - `ReferenceChangeCollectionHandler` - mutation to change a reference node's collection
+//! `clm.reference_change_collection`, alizarin-clm-core's, registered with
+//! alizarin through its capsule (`get_reference_change_collection_capsule`),
+//! as NAPI registers its pointer.
 
 // Re-export core types so downstream users don't need to depend on alizarin-clm-core
 // directly. Not its in-process handler: that needs alizarin-core, which this module
@@ -16,10 +17,6 @@ pub use alizarin_clm_core::{
     coerce_reference_value, get_clm_base_uri, render_reference_display_value, set_clm_base_uri,
     try_build_item_uri, ReferenceNodeConfig, StaticReference, StaticReferenceLabel, DATATYPE_NAME,
 };
-
-// Re-export mutation types when feature is enabled
-#[cfg(feature = "mutations")]
-pub mod mutations;
 
 // =============================================================================
 // Python Module (C ABI + pyo3)
@@ -85,9 +82,32 @@ mod python_module {
         }
     }
 
+    /// The `clm.reference_change_collection` mutation, as a capsule over its
+    /// `MutationHandlerInfo`, for `alizarin.register_extension_mutation`.
+    #[pyfunction]
+    pub fn get_reference_change_collection_capsule(py: Python<'_>) -> PyResult<Py<PyCapsule>> {
+        let ptr = alizarin_clm_core::c_abi::reference_change_collection_info();
+        let name = CString::new("alizarin_clm.reference_change_collection")
+            .expect("capsule name contains no null bytes");
+        // The capsule keeps the name pointer: leak it, as the info it wraps is
+        // process-static too.
+        let name = Box::leak(name.into_boxed_c_str());
+        unsafe {
+            let capsule = pyo3::ffi::PyCapsule_New(ptr as *mut c_void, name.as_ptr(), None);
+            if capsule.is_null() {
+                return Err(PyErr::fetch(py));
+            }
+            Ok(Py::from_owned_ptr(py, capsule))
+        }
+    }
+
     #[pymodule]
     pub fn _rust(m: &Bound<'_, PyModule>) -> PyResult<()> {
         m.add_function(wrap_pyfunction!(get_reference_handler_capsule, m)?)?;
+        m.add_function(wrap_pyfunction!(
+            get_reference_change_collection_capsule,
+            m
+        )?)?;
         m.add_function(wrap_pyfunction!(py_set_clm_base_uri, m)?)?;
         m.add_function(wrap_pyfunction!(py_get_clm_base_uri, m)?)?;
         m.add_function(wrap_pyfunction!(py_clear_clm_base_uri, m)?)?;

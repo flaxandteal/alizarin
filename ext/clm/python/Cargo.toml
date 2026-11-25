@@ -11,7 +11,6 @@ crate-type = ["cdylib", "rlib"]
 [features]
 default = ["pyo3-ext"]
 pyo3-ext = ["pyo3"]
-mutations = ["alizarin-core"]
 
 [dependencies]
 pyo3 = { version = "0.21", features = ["extension-module", "abi3-py39"], optional = true }
@@ -19,9 +18,5 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 regex = "1.10"
 alizarin-extension-api = { path = "../../../crates/alizarin-extension-api" }
-alizarin-core = { path = "../../../crates/alizarin-core", optional = true }
 # Its C ABI only: no alizarin-core (see notes/extension-interface-split.md).
 alizarin-clm-core = { path = "../core", default-features = false }
-
-[dev-dependencies]
-alizarin-core = { path = "../../../crates/alizarin-core" }

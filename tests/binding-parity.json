@@ -3140,11 +3140,8 @@
     },
     "apply_mutations_with_extensions": {
       "wasm": "applyMutationsWithExtensions",
-      "napi": null,
-      "python": "apply_mutations_with_extensions",
-      "why": {
-        "napi": "gap: the extension registry functions differ per binding (A-6, G)"
-      }
+      "napi": "applyMutationsWithExtensions",
+      "python": "apply_mutations_with_extensions"
     },
     "batch_merge_resources": {
       "wasm": "batchMergeResources",
@@ -3607,11 +3604,8 @@
     },
     "get_registered_extension_mutations": {
       "wasm": "getRegisteredExtensionMutations",
-      "napi": null,
-      "python": "list_extension_mutations",
-      "why": {
-        "napi": "gap: the extension registry functions differ per binding (A-6, G)"
-      }
+      "napi": "getRegisteredExtensionMutations",
+      "python": "list_extension_mutations"
     },
     "get_registered_graph_ids": {
       "wasm": "getRegisteredGraphIds",
@@ -3698,11 +3692,8 @@
     },
     "has_extension_mutation": {
       "wasm": "hasExtensionMutation",
-      "napi": null,
-      "python": "has_extension_mutation",
-      "why": {
-        "napi": "gap: the extension registry functions differ per binding (A-6, G)"
-      }
+      "napi": "hasExtensionMutation",
+      "python": "has_extension_mutation"
     },
     "has_global_rdm_cache": {
       "wasm": "hasGlobalRdmCache",
@@ -3854,11 +3845,8 @@
     },
     "register_extension_mutation": {
       "wasm": "registerExtensionMutation",
-      "napi": null,
-      "python": "register_extension_mutation",
-      "why": {
-        "napi": "gap: the extension registry functions differ per binding (A-6, G)"
-      }
+      "napi": "registerExtensionMutation",
+      "python": "register_extension_mutation"
     },
     "register_graph": {
       "wasm": null,
@@ -4033,12 +4021,8 @@
     },
     "unregister_extension_mutation": {
       "wasm": "unregisterExtensionMutation",
-      "napi": null,
-      "python": null,
-      "why": {
-        "napi": "gap: the extension registry functions differ per binding (A-6, G)",
-        "python": "gap: the extension registry functions differ per binding (A-6, G)"
-      }
+      "napi": "unregisterExtensionMutation",
+      "python": "unregister_extension_mutation"
     },
     "update_collection_in_global_cache": {
       "wasm": null,

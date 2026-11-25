@@ -25,6 +25,7 @@ use std::ffi::c_void;
 pub mod derive;
 pub mod graph;
 pub mod handler;
+pub mod mutation;
 pub mod serde_helpers;
 pub mod sorted_serde;
 pub use derive::{
@@ -33,6 +34,7 @@ pub use derive::{
 };
 pub use graph::{StaticEdge, StaticNode, StaticNodegroup, StaticTile, StaticTranslatableString};
 pub use handler::{ExtensionError, IndexClass, IndexSpec, ValidationResult};
+pub use mutation::{mutate_with, mutation_handler_info, ExtMutationHandler};
 
 /// Cycle-safe JSON arguments from JavaScript, for WASM bindings (`wasm` feature).
 #[cfg(feature = "wasm")]
@@ -55,6 +57,7 @@ pub struct AbiFingerprint {
     pub value_size: usize,
     pub handler_info_size: usize,
     pub derive_info_size: usize,
+    pub mutation_info_size: usize,
 }
 
 /// The ABI fingerprint of the crate the caller was compiled against.
@@ -64,6 +67,7 @@ pub fn abi_fingerprint() -> AbiFingerprint {
         value_size: std::mem::size_of::<serde_json::Value>(),
         handler_info_size: std::mem::size_of::<TypeHandlerInfo>(),
         derive_info_size: std::mem::size_of::<DeriveProviderInfo>(),
+        mutation_info_size: std::mem::size_of::<MutationHandlerInfo>(),
     }
 }
 
@@ -1207,9 +1211,14 @@ pub type FreeMutationResultFn = unsafe extern "C" fn(result: MutationResult);
 /// Function signature for freeing mutation output
 pub type FreeMutationOutputFn = unsafe extern "C" fn(ptr: *mut u8, len: usize);
 
-/// Mutation handler registration info passed via PyCapsule
+/// Mutation handler registration info: what an extension hands the host (a
+/// PyCapsule on Python, a BigInt pointer on NAPI); see [`mutation`].
 #[repr(C)]
 pub struct MutationHandlerInfo {
+    /// ABI fingerprint the extension was compiled against; the host checks it
+    /// before reading anything else.
+    pub abi: AbiFingerprint,
+
     /// Mutation name (e.g., "clm.reference_change_collection")
     pub mutation_name_ptr: *const u8,
     pub mutation_name_len: usize,
@@ -1240,6 +1249,7 @@ impl MutationHandlerInfo {
         conformance: MutationConformanceLevel,
     ) -> Self {
         MutationHandlerInfo {
+            abi: abi_fingerprint(),
             mutation_name_ptr: mutation_name.as_ptr(),
             mutation_name_len: mutation_name.len(),
             handler_fn,
@@ -1250,6 +1260,12 @@ impl MutationHandlerInfo {
         }
     }
 }
+
+// SAFETY: an extension's static info: its name points at `'static` bytes,
+// its fns are plain fn pointers, and `user_data` is never dereferenced by the
+// host.
+unsafe impl Send for MutationHandlerInfo {}
+unsafe impl Sync for MutationHandlerInfo {}
 
 /// Standard free function for MutationResult
 ///

@@ -5,6 +5,7 @@ const binding = require('./index.js')
 
 function register(host) {
   host.registerExtensionHandler(binding.referenceHandlerPtr())
+  host.registerExtensionMutation(binding.referenceChangeCollectionPtr())
 }
 
 module.exports = { binding, register }

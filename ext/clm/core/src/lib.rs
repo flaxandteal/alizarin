@@ -14,6 +14,9 @@
 /// Shared C-ABI `TypeHandlerInfo` builder for the python + napi bindings.
 pub mod c_abi;
 
+/// The `clm.reference_change_collection` graph mutation.
+pub mod mutation;
+
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 #[cfg(feature = "core")]

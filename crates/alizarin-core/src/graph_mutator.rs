@@ -1638,6 +1638,11 @@ impl ExtensionMutationRegistry {
         self.handlers.contains_key(name)
     }
 
+    /// Remove a handler; whether there was one.
+    pub fn remove(&mut self, name: &str) -> bool {
+        self.handlers.remove(name).is_some()
+    }
+
     /// List all registered mutation names
     pub fn list(&self) -> Vec<&str> {
         self.handlers.keys().map(|s| s.as_str()).collect()

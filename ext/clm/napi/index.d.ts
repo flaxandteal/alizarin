@@ -9,6 +9,12 @@
  */
 export declare function referenceHandlerPtr(): bigint
 /**
+ * The `clm.reference_change_collection` mutation's `MutationHandlerInfo`
+ * pointer, as a `BigInt`. Pass to `registerExtensionMutation` from
+ * `@alizarin/napi`.
+ */
+export declare function referenceChangeCollectionPtr(): bigint
+/**
  * Set the base URI reference item URIs are built on, as Python's
  * `set_clm_base_uri` does. It lives in this module, beside the handler that
  * builds them.

@@ -328,6 +328,36 @@ export function registerDeriveProvider(providerId: string, provider: any): void 
   getWasmModule().registerDeriveProvider(providerId, provider);
 }
 
+/**
+ * Register an extension's graph mutation for the active backend.
+ *
+ * - WASM: `handler` is `(graph, params) => graph`, over plain objects.
+ * - NAPI: `handler` is the extension's `MutationHandlerInfo` pointer, as a
+ *   BigInt from its native module; `name` is checked against it.
+ *
+ * `conformance` is WASM's; a native handler carries its own. As Python's
+ * `register_extension_mutation`.
+ */
+export function registerExtensionMutation(name: string, handler: any, conformance?: string): void {
+  if (_backend === 'napi') {
+    if (typeof handler !== 'bigint') {
+      throw new Error(`On the NAPI backend, register ${name} with its native module's pointer`);
+    }
+    const registered = getNapiModule().registerExtensionMutation(handler);
+    if (registered !== name) {
+      throw new Error(`Expected extension mutation ${name}, the native module provides ${registered}`);
+    }
+    return;
+  }
+  getWasmModule().registerExtensionMutation(name, handler, conformance);
+}
+
+/** Whether an extension mutation is registered under `name` on the active backend. */
+export function hasExtensionMutation(name: string): boolean {
+  const mod = _backend === 'napi' ? getNapiModule() : getWasmModule();
+  return mod.hasExtensionMutation(name);
+}
+
 /** Whether a derive provider is registered under `providerId` on the active backend. */
 export function hasDeriveProvider(providerId: string): boolean {
   const mod = _backend === 'napi' ? getNapiModule() : getWasmModule();

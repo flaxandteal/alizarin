@@ -286,4 +286,4 @@ export {
 };
 
 // Re-export extension registry function (delegates to backend).
-export { registerExtensionHandler, registerDeriveProvider, hasDeriveProvider } from "./backend";
+export { registerExtensionHandler, registerDeriveProvider, hasDeriveProvider, registerExtensionMutation, hasExtensionMutation } from "./backend";

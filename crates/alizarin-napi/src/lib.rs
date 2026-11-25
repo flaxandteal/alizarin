@@ -60,6 +60,55 @@ pub fn register_derive_provider(info_ptr: BigInt) -> Result<String> {
         .map_err(napi::Error::from_reason)
 }
 
+/// Register an extension's graph mutation from its raw `MutationHandlerInfo`
+/// pointer (as a `BigInt`), under the name it carries, which is returned. As
+/// WASM's `registerExtensionMutation` (a JS function) and Python's (a
+/// capsule, or a Python function).
+#[napi(js_name = "registerExtensionMutation")]
+pub fn register_extension_mutation(info_ptr: BigInt) -> Result<String> {
+    let ptr = info_ptr.get_u64().1 as *const alizarin_extension_api::MutationHandlerInfo;
+    // SAFETY: `ptr` is a `MutationHandlerInfo` from an extension's native
+    // module; core checks its ABI fingerprint before reading anything else.
+    unsafe { alizarin_core::mutation_abi::register_mutation_handler_from_ptr(ptr) }
+        .map_err(napi::Error::from_reason)
+}
+
+/// Unregister the extension mutation `name`; whether there was one. As on
+/// WASM and Python.
+#[napi(js_name = "unregisterExtensionMutation")]
+pub fn unregister_extension_mutation(name: String) -> bool {
+    alizarin_core::mutation_abi::unregister_extension_mutation(&name)
+}
+
+/// Whether an extension mutation is registered under `name`. As on WASM and
+/// Python.
+#[napi(js_name = "hasExtensionMutation")]
+pub fn has_extension_mutation(name: String) -> bool {
+    alizarin_core::mutation_abi::has_extension_mutation(&name)
+}
+
+/// The registered extension mutations' names, sorted. As WASM's, and
+/// Python's `list_extension_mutations`.
+#[napi(js_name = "getRegisteredExtensionMutations")]
+pub fn get_registered_extension_mutations() -> Vec<String> {
+    alizarin_core::mutation_abi::registered_extension_mutations()
+}
+
+/// Apply a mutation request to `graph` with the registered extension
+/// mutations, giving a new graph: core's, as on WASM and Python.
+#[napi(js_name = "applyMutationsWithExtensions")]
+pub fn apply_mutations_with_extensions(
+    graph: &NapiStaticGraph,
+    mutations_json: String,
+) -> Result<NapiStaticGraph> {
+    alizarin_core::mutation_abi::apply_mutations_with_registered_extensions(
+        &graph.inner,
+        &mutations_json,
+    )
+    .map(|inner| NapiStaticGraph { inner })
+    .map_err(napi::Error::from_reason)
+}
+
 /// Whether a derive provider is registered under `providerId`. As on WASM
 /// and Python.
 #[napi(js_name = "hasDeriveProvider")]

@@ -30,6 +30,7 @@ pub mod interner;
 pub mod json_conversion;
 pub mod label_resolution;
 pub mod loader;
+pub mod mutation_abi;
 pub mod node_config;
 pub mod ontology;
 pub mod path_resolution;

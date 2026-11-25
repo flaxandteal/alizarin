@@ -3,24 +3,24 @@
 //! This module exposes a simple JSON-based API for mutating graphs.
 
 use pyo3::prelude::*;
-use std::sync::{Arc, Mutex};
+use pyo3::types::PyCapsule;
+use std::sync::Arc;
 
 use alizarin_core::graph_mutator::{
     apply_mutations_create_from_json as core_apply_mutations_create,
     apply_mutations_from_json as core_apply_mutations,
-    apply_mutations_from_json_with_extensions as core_apply_mutations_with_ext,
     build_graph_from_instructions_json as core_build_from_instructions,
     build_graph_from_instructions_with_extensions, generate_uuid_v5 as core_generate_uuid,
     get_mutation_schema as core_get_schema, parse_instructions_from_csv, ExtensionMutationHandler,
-    ExtensionMutationRegistry, MutationConformance, MutationError, MutatorOptions,
+    MutationConformance, MutationError, MutatorOptions,
 };
+use alizarin_core::mutation_abi;
 use alizarin_core::ontology::OntologyValidator;
 use alizarin_core::StaticGraph as CoreStaticGraph;
 
-// Global extension mutation registry
-lazy_static::lazy_static! {
-    static ref EXTENSION_REGISTRY: Mutex<ExtensionMutationRegistry> =
-        Mutex::new(ExtensionMutationRegistry::new());
+/// A core error as a Python `RuntimeError`.
+fn runtime_error(e: String) -> PyErr {
+    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e)
 }
 
 /// Handler that calls a Python function for extension mutations
@@ -183,15 +183,8 @@ fn apply_mutations_with_extensions(graph_json: &str, mutations_json: &str) -> Py
     let graph = CoreStaticGraph::from_json_string(graph_json)
         .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
 
-    // Get registry
-    let registry = EXTENSION_REGISTRY.lock().map_err(|_| {
-        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-            "Failed to acquire extension registry lock",
-        )
-    })?;
-
-    // Apply mutations with extensions
-    let mutated = core_apply_mutations_with_ext(&graph, mutations_json, Some(&registry))
+    // Apply mutations with the registered extensions (core's registry, as NAPI's)
+    let mutated = mutation_abi::apply_mutations_with_registered_extensions(&graph, mutations_json)
         .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
 
     // Serialize result
@@ -203,7 +196,9 @@ fn apply_mutations_with_extensions(graph_json: &str, mutations_json: &str) -> Py
     })
 }
 
-/// Register a Python function as an extension mutation handler.
+/// Register an extension mutation handler: a Python function, or an
+/// extension's native handler as a capsule over its `MutationHandlerInfo`
+/// (as NAPI's `registerExtensionMutation` takes its pointer).
 ///
 /// The handler function should have the signature:
 ///     def handler(graph_json: str, params_json: str) -> str:
@@ -211,9 +206,11 @@ fn apply_mutations_with_extensions(graph_json: &str, mutations_json: &str) -> Py
 ///         # Return mutated graph as JSON string
 ///
 /// Args:
-///     name: The mutation name (e.g., "clm.reference_change_collection")
-///     handler: Python function to handle the mutation
-///     conformance: Conformance level ("AlwaysConformant", "BranchConformant", "ModelConformant")
+///     name: The mutation name (e.g., "clm.reference_change_collection"); a
+///         capsule's must be the name it carries
+///     handler: Python function to handle the mutation, or a capsule
+///     conformance: Conformance level ("AlwaysConformant", "BranchConformant",
+///         "ModelConformant"); a capsule carries its own
 ///
 /// Example:
 ///     def my_handler(graph_json: str, params_json: str) -> str:
@@ -232,6 +229,22 @@ fn register_extension_mutation(
     handler: PyObject,
     conformance: &str,
 ) -> PyResult<()> {
+    if let Ok(capsule) = handler.downcast_bound::<PyCapsule>(py) {
+        let ptr = capsule.pointer() as *const alizarin_extension_api::MutationHandlerInfo;
+        // SAFETY: ptr comes from PyCapsule::pointer(), set by the extension
+        // over its static MutationHandlerInfo; core checks the ABI
+        // fingerprint before reading anything else.
+        let registered = unsafe { mutation_abi::register_mutation_handler_from_ptr(ptr) }
+            .map_err(runtime_error)?;
+        if registered != name {
+            mutation_abi::unregister_extension_mutation(&registered);
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "the capsule's mutation is {registered}, not {name}"
+            )));
+        }
+        return Ok(());
+    }
+
     // Parse conformance level
     let conformance_level = match conformance {
         "AlwaysConformant" => MutationConformance::AlwaysConformant,
@@ -260,15 +273,14 @@ fn register_extension_mutation(
         conformance: conformance_level,
     };
 
-    // Register with global registry
-    let mut registry = EXTENSION_REGISTRY.lock().map_err(|_| {
-        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-            "Failed to acquire extension registry lock",
-        )
-    })?;
-
-    registry.register(name, Arc::new(py_handler));
+    mutation_abi::register_extension_mutation(name, Arc::new(py_handler));
     Ok(())
+}
+
+/// Unregister an extension mutation handler; whether there was one.
+#[pyfunction]
+fn unregister_extension_mutation(name: &str) -> bool {
+    mutation_abi::unregister_extension_mutation(name)
 }
 
 /// Check if an extension mutation handler is registered.
@@ -280,29 +292,17 @@ fn register_extension_mutation(
 ///     True if the handler is registered
 #[pyfunction]
 fn has_extension_mutation(name: &str) -> PyResult<bool> {
-    let registry = EXTENSION_REGISTRY.lock().map_err(|_| {
-        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-            "Failed to acquire extension registry lock",
-        )
-    })?;
-
-    Ok(registry.has(name))
+    Ok(mutation_abi::has_extension_mutation(name))
 }
 
 /// List all registered extension mutation names.
 ///
 /// Returns:
-///     List of registered mutation names
+///     List of registered mutation names, sorted
 #[pyfunction]
 #[pyo3(name = "list_extension_mutations")]
 fn get_registered_extension_mutations() -> PyResult<Vec<String>> {
-    let registry = EXTENSION_REGISTRY.lock().map_err(|_| {
-        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-            "Failed to acquire extension registry lock",
-        )
-    })?;
-
-    Ok(registry.list().into_iter().map(|s| s.to_string()).collect())
+    Ok(mutation_abi::registered_extension_mutations())
 }
 
 /// Apply mutations that may create a new graph.
@@ -423,21 +423,13 @@ fn build_graph_from_csv(
     let instructions = parse_instructions_from_csv(csv_text)
         .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
 
-    // Use extension registry if any extensions are registered
-    let registry = EXTENSION_REGISTRY.lock().map_err(|_| {
-        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-            "Failed to acquire extension registry lock",
-        )
-    })?;
-
-    let ext_registry = if registry.list().is_empty() {
-        None
-    } else {
-        Some(&*registry)
-    };
-
-    let graph = build_graph_from_instructions_with_extensions(instructions, options, ext_registry)
-        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
+    // Use the registered extension mutations, if there are any
+    let graph = mutation_abi::with_extension_mutations(|registry| {
+        let ext_registry = (!registry.list().is_empty()).then_some(registry);
+        build_graph_from_instructions_with_extensions(instructions, options, ext_registry)
+    })
+    .map_err(runtime_error)?
+    .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
 
     serde_json::to_string(&graph).map_err(|e| {
         PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
@@ -658,6 +650,7 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(apply_mutations_create, m)?)?;
     m.add_function(wrap_pyfunction!(apply_mutations_with_extensions, m)?)?;
     m.add_function(wrap_pyfunction!(register_extension_mutation, m)?)?;
+    m.add_function(wrap_pyfunction!(unregister_extension_mutation, m)?)?;
     m.add_function(wrap_pyfunction!(has_extension_mutation, m)?)?;
     m.add_function(wrap_pyfunction!(get_registered_extension_mutations, m)?)?;
     m.add_function(wrap_pyfunction!(generate_uuid_v5, m)?)?;

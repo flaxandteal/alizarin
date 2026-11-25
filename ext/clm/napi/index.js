@@ -310,9 +310,10 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { referenceHandlerPtr, setClmBaseUri, getClmBaseUri, clearClmBaseUri } = nativeBinding
+const { referenceHandlerPtr, referenceChangeCollectionPtr, setClmBaseUri, getClmBaseUri, clearClmBaseUri } = nativeBinding
 
 module.exports.referenceHandlerPtr = referenceHandlerPtr
+module.exports.referenceChangeCollectionPtr = referenceChangeCollectionPtr
 module.exports.setClmBaseUri = setClmBaseUri
 module.exports.getClmBaseUri = getClmBaseUri
 module.exports.clearClmBaseUri = clearClmBaseUri

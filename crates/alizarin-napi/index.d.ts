@@ -40,6 +40,33 @@ export declare function registerExtensionHandler(handlerPtr: bigint): string
  */
 export declare function registerDeriveProvider(infoPtr: bigint): string
 /**
+ * Register an extension's graph mutation from its raw `MutationHandlerInfo`
+ * pointer (as a `BigInt`), under the name it carries, which is returned. As
+ * WASM's `registerExtensionMutation` (a JS function) and Python's (a
+ * capsule, or a Python function).
+ */
+export declare function registerExtensionMutation(infoPtr: bigint): string
+/**
+ * Unregister the extension mutation `name`; whether there was one. As on
+ * WASM and Python.
+ */
+export declare function unregisterExtensionMutation(name: string): boolean
+/**
+ * Whether an extension mutation is registered under `name`. As on WASM and
+ * Python.
+ */
+export declare function hasExtensionMutation(name: string): boolean
+/**
+ * The registered extension mutations' names, sorted. As WASM's, and
+ * Python's `list_extension_mutations`.
+ */
+export declare function getRegisteredExtensionMutations(): Array<string>
+/**
+ * Apply a mutation request to `graph` with the registered extension
+ * mutations, giving a new graph: core's, as on WASM and Python.
+ */
+export declare function applyMutationsWithExtensions(graph: NapiStaticGraph, mutationsJson: string): NapiStaticGraph
+/**
  * Whether a derive provider is registered under `providerId`. As on WASM
  * and Python.
  */

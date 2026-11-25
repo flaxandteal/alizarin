@@ -16,6 +16,15 @@ pub fn reference_handler_ptr() -> BigInt {
     BigInt::from(ptr)
 }
 
+/// The `clm.reference_change_collection` mutation's `MutationHandlerInfo`
+/// pointer, as a `BigInt`. Pass to `registerExtensionMutation` from
+/// `@alizarin/napi`.
+#[napi(js_name = "referenceChangeCollectionPtr")]
+pub fn reference_change_collection_ptr() -> BigInt {
+    let ptr = alizarin_clm_core::c_abi::reference_change_collection_info() as usize as u64;
+    BigInt::from(ptr)
+}
+
 /// Set the base URI reference item URIs are built on, as Python's
 /// `set_clm_base_uri` does. It lives in this module, beside the handler that
 /// builds them.

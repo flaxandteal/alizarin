@@ -60,6 +60,20 @@ beforeAll(async () => {
   }
 });
 
+/** The record's graph (see `record`), as plain data. */
+function recordGraphJson(): any {
+  const mutator = new GraphMutator(createStaticGraph({ name: "Record", author: "Test" }));
+  const add = (mutator as any)._addGenericNode.bind(mutator);
+  add(null, "attachments", "Attachments", "1", "string", `${CRM}E31_Document`, `${CRM}P70i_is_documented_in`);
+  add(null, "kind", "Kind", "1", "string", `${CRM}E55_Type`, `${CRM}P2_has_type`);
+  const raw = JSON.parse(JSON.stringify(mutator.apply()));
+  const node = (alias: string) => raw.nodes.find((n: any) => n.alias === alias);
+  node("attachments").datatype = "file-list";
+  node("kind").datatype = "reference";
+  node("kind").config = { controlledList: LIST_ID, multiValue: true };
+  return raw;
+}
+
 /** A record with a file-list and a reference node, and a value in each. */
 async function record(kind: unknown = REFERENCE): Promise<any> {
   const mutator = new GraphMutator(createStaticGraph({ name: "Record", author: "Test" }));
@@ -159,6 +173,23 @@ describe(`extensions through the ORM [${getBackend()} backend]`, () => {
     expect(holder.getClmBaseUri()).toBe("https://lists.example.org/item/");
     holder.clearClmBaseUri();
     expect(holder.getClmBaseUri()).toBeNull();
+  });
+
+  test("clm's mutation points a reference node at another list", () => {
+    // Registered by importing the package: from clm's WASM build on WASM, its
+    // native handler on NAPI; the same Rust either way.
+    const native: any = getBackend() === 'napi' ? getNapiModule() : wasm;
+    expect(native.hasExtensionMutation("clm.reference_change_collection")).toBe(true);
+    const graph = parseStaticGraph(JSON.stringify({ graph: [recordGraphJson()] }));
+    // eslint-disable-next-line @typescript-eslint/naming-convention -- core's mutation variant
+    const request = { mutations: [{ Extension: {
+      name: "clm.reference_change_collection",
+      params: { subject: "kind", object: "new-list" },
+      conformance: "AlwaysConformant",
+    } }], options: {} };
+    const mutated = JSON.parse(JSON.stringify(native.applyMutationsWithExtensions(graph, JSON.stringify(request))));
+    const kind = mutated.nodes.find((n: any) => n.alias === "kind");
+    expect(kind.config).toEqual({ controlledList: "new-list", multiValue: true });
   });
 
   test("an edit is coerced by the handler before it is stored", async () => {

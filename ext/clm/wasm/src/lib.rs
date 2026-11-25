@@ -69,6 +69,21 @@ pub fn build_item_uri(item_id: &str) -> Result<String, JsError> {
     alizarin_clm_core::try_build_item_uri(item_id).map_err(|e| JsError::new(&e))
 }
 
+/// `clm.reference_change_collection` on `graph` (a StaticGraph's JSON):
+/// the mutated graph. The same Rust as the NAPI and Python handlers; JS
+/// registers it with `registerExtensionMutation`.
+#[wasm_bindgen(js_name = referenceChangeCollection)]
+pub fn reference_change_collection(graph: JsValue, params: JsValue) -> Result<JsValue, JsError> {
+    let mut graph: serde_json::Value = alizarin_extension_api::js_json::from_value(graph)
+        .map_err(|e| JsError::new(&format!("Failed to parse graph: {}", e)))?;
+    let params: serde_json::Value = alizarin_extension_api::js_json::from_value(params)
+        .map_err(|e| JsError::new(&format!("Failed to parse params: {}", e)))?;
+    alizarin_clm_core::mutation::reference_change_collection(&mut graph, &params)
+        .map_err(|e| JsError::new(&e))?;
+    alizarin_extension_api::js_json::to_value(&graph)
+        .map_err(|e| JsError::new(&format!("Failed to serialize graph: {}", e)))
+}
+
 /// Whether a reference node displays as a list (it is multi-valued).
 #[wasm_bindgen(js_name = referenceDisplayAsList)]
 pub fn reference_display_as_list(config: JsValue) -> bool {

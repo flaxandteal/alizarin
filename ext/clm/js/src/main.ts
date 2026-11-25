@@ -1,4 +1,4 @@
-import { RDM, nodeConfig, utils, viewModels, registerExtensionHandler, registerResolvableDatatype, wasmReady } from "alizarin";
+import { RDM, nodeConfig, utils, viewModels, registerExtensionHandler, registerExtensionMutation, registerResolvableDatatype, wasmReady, getBackend } from "alizarin";
 import type { interfaces, staticTypes } from "alizarin";
 import {
   initSync,
@@ -6,6 +6,7 @@ import {
   referenceNodeConfig,
   referenceDisplayAsList,
   buildItemUri,
+  referenceChangeCollection,
   setClmBaseUri as setWasmClmBaseUri,
   getClmBaseUri as getWasmClmBaseUri,
   clearClmBaseUri as clearWasmClmBaseUri,
@@ -146,6 +147,15 @@ wasmReady.then(() => {
     nodeConfig: (config: unknown) => referenceNodeConfig(config),
     displayAsList: (config: unknown) => referenceDisplayAsList(config),
   });
+  // Pointing a reference node at another list: the same Rust as the native
+  // mutation, which @alizarin/clm-napi registers on the NAPI backend.
+  if (getBackend() !== "napi") {
+    registerExtensionMutation(
+      "clm.reference_change_collection",
+      (graph: unknown, params: unknown) => referenceChangeCollection(graph, params),
+      "AlwaysConformant",
+    );
+  }
 });
 
 /**

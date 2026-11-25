@@ -253,14 +253,14 @@ pub fn unregister_extension_mutation(name: &str) {
     });
 }
 
-/// Get the list of registered extension mutation names.
+/// Get the list of registered extension mutation names, sorted (as on NAPI
+/// and Python).
 #[wasm_bindgen(js_name = getRegisteredExtensionMutations)]
 pub fn get_registered_extension_mutations() -> js_sys::Array {
     JS_MUTATION_HANDLERS.with(|handlers| {
-        let handlers = handlers.borrow();
         let arr = js_sys::Array::new();
-        for name in handlers.keys() {
-            arr.push(&JsValue::from_str(name));
+        for name in alizarin_core::sorted_serde::sorted_keys(handlers.borrow().keys()) {
+            arr.push(&JsValue::from_str(&name));
         }
         arr
     })

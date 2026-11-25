@@ -344,3 +344,46 @@ pub fn reference_handler_type_info() -> *const TypeHandlerInfo {
             .expect("HANDLER_INFO initialised in Once::call_once") as *const TypeHandlerInfo
     }
 }
+
+// =========================================================================
+// The reference_change_collection mutation
+// =========================================================================
+
+/// `clm.reference_change_collection`'s handler fn: the extension API's glue
+/// around [`crate::mutation::ReferenceChangeCollection`].
+///
+/// # Safety
+/// Called by the host with a `MutationHandlerFn`'s arguments, live for the call.
+unsafe extern "C" fn reference_change_collection(
+    graph_ptr: *const u8,
+    graph_len: usize,
+    params_ptr: *const u8,
+    params_len: usize,
+    output_ptr: *mut *mut u8,
+    output_len: *mut usize,
+) -> alizarin_extension_api::MutationResult {
+    alizarin_extension_api::mutate_with(
+        &crate::mutation::ReferenceChangeCollection,
+        graph_ptr,
+        graph_len,
+        params_ptr,
+        params_len,
+        output_ptr,
+        output_len,
+    )
+}
+
+/// Pointer to the process-static `MutationHandlerInfo` for
+/// `clm.reference_change_collection`. A binding hands this to the host's
+/// `registerExtensionMutation`: Python via `PyCapsule`, NAPI via a `BigInt`.
+pub fn reference_change_collection_info() -> *const alizarin_extension_api::MutationHandlerInfo {
+    static INFO: std::sync::OnceLock<alizarin_extension_api::MutationHandlerInfo> =
+        std::sync::OnceLock::new();
+    INFO.get_or_init(|| {
+        alizarin_extension_api::mutation_handler_info(
+            crate::mutation::REFERENCE_CHANGE_COLLECTION,
+            reference_change_collection,
+            alizarin_extension_api::MutationConformanceLevel::AlwaysConformant,
+        )
+    })
+}

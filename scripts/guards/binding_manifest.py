@@ -97,7 +97,8 @@ FUNCTION_RENAMES = {
                                            "python": "add_collection_to_global_cache"},
     "add_to_global_rdm_cache_from_skos_xml": {"wasm": "addToGlobalRdmCacheFromSkosXml", "napi": "addToGlobalRdmCacheFromSkosXml",
                                               "python": "add_from_skos_xml_to_global_cache"},
-    "get_registered_extension_mutations": {"wasm": "getRegisteredExtensionMutations", "python": "list_extension_mutations"},
+    "get_registered_extension_mutations": {"wasm": "getRegisteredExtensionMutations", "napi": "getRegisteredExtensionMutations",
+                                           "python": "list_extension_mutations"},
 }
 
 ECO_FS = "ecosystem: reads or writes the filesystem, which WASM has not"

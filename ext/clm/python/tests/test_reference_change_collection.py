@@ -17,49 +17,19 @@ TEST_DATA_DIR = Path(__file__).parent / "data"
 
 def reference_change_collection_handler(graph_json: str, params_json: str) -> str:
     """
-    Python implementation of the reference_change_collection mutation.
-
-    This handler modifies a reference node's controlledList config.
-
-    Args:
-        graph_json: The graph as JSON string
-        params_json: Mutation parameters as JSON string
-            - node_id: Node ID or alias to modify
-            - collection_id: New collection ID
-            - config_key: Config key to update (default: "controlledList")
-
-    Returns:
-        Modified graph as JSON string
+    Apply clm.reference_change_collection as alizarin does: the native
+    mutation alizarin_clm registers on import (alizarin-clm-core's, the same
+    on NAPI and WASM).
     """
-    graph = json.loads(graph_json)
-    params = json.loads(params_json)
+    import alizarin
+    import alizarin_clm  # noqa: F401 - registers the mutation
 
-    node_id = params.get("subject") or params["node_id"]
-    collection_id = params.get("object") or params["collection_id"]
-    config_key = params.get("config_key", "controlledList")
-
-    # Find node by ID or alias
-    target_node = None
-    for node in graph["nodes"]:
-        if node.get("nodeid") == node_id or node.get("alias") == node_id:
-            target_node = node
-            break
-
-    if target_node is None:
-        raise ValueError(f"Node not found: {node_id}")
-
-    # Validate it's a reference type
-    if target_node["datatype"] not in ("reference", "reference-list"):
-        raise ValueError(
-            f"Node {node_id} is not a reference type: {target_node['datatype']}"
-        )
-
-    # Update config
-    if "config" not in target_node or target_node["config"] is None:
-        target_node["config"] = {}
-    target_node["config"][config_key] = collection_id
-
-    return json.dumps(graph)
+    request = {"mutations": [{"Extension": {
+        "name": "clm.reference_change_collection",
+        "params": json.loads(params_json),
+        "conformance": "AlwaysConformant",
+    }}], "options": {}}
+    return alizarin.apply_mutations_with_extensions(graph_json, json.dumps(request))
 
 
 class TestReferenceChangeCollectionMutation:
@@ -335,16 +305,9 @@ class TestIntegrationWithAlizarin:
         3. Verify the collection was updated
         """
         import alizarin
+        import alizarin_clm  # noqa: F401 - registers the mutation
 
-        # Check if extension mutation functions are available
-        # Step 1: Register the CLM mutation handler
-        alizarin.register_extension_mutation(
-            "clm.reference_change_collection",
-            reference_change_collection_handler,
-            "AlwaysConformant",
-        )
-
-        # Verify registration
+        # Step 1: importing alizarin_clm registered the native handler
         assert alizarin.has_extension_mutation("clm.reference_change_collection")
         assert "clm.reference_change_collection" in alizarin.list_extension_mutations()
 
@@ -392,14 +355,7 @@ class TestIntegrationWithAlizarin:
         2. Change its collection using the CLM extension mutation
         """
         import alizarin
-
-        # Ensure handler is registered
-        if not alizarin.has_extension_mutation("clm.reference_change_collection"):
-            alizarin.register_extension_mutation(
-                "clm.reference_change_collection",
-                reference_change_collection_handler,
-                "AlwaysConformant",
-            )
+        import alizarin_clm  # noqa: F401 - registers the mutation
 
         # Step 1: Add a new reference node using standard AddNode mutation
         add_node_mutation = {
@@ -577,15 +533,7 @@ class TestEndToEndWorkflow:
         3. The tiles are created successfully
         """
         import alizarin
-        import alizarin_clm  # noqa: F401
-
-        # Ensure handler is registered
-        if not alizarin.has_extension_mutation("clm.reference_change_collection"):
-            alizarin.register_extension_mutation(
-                "clm.reference_change_collection",
-                reference_change_collection_handler,
-                "AlwaysConformant",
-            )
+        import alizarin_clm  # noqa: F401 - registers the mutation
 
         # Step 1: Change the collection for the 'test' reference node
         new_collection_id = "updated-test-collection"

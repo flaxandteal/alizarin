@@ -12,7 +12,7 @@ import * as utils from "./utils";
 import * as viewModels from "./viewModels";
 import * as renderers from "./renderers";
 import * as nodeConfig from "./nodeConfig";
-import { initWasm, setWasmURL, ensureWasmRdmCache, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, registerExtensionHandler, registerDeriveProvider, hasDeriveProvider } from "./_wasm";
+import { initWasm, setWasmURL, ensureWasmRdmCache, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, registerExtensionHandler, registerDeriveProvider, hasDeriveProvider, registerExtensionMutation, hasExtensionMutation } from "./_wasm";
 import { setBackend, setNapiModule, setWasmModule, getBackend, autoDetectBackend, createResourceRegistry, getMemoryUsage, formatMemoryUsage, parseStaticGraph, foldMayMatch, setRdmNamespace, getRdmNamespaceRaw, tilesToTree, cardsToTree, batchTilesToTrees, compareNodes, treeToTiles, batchTreesToTiles, mergeResources, batchMergeResources } from "./backend";
 import type { BackendType, MemoryUsage, RegistryStats } from "./backend";
 import { resetTimingStats, getTimingStats, logTimingStats } from "./semantic";
@@ -123,6 +123,9 @@ export {
   // Derive providers from extensions (UTM, Gramadán, ...)
   registerDeriveProvider,
   hasDeriveProvider,
+  // Graph mutations from extensions (clm.reference_change_collection, ...)
+  registerExtensionMutation,
+  hasExtensionMutation,
   // Fold summaries: can a summary's values match a predicate? (pruning)
   foldMayMatch,
   // Backend selection (WASM vs NAPI)
