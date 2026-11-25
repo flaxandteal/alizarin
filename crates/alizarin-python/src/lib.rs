@@ -480,6 +480,7 @@ fn batch_trees_to_row_sink(
             &opts,
             ext_registry.as_ref(),
             None,
+            &alizarin_core::get_current_language(),
             ptr,
         )
     }

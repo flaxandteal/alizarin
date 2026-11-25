@@ -84,7 +84,8 @@ unsafe fn write_resource(
 }
 
 /// Convert a JSON array of trees as `batch_trees_to_tiles_from_json` does,
-/// then hand every converted tile and resource to `sink`, in order.
+/// then hand every converted tile and resource to `sink`, in order, each
+/// resource row carrying `language` (the binding's current language).
 ///
 /// # Safety
 /// `sink` must point to a valid [`RowSinkInfo`] whose fn pointers and `ctx`
@@ -96,6 +97,7 @@ pub unsafe fn batch_trees_to_row_sink_from_json(
     opts: &BatchOptions,
     ext_registry: Option<&ExtensionTypeRegistry>,
     cache: Option<Arc<crate::RdmCache>>,
+    language: &str,
     sink: *const RowSinkInfo,
 ) -> Result<RowSinkBatch, String> {
     if sink.is_null() {
@@ -116,10 +118,9 @@ pub unsafe fn batch_trees_to_row_sink_from_json(
     let lookup = labels.as_ref().map(|(a, c)| (a, c.as_ref()));
     let outcome = batch_convert_trees(&trees, graph, ext_registry, lookup, opts)?;
 
-    let language = crate::get_current_language();
     let mut tile_count = 0;
     for resource in &outcome.resources {
-        tile_count += write_resource(sink, resource, &language)?;
+        tile_count += write_resource(sink, resource, language)?;
     }
     Ok(RowSinkBatch {
         resource_count: outcome.resources.len(),
@@ -206,7 +207,7 @@ mod tests {
         let mut out = Collected::default();
         let info = sink(&mut out);
         let batch = unsafe {
-            batch_trees_to_row_sink_from_json(trees, &graph, &opts(&graph), None, None, &info)
+            batch_trees_to_row_sink_from_json(trees, &graph, &opts(&graph), None, None, "ga", &info)
         }
         .unwrap();
 
@@ -218,7 +219,7 @@ mod tests {
         assert!(out.tiles.iter().any(|t| t.2.contains("Test Group")));
         assert_eq!(out.resources.len(), 1);
         assert_eq!(out.resources[0].0, "11111111-1111-1111-1111-111111111111");
-        assert_eq!(out.resources[0].3, crate::get_current_language());
+        assert_eq!(out.resources[0].3, "ga");
     }
 
     #[test]
@@ -228,7 +229,7 @@ mod tests {
         let mut info = sink(&mut out);
         info.abi.version += 1;
         let err = unsafe {
-            batch_trees_to_row_sink_from_json("[]", &graph, &opts(&graph), None, None, &info)
+            batch_trees_to_row_sink_from_json("[]", &graph, &opts(&graph), None, None, "en", &info)
         }
         .unwrap_err();
         assert!(err.contains("ABI mismatch"), "{err}");
