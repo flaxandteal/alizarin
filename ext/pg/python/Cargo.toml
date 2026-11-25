@@ -5,7 +5,10 @@ edition = "2021"
 description = "PostgreSQL COPY format extension for Alizarin"
 
 [lib]
-name = "_rust"
+# Not `_rust`: every ext's library is uplifted into the shared target/ under
+# its lib name, so a shared name lets one ext's build hand maturin another's.
+# pyproject.toml's module-name installs it as alizarin_pg._rust.
+name = "alizarin_pg_rust"
 crate-type = ["cdylib", "rlib"]
 
 [features]
