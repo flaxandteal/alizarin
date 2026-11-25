@@ -8,12 +8,13 @@
 //! When the `mutations` feature is enabled, this crate also provides:
 //! - `ReferenceChangeCollectionHandler` - mutation to change a reference node's collection
 
-// Re-export core types so downstream users don't need to depend on alizarin-clm-core directly
+// Re-export core types so downstream users don't need to depend on alizarin-clm-core
+// directly. Not its in-process handler: that needs alizarin-core, which this module
+// doesn't link.
 pub use alizarin_clm_core::{
     build_item_uri, build_static_reference_from_concept, clear_clm_base_uri,
-    coerce_reference_value, create_reference_handler, get_clm_base_uri,
-    render_reference_display_value, set_clm_base_uri, try_build_item_uri, ReferenceNodeConfig,
-    ReferenceTypeHandler, StaticReference, StaticReferenceLabel, DATATYPE_NAME,
+    coerce_reference_value, get_clm_base_uri, render_reference_display_value, set_clm_base_uri,
+    try_build_item_uri, ReferenceNodeConfig, StaticReference, StaticReferenceLabel, DATATYPE_NAME,
 };
 
 // Re-export mutation types when feature is enabled

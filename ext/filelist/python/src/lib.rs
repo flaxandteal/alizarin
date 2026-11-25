@@ -3,11 +3,12 @@
 //! This extension provides the "file-list" datatype handler for file attachments
 //! in Arches. It handles coercion and display rendering of file list values.
 
-// Re-export core types so downstream users don't need to depend on alizarin-filelist-core directly
+// Re-export core types so downstream users don't need to depend on alizarin-filelist-core
+// directly. Not its in-process handler: that needs alizarin-core, which this module
+// doesn't link.
 pub use alizarin_filelist_core::{
-    coerce_filelist_value, coerce_single_file, create_filelist_handler,
-    render_filelist_display_value, FileListItem, FileListTypeHandler, LocalizedString,
-    LocalizedStringValue, DATATYPE_NAME,
+    coerce_filelist_value, coerce_single_file, render_filelist_display_value, FileListItem,
+    LocalizedString, LocalizedStringValue, DATATYPE_NAME,
 };
 
 // =============================================================================

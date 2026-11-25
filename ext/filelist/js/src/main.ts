@@ -180,6 +180,20 @@ wasmReady.then(() => {
   });
 });
 
+// Also register for the NAPI backend, when it is in use and the native ext
+// (@alizarin/filelist-napi) is installed. Both are OPTIONAL peers: a
+// WASM/browser consumer has neither, so the import fails and this is skipped.
+// Importing the ext registers its handler with @alizarin/napi (its
+// register.js), as @alizarin/clm and @alizarin/geo do theirs.
+(async () => {
+  try {
+    const extPkg = "@alizarin/filelist-napi";
+    await import(extPkg);
+  } catch {
+    // Not using the napi backend, or the native ext isn't installed — nothing to do.
+  }
+})();
+
 // =============================================================================
 // View Models
 // =============================================================================

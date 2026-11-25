@@ -7,7 +7,7 @@
 // once per batch of values, so folding geometry here suits occasional, build-time
 // use rather than a per-view hot path.
 // NAPI backend: wired via the optional @alizarin/geo-napi native peer, if present.
-import { registerExtensionHandler, registerDeriveProvider, wasmReady } from "alizarin";
+import { registerExtensionHandler, registerDeriveProvider, wasmReady, getBackend } from "alizarin";
 import {
   initSync,
   utmDerive,
@@ -21,7 +21,12 @@ import {
 import wasmBytes from "../../wasm/pkg/alizarin_geo_wasm_bg.wasm";
 
 // Register the geojson handler for the WASM backend once the core WASM is ready.
+// On the NAPI backend the native ext registers both (below): a JS derive
+// provider is refused there.
 wasmReady.then(() => {
+  if (getBackend() === "napi") {
+    return;
+  }
   initSync(wasmBytes);
   registerExtensionHandler("geojson-feature-collection", {
     validate: (value: unknown, _config: unknown) => validateGeojson(value),
@@ -41,18 +46,13 @@ wasmReady.then(() => {
 
 // Also register for the NAPI backend, when it is in use and the native ext
 // (@alizarin/geo-napi) is installed. Both are OPTIONAL peers: a WASM/browser
-// consumer has neither, so the imports fail and this is skipped.
+// consumer has neither, so the import fails and this is skipped. Importing the
+// ext registers its handler and UTM provider with @alizarin/napi (its
+// register.js).
 (async () => {
   try {
-    const napiPkg = "@alizarin/napi";
     const extPkg = "@alizarin/geo-napi";
-    const napi = await import(napiPkg) as {
-      registerExtensionHandler(ptr: bigint): unknown;
-      registerDeriveProvider(ptr: bigint): string;
-    };
-    const ext = await import(extPkg) as { geoHandlerPtr(): bigint; utmDeriveProviderPtr(): bigint };
-    napi.registerExtensionHandler(ext.geoHandlerPtr());
-    napi.registerDeriveProvider(ext.utmDeriveProviderPtr());
+    await import(extPkg);
   } catch {
     // Not using the napi backend, or the native ext isn't installed — nothing to do.
   }

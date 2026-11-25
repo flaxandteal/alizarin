@@ -9,7 +9,8 @@ description = "NAPI binding for the Alizarin geo (geojson-feature-collection) ex
 crate-type = ["cdylib"]
 
 [dependencies]
-alizarin-geo-core = { path = "../core" }
+# Its C ABI only: no alizarin-core (see notes/extension-interface-split.md).
+alizarin-geo-core = { path = "../core", default-features = false }
 napi = { version = "2", features = ["napi6"] }
 napi-derive = "2"
 

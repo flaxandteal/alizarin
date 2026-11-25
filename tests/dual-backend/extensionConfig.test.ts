@@ -18,9 +18,8 @@ const SINGLE = { nodeid: '46f25cdc-b6c7-11ea-a6f4-f875a44e0e11', datatype: 'refe
 
 beforeAll(async () => {
   if (getBackend() === 'napi') {
-    // As @alizarin/clm-napi does on import: hand CLM's native handler to the host.
-    const clmNapi = createRequire(import.meta.url)('../../ext/clm/napi/index.js');
-    getNapiModule().registerExtensionHandler(clmNapi.referenceHandlerPtr());
+    // What importing @alizarin/clm-napi does, against this host.
+    createRequire(import.meta.url)('../../ext/clm/napi/registration.js').register(getNapiModule());
   } else {
     // As @alizarin/clm does: register its WASM build's functions as the handler.
     const clm = await import('../../ext/clm/wasm/pkg/alizarin_clm_wasm');

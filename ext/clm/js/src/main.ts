@@ -5,6 +5,10 @@ import {
   renderReferenceDisplay,
   referenceNodeConfig,
   referenceDisplayAsList,
+  buildItemUri,
+  setClmBaseUri as setWasmClmBaseUri,
+  getClmBaseUri as getWasmClmBaseUri,
+  clearClmBaseUri as clearWasmClmBaseUri,
 } from "../../wasm/pkg/alizarin_clm_wasm";
 import wasmBytes from "../../wasm/pkg/alizarin_clm_wasm_bg.wasm";
 type IPseudo = interfaces.IPseudo;
@@ -56,9 +60,52 @@ function getReferenceValueFromCollection(collection: any, conceptId: string): St
   return {
     labels,
     list_id: collection.id,
-    uri: concept.source || `http://localhost:8000/plugins/controlled-list-manager/item/${concept.id}`,
+    // Its own URI, or one built on the base URI by clm's Rust, as on every backend.
+    uri: concept.source || (initClmWasm(), buildItemUri(concept.id)),
     id: concept.id
   };
+}
+
+// =============================================================================
+// The clm WASM module, and its base URI
+// =============================================================================
+
+let clmWasmReady = false;
+
+/** Initialise the clm WASM module (bytes inlined by vite at build time), once. */
+function initClmWasm(): void {
+  if (!clmWasmReady) {
+    initSync(wasmBytes);
+    clmWasmReady = true;
+  }
+}
+
+/** The NAPI ext, when that backend is in use (see the end of this module). */
+let napiExt: { setClmBaseUri(uri: string): void; clearClmBaseUri(): void } | null = null;
+
+/**
+ * Set the base URI reference item URIs are built on, e.g. Arches'
+ * `PUBLIC_SERVER_ADDRESS` + `plugins/controlled-list-manager/item/`: for the
+ * view models here and, on the NAPI backend, for core's marker resolution. As
+ * Python's `alizarin_clm.set_clm_base_uri`.
+ */
+function setClmBaseUri(uri: string): void {
+  initClmWasm();
+  setWasmClmBaseUri(uri);
+  napiExt?.setClmBaseUri(uri);
+}
+
+/** The base URI set with {@link setClmBaseUri}, or null. */
+function getClmBaseUri(): string | null {
+  initClmWasm();
+  return getWasmClmBaseUri() ?? null;
+}
+
+/** Clear the base URI, back to clm's default. */
+function clearClmBaseUri(): void {
+  initClmWasm();
+  clearWasmClmBaseUri();
+  napiExt?.clearClmBaseUri();
 }
 
 /**
@@ -84,8 +131,7 @@ function getReferenceValueByLabelFromCollection(collection: any, label: string):
 
 // Register extension handlers after WASM is ready
 wasmReady.then(() => {
-  // Initialize the clm WASM module (bytes inlined by vite at build time).
-  initSync(wasmBytes);
+  initClmWasm();
 
   // The 'reference' datatype handles both single and multi-value references
   // (the latter is configured via the node's `multiValue` config flag). There is
@@ -626,23 +672,27 @@ viewModels.CUSTOM_DATATYPES.set("reference", ReferenceMergedDataType);
 // alias-to-collection mapping, so resolveLabels resolves reference labels.
 registerResolvableDatatype("reference");
 
-// Also register the reference handler for the NAPI backend, when it is in use and
-// the native ext (@alizarin/clm-napi) is installed. Both are OPTIONAL peers: a
-// WASM/browser consumer has neither, so the imports fail and this is skipped —
-// no native binary is pulled. A napi consumer adds @alizarin/clm-napi to its deps
-// and this wires it up, so `import '@alizarin/clm'` covers both backends.
+// Also register with the NAPI backend, when it is in use and the native ext
+// (@alizarin/clm-napi) is installed. Both are OPTIONAL peers: a WASM/browser
+// consumer has neither, so the import fails and this is skipped — no native
+// binary is pulled. A napi consumer adds @alizarin/clm-napi to its deps, whose
+// import registers it with @alizarin/napi (its register.js), so
+// `import '@alizarin/clm'` covers both backends.
 (async () => {
   try {
-    // Variable specifiers so the bundler/tsc don't try to resolve these optional
-    // peers at build time — they're loaded (and typed `any`) only at runtime.
-    const napiPkg = "@alizarin/napi";
+    // A variable specifier so the bundler/tsc don't try to resolve this optional
+    // peer at build time — it's loaded (and typed `any`) only at runtime.
     const extPkg = "@alizarin/clm-napi";
-    const napi = await import(napiPkg) as { registerExtensionHandler(ptr: bigint): unknown };
-    const ext = await import(extPkg) as { referenceHandlerPtr(): bigint };
-    napi.registerExtensionHandler(ext.referenceHandlerPtr());
+    const ext = await import(extPkg);
+    napiExt = ext;
+    // A base URI set before the ext loaded applies to it too.
+    const base = getClmBaseUri();
+    if (base !== null) {
+      ext.setClmBaseUri(base);
+    }
   } catch {
     // Not using the napi backend, or the native ext isn't installed — nothing to do.
   }
 })();
 
-export { StaticNodeConfigReference };
+export { StaticNodeConfigReference, setClmBaseUri, getClmBaseUri, clearClmBaseUri };

@@ -12,4 +12,15 @@ declare class StaticNodeConfigReference implements interfaces.INodeConfig {
     get multiValue(): boolean;
     getCollectionId(): string | undefined;
 }
-export { StaticNodeConfigReference };
+/**
+ * Set the base URI reference item URIs are built on, e.g. Arches'
+ * `PUBLIC_SERVER_ADDRESS` + `plugins/controlled-list-manager/item/`: for the
+ * view models here and, on the NAPI backend, for core's marker resolution. As
+ * Python's `alizarin_clm.set_clm_base_uri`.
+ */
+declare function setClmBaseUri(uri: string): void;
+/** The base URI set with {@link setClmBaseUri}, or null. */
+declare function getClmBaseUri(): string | null;
+/** Clear the base URI, back to clm's default. */
+declare function clearClmBaseUri(): void;
+export { StaticNodeConfigReference, setClmBaseUri, getClmBaseUri, clearClmBaseUri };

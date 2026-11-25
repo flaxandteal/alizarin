@@ -42,6 +42,33 @@ pub fn reference_node_config(config: JsValue) -> Result<JsValue, JsError> {
         .map_err(|e| JsError::new(&format!("Failed to serialize node config: {}", e)))
 }
 
+/// Set the base URI reference item URIs are built on, as Python's
+/// `set_clm_base_uri` does (e.g. Arches' `PUBLIC_SERVER_ADDRESS` +
+/// `plugins/controlled-list-manager/item/`).
+#[wasm_bindgen(js_name = setClmBaseUri)]
+pub fn set_clm_base_uri(uri: &str) {
+    alizarin_clm_core::set_clm_base_uri(uri);
+}
+
+/// The base URI set with `setClmBaseUri`, or null.
+#[wasm_bindgen(js_name = getClmBaseUri, unchecked_return_type = "string | null")]
+pub fn get_clm_base_uri() -> JsValue {
+    alizarin_extension_api::js_json::or_null(alizarin_clm_core::get_clm_base_uri())
+}
+
+/// Clear the base URI, back to clm's default.
+#[wasm_bindgen(js_name = clearClmBaseUri)]
+pub fn clear_clm_base_uri() {
+    alizarin_clm_core::clear_clm_base_uri();
+}
+
+/// The URI of the list item `itemId` (a UUID), on the base URI: what a
+/// reference gets when its concept has no URI of its own.
+#[wasm_bindgen(js_name = buildItemUri)]
+pub fn build_item_uri(item_id: &str) -> Result<String, JsError> {
+    alizarin_clm_core::try_build_item_uri(item_id).map_err(|e| JsError::new(&e))
+}
+
 /// Whether a reference node displays as a list (it is multi-valued).
 #[wasm_bindgen(js_name = referenceDisplayAsList)]
 pub fn reference_display_as_list(config: JsValue) -> bool {

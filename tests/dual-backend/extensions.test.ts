@@ -25,7 +25,8 @@ import * as wasm from '../../pkg/alizarin';
 import { ResourceModelWrapper, GraphMutator } from '../../js/graphManager';
 import type { ResourceInstanceWrapper } from '../../js/graphManager';
 import { ResourceInstanceViewModel } from '../../js/viewModels/ResourceInstanceViewModel';
-import { createStaticGraph } from '../../js/static-types';
+import { createStaticGraph, StaticCollection, StaticConcept } from '../../js/static-types';
+import { RDM } from '../../js/rdm';
 import { nodeConfigManager } from '../../js/nodeConfig';
 
 const CRM = "http://www.cidoc-crm.org/cidoc-crm/";
@@ -51,16 +52,16 @@ beforeAll(async () => {
   await import('../../ext/clm/js/src/main');
   await import('../../ext/filelist/js/src/main');
   if (getBackend() === 'napi') {
-    // As @alizarin/clm-napi's and @alizarin/filelist-napi's register.js do.
+    // What importing @alizarin/clm-napi and @alizarin/filelist-napi does,
+    // against this host.
     const require = createRequire(import.meta.url);
-    const napi = getNapiModule();
-    napi.registerExtensionHandler(require('../../ext/clm/napi/index.js').referenceHandlerPtr());
-    napi.registerExtensionHandler(require('../../ext/filelist/napi/index.js').fileListHandlerPtr());
+    require('../../ext/clm/napi/registration.js').register(getNapiModule());
+    require('../../ext/filelist/napi/registration.js').register(getNapiModule());
   }
 });
 
 /** A record with a file-list and a reference node, and a value in each. */
-async function record(): Promise<any> {
+async function record(kind: unknown = REFERENCE): Promise<any> {
   const mutator = new GraphMutator(createStaticGraph({ name: "Record", author: "Test" }));
   const add = (mutator as any)._addGenericNode.bind(mutator);
   // Added as strings, then given their datatypes: JS has no widget registry
@@ -97,7 +98,7 @@ async function record(): Promise<any> {
           descriptors: { name: "Record", description: "", map_popup: "", slug: "record" },
           graph_id: graph.graphid, legacyid: null, name: "Record", resourceinstanceid: RESOURCE_ID,
         },
-        tiles: [tile("attachments", FILES), tile("kind", REFERENCE)],
+        tiles: [tile("attachments", FILES), tile("kind", kind)],
         tiles_loaded: true,
       }],
     },
@@ -126,6 +127,38 @@ describe(`extensions through the ORM [${getBackend()} backend]`, () => {
     const display = await asset.forDisplayJson(true, "en");
     // A multi-value reference displays as a list (clm's displayAsList).
     expect(display.root).toEqual({ attachments: "file1.pdf, file2.jpg", kind: ["Item 1>1"] });
+  });
+
+  test("a reference's URI is built on the base URI set through @alizarin/clm", async () => {
+    // A concept with no stored URI, looked up from a bare id: its URI is built,
+    // on the base set here, by clm's Rust (as Python's set_clm_base_uri sets it).
+    const clm: any = await import('../../ext/clm/js/src/main');
+    const collection = StaticCollection.fromConceptScheme({
+      collectionid: LIST_ID, name: "Kinds",
+      conceptScheme: StaticConcept.fromValue(null, "Kinds", ["Bowl"]),
+    });
+    RDM.addCollection(collection);
+    const bowl = Object.keys((collection as any).__allConcepts).find(
+      (id) => (collection as any).__allConcepts[id].prefLabels?.en?.value === "Bowl",
+    )!;
+    clm.setClmBaseUri("https://lists.example.org/item/");
+    try {
+      expect(clm.getClmBaseUri()).toBe("https://lists.example.org/item/");
+      const asset = await record([bowl]);
+      const [kind] = [...(await asset.kind)];
+      expect((await kind.getValue()).uri).toBe(`https://lists.example.org/item/${bowl}`);
+    } finally {
+      clm.clearClmBaseUri();
+    }
+    // What keeps it for core's marker resolution: on NAPI the native ext (which
+    // @alizarin/clm forwards to once it has loaded it), on WASM clm's WASM build.
+    const holder = getBackend() === 'napi'
+      ? createRequire(import.meta.url)('../../ext/clm/napi/registration.js').binding
+      : clm;
+    holder.setClmBaseUri("https://lists.example.org/item/");
+    expect(holder.getClmBaseUri()).toBe("https://lists.example.org/item/");
+    holder.clearClmBaseUri();
+    expect(holder.getClmBaseUri()).toBeNull();
   });
 
   test("an edit is coerced by the handler before it is stored", async () => {

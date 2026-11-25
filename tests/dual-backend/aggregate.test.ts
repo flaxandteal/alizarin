@@ -30,10 +30,9 @@ import ExpectedGeo from "../data/aggregate/expected_geo_tiles.json";
 
 beforeAll(async () => {
   if (getBackend() === 'napi') {
-    // As @alizarin/geo-napi does on import: hand geo's native handler (validate +
-    // fold, over the C ABI) to the host.
-    const geoNapi = createRequire(import.meta.url)('../../ext/geo/napi/index.js');
-    getNapiModule().registerExtensionHandler(geoNapi.geoHandlerPtr());
+    // What importing @alizarin/geo-napi does, against this host: geo's native
+    // handler (validate + fold, over the C ABI) among it.
+    createRequire(import.meta.url)('../../ext/geo/napi/registration.js').register(getNapiModule());
   } else {
     // As @alizarin/geo does: register its WASM build's fold as the handler's.
     const geo = await import('../../ext/geo/wasm/pkg/alizarin_geo_wasm');

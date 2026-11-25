@@ -8,3 +8,13 @@
  * `registerExtensionHandler` from `@alizarin/napi`.
  */
 export declare function referenceHandlerPtr(): bigint
+/**
+ * Set the base URI reference item URIs are built on, as Python's
+ * `set_clm_base_uri` does. It lives in this module, beside the handler that
+ * builds them.
+ */
+export declare function setClmBaseUri(uri: string): void
+/** The base URI set with `setClmBaseUri`, or null. */
+export declare function getClmBaseUri(): string | null
+/** Clear the base URI, back to clm's default. */
+export declare function clearClmBaseUri(): void

@@ -7,9 +7,8 @@
 //   const alizarin = require('@alizarin/napi');
 //   require('@alizarin/clm'); // registers the handler
 //
-const binding = require('./index.js')
-const { registerExtensionHandler } = require('@alizarin/napi')
+const { binding, register } = require('./registration.js')
 
-registerExtensionHandler(binding.referenceHandlerPtr())
+register(require('@alizarin/napi'))
 
 module.exports = binding

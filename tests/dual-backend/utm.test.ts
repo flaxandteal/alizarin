@@ -27,6 +27,7 @@ import type { ResourceInstanceWrapper } from '../../js/graphManager';
 import { ResourceInstanceViewModel } from '../../js/viewModels/ResourceInstanceViewModel';
 import { createStaticGraph } from '../../js/static-types';
 import { getCurrentLanguage, setCurrentLanguage } from '../../js/utils';
+import { wasmReady } from '../../js/_wasm';
 
 const CRM = "http://www.cidoc-crm.org/cidoc-crm/";
 const COMPUTE_TILES = "60000000-0000-0000-0000-000000000002";
@@ -40,9 +41,8 @@ const LONDON = {
 
 beforeAll(async () => {
   if (getBackend() === 'napi') {
-    // As @alizarin/geo does on import, for the NAPI backend.
-    const geoNapi = createRequire(import.meta.url)('../../ext/geo/napi/index.js');
-    getNapiModule().registerDeriveProvider(geoNapi.utmDeriveProviderPtr());
+    // What importing @alizarin/geo-napi does, against this host.
+    createRequire(import.meta.url)('../../ext/geo/napi/registration.js').register(getNapiModule());
   } else {
     // As @alizarin/geo does on import, for the WASM backend.
     const geo = await import('../../ext/geo/wasm/pkg/alizarin_geo_wasm');
@@ -105,6 +105,15 @@ async function place(
 
 describe(`UTM through the derive bridge [${getBackend()} backend]`, () => {
   test("geo's provider is registered", () => {
+    expect(hasDeriveProvider("utm")).toBe(true);
+  });
+
+  test("importing @alizarin/geo registers it on this backend without an error", async () => {
+    // Its WASM registration runs once core's WASM is ready, whichever backend
+    // is in use; an error there is an unhandled rejection, which fails the run.
+    await import('../../ext/geo/js/src/main');
+    await wasmReady;
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(hasDeriveProvider("utm")).toBe(true);
   });
 

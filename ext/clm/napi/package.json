@@ -29,6 +29,7 @@
   },
   "files": [
     "register.js",
+    "registration.js",
     "index.js",
     "index.d.ts",
     "*.node"
