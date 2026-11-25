@@ -30,7 +30,7 @@ pub struct StaticNode {
     /// Ontology class URIs for this node. Accepts a single string or an array
     /// of strings on the wire; a single-element list is serialised as a plain
     /// string for round-trip compatibility with upstream Arches.
-    #[serde(default, with = "super::serde_helpers::optional_string_or_vec")]
+    #[serde(default, with = "crate::serde_helpers::optional_string_or_vec")]
     pub ontologyclass: Option<Vec<String>>,
     #[serde(default)]
     pub description: Option<StaticTranslatableString>,

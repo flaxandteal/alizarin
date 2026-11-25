@@ -22,7 +22,16 @@
 
 use std::ffi::c_void;
 
+pub mod derive;
+pub mod graph;
 pub mod handler;
+pub mod serde_helpers;
+pub mod sorted_serde;
+pub use derive::{
+    derive_provider_info, derive_with, free_derive_result, DeriveConfig, DeriveLookup, DeriveMode,
+    ExtDeriveProvider, ResolvedNode,
+};
+pub use graph::{StaticEdge, StaticNode, StaticNodegroup, StaticTile, StaticTranslatableString};
 pub use handler::{ExtensionError, IndexClass, IndexSpec, ValidationResult};
 
 /// Cycle-safe JSON arguments from JavaScript, for WASM bindings (`wasm` feature).

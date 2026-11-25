@@ -4,8 +4,6 @@
 //! derivation that lets independently built layers address the same
 //! cardinality-1 tile without either having seen the other's data.
 
-use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 use uuid::Uuid;
 
 /// Stable namespace URI for tile-id derivation. Hashed into a namespace UUID
@@ -80,8 +78,8 @@ pub fn tile_namespace() -> Uuid {
 /// the [`StaticGraph`](crate::graph::StaticGraph) and therefore knows both
 /// cardinality and parenttile_id.
 ///
-/// [`StaticTile::ensure_id`] has no graph and keeps minting v4. That is not an
-/// oversight: a tile in isolation cannot be classified.
+/// The bindings' `StaticTile.ensureId` has no graph and keeps minting v4. That
+/// is not an oversight: a tile in isolation cannot be classified.
 ///
 /// # Accepted limitation: Arches-imported tiles
 ///
@@ -170,61 +168,9 @@ pub fn allocate_multi_tile_id(
     }
 }
 
-/// A tile containing data for a nodegroup instance
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct StaticTile {
-    /// Node id -> value. A `BTreeMap` so every serialisation, on every
-    /// backend, writes keys in the same (sorted) order; for the handful of
-    /// keys a tile holds it is also as fast as a `HashMap` to look up.
-    #[serde(default)]
-    pub data: BTreeMap<String, serde_json::Value>,
-    pub nodegroup_id: String,
-    pub resourceinstance_id: String,
-    // Arches' shape, on every backend: the keys Arches' business-data importer
-    // indexes directly (`tileid`, `parenttile_id`, `sortorder`) are always
-    // written, `null` when empty; `provisionaledits`, which it doesn't read,
-    // is left out when empty. See notes/backend-support-matrix.md.
-    #[serde(default)]
-    pub tileid: Option<String>,
-    #[serde(default)]
-    pub parenttile_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provisionaledits: Option<Vec<serde_json::Value>>,
-    #[serde(default)]
-    pub sortorder: Option<i32>,
-}
-
-impl StaticTile {
-    /// Create a new empty tile for a nodegroup
-    pub fn new_empty(nodegroup_id: String) -> Self {
-        StaticTile {
-            tileid: None,
-            nodegroup_id,
-            parenttile_id: None,
-            resourceinstance_id: String::new(),
-            sortorder: None,
-            provisionaledits: None,
-            data: BTreeMap::new(),
-        }
-    }
-
-    /// Ensure this tile has an ID, generating one if needed.
-    ///
-    /// Mints a RANDOM (v4) id, and deliberately so: this method has no
-    /// [`StaticGraph`](crate::graph::StaticGraph), so it cannot know whether
-    /// the tile's nodegroup is cardinality-1, and a canonical id is only
-    /// meaningful (and only safe) for cardinality-1 tiles. COMPOSABLE IDS
-    /// REQUIRE THE GRAPH-AWARE PATH (`json_conversion::tree_to_tiles`) which
-    /// routes cardinality-1 tiles through [`canonical_tile_id`].
-    ///
-    /// Do not "fix" this by guessing a cardinality here.
-    pub fn ensure_id(&mut self) -> String {
-        if self.tileid.is_none() {
-            self.tileid = Some(uuid::Uuid::new_v4().to_string());
-        }
-        self.tileid.clone().unwrap()
-    }
-}
+/// Defined in the extension API, so an extension's derive provider needs no
+/// core to build one.
+pub use alizarin_extension_api::StaticTile;
 
 #[cfg(test)]
 mod tests {

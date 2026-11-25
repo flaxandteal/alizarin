@@ -196,7 +196,7 @@ pub fn geo_handler_type_info() -> *const TypeHandlerInfo {
     }
 }
 
-/// The UTM provider's `derive_fn`: core's shared glue around
+/// The UTM provider's `derive_fn`: the extension API's glue around
 /// [`UtmDeriveProvider`](crate::utm::UtmDeriveProvider).
 ///
 /// # Safety
@@ -208,7 +208,7 @@ unsafe extern "C" fn utm_derive(
     config_ptr: *const c_void,
     graph: *const alizarin_extension_api::HostGraph,
 ) -> alizarin_extension_api::DeriveResult {
-    alizarin_core::derive_abi::derive_with(
+    alizarin_extension_api::derive_with(
         &crate::utm::UtmDeriveProvider,
         resource_id_ptr,
         resource_id_len,
@@ -225,7 +225,7 @@ pub fn utm_derive_provider_info() -> *const alizarin_extension_api::DeriveProvid
     static INFO: std::sync::OnceLock<alizarin_extension_api::DeriveProviderInfo> =
         std::sync::OnceLock::new();
     INFO.get_or_init(|| {
-        alizarin_core::derive_abi::derive_provider_info(crate::utm::PROVIDER_KEY, utm_derive)
+        alizarin_extension_api::derive_provider_info(crate::utm::PROVIDER_KEY, utm_derive)
     })
 }
 

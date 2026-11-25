@@ -46,7 +46,7 @@ pub use resource_edit::{EditOp, ResourceEdit, TileDelta, TileRef};
 pub mod shared_mut;
 pub mod skos;
 pub mod slice_source;
-pub mod sorted_serde;
+pub use alizarin_extension_api::sorted_serde;
 pub mod string_utils;
 pub mod tile_source;
 pub mod type_coercion;
@@ -84,6 +84,7 @@ pub use graph::{
     parse_resources_from_json_str,
     // Graph pruning
     prune_graph,
+    resolve_derive_nodes,
     stored_derive_functions,
     tile_namespace,
     // Aggregate functions

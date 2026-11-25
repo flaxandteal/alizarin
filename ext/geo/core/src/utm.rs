@@ -1,6 +1,6 @@
 //! UTM projection as a load-time **derive function**.
 //!
-//! A [`DeriveProvider`] that reads a resource's existing `geojson-feature-collection`
+//! An [`ExtDeriveProvider`] that reads a resource's existing `geojson-feature-collection`
 //! geometry and computes its UTM zone + easting/northing — tiles that are never
 //! stored, only derived. This is the canonical "port an Arches derive function"
 //! case: a pure, deterministic transform of existing node values, materialised at
@@ -16,8 +16,9 @@ use std::sync::Arc;
 use proj4rs::Proj;
 use serde_json::{json, Value};
 
-use alizarin_core::{
-    DeriveConfig, DeriveProvider, FunctionsRegistry, GraphLookup, RegisteredFunction, StaticTile,
+use alizarin_core::{FunctionsRegistry, RegisteredFunction};
+use alizarin_extension_api::{
+    DeriveConfig, DeriveLookup, ExtDeriveProvider, ResolvedNode, StaticTile,
 };
 
 /// The provider key a `functions_x_graphs` compute-tiles entry names to select
@@ -132,16 +133,16 @@ pub const OUTPUT_ROLES: [&str; 4] = ["zone", "hemisphere", "easting", "northing"
 /// an earlier one); a value with no projectable geometry is an error.
 pub struct UtmDeriveProvider;
 
-impl DeriveProvider for UtmDeriveProvider {
+impl ExtDeriveProvider for UtmDeriveProvider {
     fn derive(
         &self,
         resource_id: &str,
-        graph: &dyn GraphLookup,
+        graph: &dyn DeriveLookup,
         tiles: &[StaticTile],
         config: &DeriveConfig,
     ) -> Result<Vec<StaticTile>, String> {
         let geometry = config.node("geometry")?;
-        let outputs: Vec<(&str, &alizarin_core::ResolvedNode)> = OUTPUT_ROLES
+        let outputs: Vec<(&str, &ResolvedNode)> = OUTPUT_ROLES
             .iter()
             .filter_map(|role| config.resolved.get(*role).map(|node| (*role, node)))
             .collect();
@@ -194,7 +195,7 @@ impl DeriveProvider for UtmDeriveProvider {
         // A nested target hangs off the same parent as the geometry, as
         // arches-her's function does.
         let nested = graph
-            .get_nodegroup_by_id(&config.nodegroup)
+            .nodegroup(&config.nodegroup)
             .is_some_and(|ng| ng.parentnodegroup_id.is_some());
         Ok(vec![StaticTile {
             data,
@@ -216,7 +217,9 @@ impl DeriveProvider for UtmDeriveProvider {
 pub fn register_functions(registry: &mut FunctionsRegistry) {
     registry.register(
         PROVIDER_KEY,
-        RegisteredFunction::Derive(Arc::new(UtmDeriveProvider)),
+        RegisteredFunction::Derive(Arc::new(alizarin_core::derive_abi::InProcess(
+            UtmDeriveProvider,
+        ))),
     );
 }
 
@@ -234,8 +237,7 @@ pub fn derive_json(
         serde_json::from_value(tiles).map_err(|e| format!("utm: tiles: {e}"))?;
     let config: DeriveConfig =
         serde_json::from_value(config).map_err(|e| format!("utm: config: {e}"))?;
-    let graph = alizarin_core::derive_abi::CallbackGraph::new(lookup)?;
-    let derived = UtmDeriveProvider.derive(resource_id, &graph, &tiles, &config)?;
+    let derived = UtmDeriveProvider.derive(resource_id, &lookup, &tiles, &config)?;
     serde_json::to_value(derived).map_err(|e| format!("utm: {e}"))
 }
 
@@ -248,7 +250,10 @@ pub fn register_global() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alizarin_core::{apply_derive_functions, default_functions_registry, StaticGraph};
+    use alizarin_core::derive_abi::GraphLookupView;
+    use alizarin_core::{
+        apply_derive_functions, default_functions_registry, resolve_derive_nodes, StaticGraph,
+    };
 
     /// Definitional reference: a point ON a zone's central meridian AT the equator
     /// projects to the false easting (500 000 m) exactly, with zero northing. Zone
@@ -420,7 +425,12 @@ mod tests {
             ("zone", "zone", "utm-ng", "number"),
         ]);
         let tiles = UtmDeriveProvider
-            .derive("r1", &graph, &[london_tile(Some("site-1"))], &config)
+            .derive(
+                "r1",
+                &GraphLookupView(&graph),
+                &[london_tile(Some("site-1"))],
+                &config,
+            )
             .unwrap();
         assert_eq!(tiles[0].parenttile_id.as_deref(), Some("site-1"));
         assert_eq!(tiles[0].data["zone"], 30);
@@ -428,7 +438,12 @@ mod tests {
         // A top-level target has no parent, wherever the geometry is.
         let graph = utm_graph(serde_json::json!({ "zone": "zone" }));
         let tiles = UtmDeriveProvider
-            .derive("r1", &graph, &[london_tile(Some("site-1"))], &config)
+            .derive(
+                "r1",
+                &GraphLookupView(&graph),
+                &[london_tile(Some("site-1"))],
+                &config,
+            )
             .unwrap();
         assert_eq!(tiles[0].parenttile_id, None);
     }
@@ -446,7 +461,12 @@ mod tests {
             ("easting", "elsewhere", "other-ng", "number"),
         ]);
         let err = UtmDeriveProvider
-            .derive("r1", &graph, &[london_tile(None)], &config)
+            .derive(
+                "r1",
+                &GraphLookupView(&graph),
+                &[london_tile(None)],
+                &config,
+            )
             .unwrap_err();
         assert!(
             err.contains("'easting' is not in the target nodegroup"),
@@ -468,7 +488,12 @@ mod tests {
             ("zone", "zone", "utm-ng", "number"),
         ]);
         let tiles = UtmDeriveProvider
-            .derive("r1", &graph, &[london_tile(None)], &config)
+            .derive(
+                "r1",
+                &GraphLookupView(&graph),
+                &[london_tile(None)],
+                &config,
+            )
             .unwrap();
         // A translatable string node gets a translatable value; a number, a number.
         let hemisphere = tiles[0].data["hemisphere"]
@@ -494,11 +519,9 @@ mod tests {
             "provider": "utm", "nodegroup": "utm-ng", "nodes": {"geometry": "boundary"}
         }))
         .unwrap();
-        let config = config
-            .resolve_nodes(&utm_graph(serde_json::json!({})))
-            .unwrap();
+        let config = resolve_derive_nodes(&config, &utm_graph(serde_json::json!({}))).unwrap();
         let err = UtmDeriveProvider
-            .derive("r1", &graph, &[], &config)
+            .derive("r1", &GraphLookupView(&graph), &[], &config)
             .unwrap_err();
         assert!(err.contains("at least one output"), "{err}");
     }

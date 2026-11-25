@@ -24,7 +24,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::computed_tiles::{derive_functions, DeriveConfig, DeriveMode};
+use super::computed_tiles::{derive_functions, resolve_derive_nodes, DeriveConfig, DeriveMode};
 use super::descriptors::{AGGREGATE_FUNCTION_ID, COMPUTE_TILES_FUNCTION_ID};
 use super::graph_lookup::GraphLookup;
 use super::tile::{tile_namespace, StaticTile};
@@ -315,7 +315,7 @@ pub fn stored_derive_functions(graph: &dyn GraphLookup) -> Result<Vec<DeriveConf
         }
         let config: DeriveConfig = serde_json::from_value(f.config.clone())
             .map_err(|e| format!("derive function {}: invalid config: {e}", f.id))?;
-        let config = config.resolve_nodes(graph)?;
+        let config = resolve_derive_nodes(&config, graph)?;
         if config.sources.is_empty() {
             return Err(format!(
                 "derive function {}: stored mode needs `sources`, the nodegroups whose \

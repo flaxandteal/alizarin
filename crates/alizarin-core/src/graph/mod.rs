@@ -26,21 +26,34 @@ mod graph_lookup;
 mod layered_graph;
 mod lifecycle;
 mod meta;
-mod node_compare;
-mod nodes;
 mod prune;
 mod resources;
-pub(crate) mod serde_helpers;
 mod static_graph;
 mod tile;
-mod translatable;
+
+// The plain graph data an extension reads too, defined in the extension API
+// (see notes/extension-interface-split.md), under the module names the graph
+// modules here import them by.
+mod nodes {
+    pub use alizarin_extension_api::graph::{StaticEdge, StaticNode, StaticNodegroup};
+}
+mod translatable {
+    pub use alizarin_extension_api::graph::StaticTranslatableString;
+}
+pub use alizarin_extension_api::graph::{
+    compare_nodes, compare_nodes_from_json, NodeComparison, StaticEdge, StaticNode,
+    StaticNodegroup, StaticTranslatableString,
+};
+pub(crate) use alizarin_extension_api::serde_helpers;
 
 // Re-export all public types
 pub use cards::{
     StaticCard, StaticCardsXNodesXWidgets, StaticConstraint, StaticFunctionsXGraphs,
     StaticPublication,
 };
-pub use computed_tiles::{derive_functions, DeriveConfig, DeriveMode, ResolvedNode};
+pub use computed_tiles::{
+    derive_functions, resolve_derive_nodes, DeriveConfig, DeriveMode, ResolvedNode,
+};
 // The former names, kept for existing callers.
 #[allow(deprecated)]
 pub use computed_tiles::{compute_tiles_functions, ComputeTilesConfig};
@@ -66,8 +79,6 @@ pub use lifecycle::{
     TransitionResult, MAX_LIFECYCLE_STATES,
 };
 pub use meta::StaticGraphMeta;
-pub use node_compare::{compare_nodes, compare_nodes_from_json, NodeComparison};
-pub use nodes::{StaticEdge, StaticNode, StaticNodegroup};
 pub use prune::{build_backedges, find_root_node, prune_graph, PruneError};
 pub use resources::{
     batch_merge_resources, batch_merge_resources_from_json, compose_resource_across_layers,
@@ -83,7 +94,6 @@ pub use tile::{
     allocate_multi_tile_id, canonical_tile_id, multi_tile_id, tile_namespace, StaticTile,
     TILE_NAMESPACE_URI,
 };
-pub use translatable::StaticTranslatableString;
 
 /// Datatypes that represent iterable/list values
 pub const ITERABLE_DATATYPES: &[&str] = &[
