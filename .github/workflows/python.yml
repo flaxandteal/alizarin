@@ -83,13 +83,15 @@ jobs:
         run: |
           pip install dist/*.whl
 
-      # test_utm.py drives the UTM derive provider, which alizarin_geo registers.
-      - name: Build and install alizarin_geo
-        working-directory: ext/geo/python
+      # The extensions the host's tests import: test_utm.py drives geo's UTM
+      # derive provider; test_extensions.py reads clm and filelist values and
+      # checks what importing each extension registers.
+      - name: Build and install alizarin_clm, alizarin_filelist and alizarin_geo
         shell: bash
         run: |
-          maturin build --release --out dist
-          pip install --no-deps dist/*.whl
+          for ext in clm filelist geo; do
+            (cd "ext/$ext/python" && maturin build --release --out dist && pip install --no-deps dist/*.whl)
+          done
 
       - name: Run tests
         working-directory: crates/alizarin-python
