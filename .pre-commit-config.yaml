@@ -41,3 +41,11 @@ repos:
         language: system
         pass_filenames: false
         files: (^tests/|/tests/|^tests/guard-allowlist\.json$)
+      # No extension binding links alizarin-core
+      # (notes/extension-interface-split.md).
+      - id: no-second-core
+        name: no second core guard
+        entry: python3 scripts/guards/no_second_core.py
+        language: system
+        pass_filenames: false
+        files: ^(ext/[^/]+/[^/]+/Cargo\.toml|crates/alizarin-extension-api/Cargo\.toml)$

@@ -78,6 +78,11 @@ jobs:
       - name: Check extension formatting and lints
         run: bash scripts/check-ext-rust.sh
 
+      # An extension module beside the host must not carry its own core
+      # (notes/extension-interface-split.md); no exceptions, so no allow-list.
+      - name: Guard - no extension binding links alizarin-core
+        run: python3 scripts/guards/no_second_core.py
+
   # Python linting
   python-lint:
     name: Python Lint

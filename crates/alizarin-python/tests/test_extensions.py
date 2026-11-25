@@ -80,6 +80,26 @@ def test_both_handlers_are_registered():
     assert alizarin.has_type_handler("file-list")
 
 
+REGISTRATIONS = os.path.join(
+    os.path.dirname(__file__), "../../../tests/data/extension-registrations.json"
+)
+
+
+@pytest.mark.parametrize("extension", ["clm", "filelist", "geo"])
+def test_importing_an_extension_registers_what_it_does_on_every_binding(extension):
+    # The same fixture tests/dual-backend/extensions.test.ts reads on WASM and NAPI.
+    import importlib
+
+    importlib.import_module(f"alizarin_{extension}")
+    with open(REGISTRATIONS) as f:
+        expected = json.load(f)[extension]
+    handlers = alizarin.get_registered_extension_handlers()
+    mutations = alizarin.list_extension_mutations()
+    assert [h for h in expected["handlers"] if h not in handlers] == []
+    assert [m for m in expected["mutations"] if m not in mutations] == []
+    assert [d for d in expected["derive"] if not alizarin.has_derive_provider(d)] == []
+
+
 @pytest.mark.asyncio
 async def test_values_read_through_the_orm(record):
     gm, _ = record

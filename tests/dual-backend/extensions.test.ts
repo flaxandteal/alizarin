@@ -20,8 +20,11 @@ import {
   createWKRM,
   getBackend,
   getNapiModule,
+  hasDeriveProvider,
 } from '../../js/backend';
+import { wasmReady } from '../../js/_wasm';
 import * as wasm from '../../pkg/alizarin';
+import REGISTRATIONS from '../data/extension-registrations.json';
 import { ResourceModelWrapper, GraphMutator } from '../../js/graphManager';
 import type { ResourceInstanceWrapper } from '../../js/graphManager';
 import { ResourceInstanceViewModel } from '../../js/viewModels/ResourceInstanceViewModel';
@@ -51,13 +54,16 @@ beforeAll(async () => {
   // Each package registers its WASM handler and view models on import.
   await import('../../ext/clm/js/src/main');
   await import('../../ext/filelist/js/src/main');
+  await import('../../ext/geo/js/src/main');
   if (getBackend() === 'napi') {
-    // What importing @alizarin/clm-napi and @alizarin/filelist-napi does,
-    // against this host.
+    // What importing each @alizarin/*-napi does, against this host.
     const require = createRequire(import.meta.url);
-    require('../../ext/clm/napi/registration.js').register(getNapiModule());
-    require('../../ext/filelist/napi/registration.js').register(getNapiModule());
+    for (const ext of ['clm', 'filelist', 'geo']) {
+      require(`../../ext/${ext}/napi/registration.js`).register(getNapiModule());
+    }
   }
+  // Their WASM registrations run once core's WASM is ready.
+  await wasmReady;
 });
 
 /** The record's graph (see `record`), as plain data. */
@@ -126,6 +132,20 @@ describe(`extensions through the ORM [${getBackend()} backend]`, () => {
     expect(native.hasExtensionHandler("reference")).toBe(true);
     expect(native.hasExtensionHandler("file-list")).toBe(true);
   });
+
+  test.each(["clm", "filelist", "geo"])(
+    "importing %s registers what it does on every binding",
+    (extension) => {
+      // The same fixture crates/alizarin-python/tests/test_extensions.py reads.
+      const expected = REGISTRATIONS[extension];
+      const native: any = getBackend() === 'napi' ? getNapiModule() : wasm;
+      const handlers: string[] = native.getRegisteredExtensionHandlers();
+      const mutations: string[] = native.getRegisteredExtensionMutations();
+      expect(expected.handlers.filter((h: string) => !handlers.includes(h))).toEqual([]);
+      expect(expected.mutations.filter((m: string) => !mutations.includes(m))).toEqual([]);
+      expect(expected.derive.filter((d: string) => !hasDeriveProvider(d))).toEqual([]);
+    },
+  );
 
   test("values read through the ORM", async () => {
     const asset = await record();
