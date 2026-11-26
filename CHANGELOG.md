@@ -8,6 +8,11 @@ entries is tracked in `PARITY-RESEARCH.md`.
 ## Unreleased
 
 ### Added
+- Reading a resource through the ORM no longer copies a tile, all its
+  values with it, each time one of its nodes is read: a full traversal of a
+  large model (Heritage Item, a tile per nodegroup) takes about half the time
+  it did. **Breaking** (Rust): `TileStore` holds `Arc<StaticTile>`; change a
+  stored tile by replacing it (`Arc::make_mut`, or a new `Arc`).
 - A node's child aliases come back sorted on every binding
   (`childNodeAliases`, `getChildNodeAliases`, `getChildNodes`), where they were
   in hash order, which differed between processes and bindings.

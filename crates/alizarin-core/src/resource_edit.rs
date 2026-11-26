@@ -11,6 +11,7 @@
 //! committing does no I/O.
 
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use serde::Serialize;
 use serde_json::{Map, Value};
@@ -54,7 +55,7 @@ impl ResourceEdit {
         let original: TileStore = wrapper
             .stored_tiles()
             .into_iter()
-            .filter_map(|t| t.tileid.clone().map(|id| (id, t.clone())))
+            .filter_map(|t| t.tileid.clone().map(|id| (id, Arc::new(t.clone()))))
             .collect();
         let loaded = wrapper.is_lazy().then(|| {
             wrapper
@@ -111,7 +112,7 @@ impl ResourceEdit {
         self.check_loaded(&nodegroup_id)?;
         let id = self.value_slot(tile_id, parent_tile_id, alias, &nodegroup_id, model)?;
 
-        let mut tile = self.tiles.get(&id).cloned().expect("slot found or made");
+        let mut tile = StaticTile::clone(self.tiles.get(&id).expect("slot found or made"));
         let current = tile.data.get(&node.nodeid).cloned();
         tile.data.insert(
             node.nodeid.clone(),
@@ -120,7 +121,7 @@ impl ResourceEdit {
         if !model.is_tile_permitted(&tile) {
             return Err(format!("{alias}: this model doesn't permit editing it"));
         }
-        self.tiles.insert(id.clone(), tile);
+        self.tiles.insert(id.clone(), Arc::new(tile));
         self.touch(&nodegroup_id);
         Ok(id)
     }
@@ -265,7 +266,7 @@ impl ResourceEdit {
 
         // All or nothing: values go in on a copy.
         let saved = (self.tiles.clone(), self.touched.clone());
-        self.tiles.insert(id.clone(), tile);
+        self.tiles.insert(id.clone(), Arc::new(tile));
         self.touch(&nodegroup_id);
         for (child, value) in values {
             let child_node = writable_node(child, model)?;
@@ -331,7 +332,8 @@ impl ResourceEdit {
         if self.touched.is_empty() {
             return Ok(TileDelta::default());
         }
-        let mut tiles: Vec<StaticTile> = self.tiles.into_values().collect();
+        let mut tiles: Vec<StaticTile> =
+            self.tiles.into_values().map(Arc::unwrap_or_clone).collect();
         crate::apply_stored_derive_functions(
             &mut tiles,
             model.get_graph(),
@@ -444,7 +446,7 @@ impl ResourceEdit {
         tile.tileid = Some(id.clone());
         tile.resourceinstance_id = self.resource_id.clone();
         tile.parenttile_id = parent;
-        self.tiles.insert(id.clone(), tile);
+        self.tiles.insert(id.clone(), Arc::new(tile));
         Ok(id)
     }
 }

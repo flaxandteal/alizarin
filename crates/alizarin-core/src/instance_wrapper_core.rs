@@ -401,7 +401,7 @@ pub fn resolve_and_filter_tiles(
                         &info.target_node,
                         t,
                     ) {
-                        Some(t.clone())
+                        Some((**t).clone())
                     } else {
                         None
                     }
@@ -411,7 +411,7 @@ pub fn resolve_and_filter_tiles(
     } else {
         tile_ids
             .iter()
-            .filter_map(|tid| tiles_store.get(tid).cloned())
+            .filter_map(|tid| tiles_store.get(tid).map(|t| (**t).clone()))
             .collect()
     };
 
@@ -495,7 +495,7 @@ pub fn values_from_resource_nodegroup(
         let tile = if tile_id.is_empty() {
             None
         } else {
-            tiles_store.get(tile_id).map(|t| Arc::new(t.clone()))
+            tiles_store.get(tile_id).map(Arc::clone)
         };
         let tile_nodegroup_id = tile.as_ref().map(|t| t.nodegroup_id.clone());
 
@@ -670,8 +670,11 @@ pub fn ensure_nodegroup(
 }
 
 /// A wrapper's tiles by id, in the order they were loaded or added, so every
-/// export follows that order rather than hash order.
-pub type TileStore = IndexMap<String, StaticTile>;
+/// export follows that order rather than hash order. Shared: a pseudo value
+/// holds its tile by `Arc::clone`, and an edit goes through `Arc::make_mut`,
+/// which copies a tile only while something else still holds it
+/// (notes/orm-traversal-performance.md).
+pub type TileStore = IndexMap<String, Arc<StaticTile>>;
 
 /// Core resource instance wrapper - platform-agnostic business logic
 ///
@@ -764,7 +767,7 @@ impl ResourceInstanceWrapperCore {
                 .or_default()
                 .push(tile_id.clone());
 
-            tiles_map.insert(tile_id, tile);
+            tiles_map.insert(tile_id, Arc::new(tile));
         }
 
         self.tiles = Some(tiles_map);
@@ -819,7 +822,7 @@ impl ResourceInstanceWrapperCore {
 
         // Take out the earlier on-load tiles: they're recomputed from what is
         // now loaded.
-        let mut previous: HashMap<String, StaticTile> = HashMap::new();
+        let mut previous: HashMap<String, Arc<StaticTile>> = HashMap::new();
         for id in std::mem::take(&mut self.on_load_derived) {
             if let Some(tile) = self.tiles.as_mut().and_then(|t| t.shift_remove(&id)) {
                 if let Some(ids) = self.nodegroup_index.get_mut(&tile.nodegroup_id) {
@@ -831,7 +834,7 @@ impl ResourceInstanceWrapperCore {
         let mut tiles: Vec<StaticTile> = self
             .tiles
             .as_ref()
-            .map(|t| t.values().cloned().collect())
+            .map(|t| t.values().map(|tile| (**tile).clone()).collect())
             .unwrap_or_default();
         let resource_id = self
             .resource_instance
@@ -904,11 +907,11 @@ impl ResourceInstanceWrapperCore {
                 .push(id.clone());
             self.tiles
                 .get_or_insert_with(TileStore::new)
-                .insert(id.clone(), tile);
+                .insert(id.clone(), Arc::new(tile));
             self.on_load_derived.insert(id);
         }
         // Earlier tiles not produced again are gone.
-        changed.extend(previous.into_values().map(|t| t.nodegroup_id));
+        changed.extend(previous.into_values().map(|t| t.nodegroup_id.clone()));
 
         // Drop the cached values those targets' nodes held.
         if !changed.is_empty() {
@@ -1041,7 +1044,7 @@ impl ResourceInstanceWrapperCore {
             .map(|t| {
                 t.iter()
                     .filter(|(id, _)| !self.on_load_derived.contains(*id))
-                    .map(|(_, tile)| tile)
+                    .map(|(_, tile)| &**tile)
                     .collect()
             })
             .unwrap_or_default()
@@ -1186,7 +1189,7 @@ impl ResourceInstanceWrapperCore {
             if !merged_nodegroups.contains(&tile.nodegroup_id) {
                 merged_nodegroups.push(tile.nodegroup_id.clone());
             }
-            tiles_map.insert(tile_id, tile);
+            tiles_map.insert(tile_id, Arc::new(tile));
         }
 
         // Lazy mode: the merged nodegroups now count as fetched.
@@ -1199,14 +1202,20 @@ impl ResourceInstanceWrapperCore {
 
     /// Get a tile by ID
     pub fn get_tile(&self, tile_id: &str) -> Option<&StaticTile> {
-        self.tiles.as_ref().and_then(|t| t.get(tile_id))
+        self.tiles
+            .as_ref()
+            .and_then(|t| t.get(tile_id))
+            .map(|t| &**t)
     }
 
     /// Get tiles for a nodegroup
     pub fn get_tiles_for_nodegroup(&self, nodegroup_id: &str) -> Vec<&StaticTile> {
         let tile_ids = self.nodegroup_index.get(nodegroup_id);
         match (tile_ids, &self.tiles) {
-            (Some(ids), Some(tiles)) => ids.iter().filter_map(|id| tiles.get(id)).collect(),
+            (Some(ids), Some(tiles)) => ids
+                .iter()
+                .filter_map(|id| tiles.get(id).map(|t| &**t))
+                .collect(),
             _ => Vec::new(),
         }
     }
@@ -1370,7 +1379,7 @@ impl ResourceInstanceWrapperCore {
             .as_ref()
             .ok_or_else(|| "No tiles loaded".to_string())?
             .values()
-            .cloned()
+            .map(|t| (**t).clone())
             .collect();
         let (graph, extension_registry) = context()?;
         let descriptors = graph.build_descriptors_with_context(
@@ -1424,10 +1433,10 @@ impl ResourceInstanceWrapperCore {
             .cloned()
             .unwrap_or_default();
         let tiles = self.tiles.as_ref().filter(|_| is_permitted);
-        let value_on = |tile: Option<&StaticTile>| {
+        let value_on = |tile: Option<&Arc<StaticTile>>| {
             PseudoValueCore::from_node_and_tile(
                 Arc::clone(&node),
-                tile.map(|t| Arc::new(t.clone())),
+                tile.map(Arc::clone),
                 tile.and_then(|t| t.data.get(&node.nodeid).cloned()),
                 child_ids.clone(),
             )
@@ -1834,8 +1843,7 @@ impl ResourceInstanceWrapperCore {
         let matching_tiles: Vec<Arc<StaticTile>> = self
             .semantic_child_tile_ids(parent_tile_id, parent_nodegroup_id, child_node)?
             .iter()
-            .filter_map(|id| tiles.get(id))
-            .map(|tile| Arc::new(tile.clone()))
+            .filter_map(|id| tiles.get(id).map(Arc::clone))
             .collect();
 
         if matching_tiles.is_empty() {

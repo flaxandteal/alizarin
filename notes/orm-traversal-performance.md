@@ -1,6 +1,6 @@
 # ORM traversal: child-node maps and where the rest of the time goes
 
-Status: **steps 1 and 4 done**; the rest planned (order: 7, 3 with 2, 8).
+Status: **steps 1, 4 and 7 done**; the rest planned (order: 3 with 2, 8).
 
 ## What was measured
 
@@ -111,12 +111,19 @@ first.
    a nodegroup of k nodes is copied k times per traversal. Beside it, the
    child's edge list is cloned per call (`:1849`) and again per value
    (`:1864`).
-7. **Tiles shared, not copied** (the largest item, ~23%):
-   `TileStore = IndexMap<String, Arc<StaticTile>>`, so a pseudo value takes
-   `Arc::clone`; edits go through `Arc::make_mut`, copying only a tile a
-   pseudo value still holds. 114 uses of the store or `.tiles` in core to go
-   through. Check: the dual-backend ORM edit tests (an edit must not show
-   through an earlier pseudo value's tile unless it did before).
+7. **Done: tiles shared, not copied.** `TileStore = IndexMap<String,
+   Arc<StaticTile>>`: a pseudo value takes `Arc::clone`, as do
+   `values_from_resource_nodegroup` and `make_pseudo_value`, and a
+   `ResourceEdit`'s all-or-nothing snapshot is now a copy of `Arc`s. An edit
+   can't write through an `Arc`, so the one in-place write (`ResourceEdit::set_value`)
+   copies the tile, changes it, and stores the new one, as before; the
+   compiler found every site (about 20, in `instance_wrapper_core.rs`,
+   `resource_edit.rs` and WASM's `getTile`). APIs returning owned tiles
+   (`resolve_and_filter_tiles`, descriptors, `derive_on_load`'s provider
+   input) copy out, as they did. Measured after, three runs: traversal
+   **0.45–0.51 ms** per resource, from 0.92–1.08 ms: about 2×, more than the
+   copy's 23% share, since the allocation churn of making and freeing the
+   copies went with it. All suites unchanged.
 8. **No per-value edge-list copies**: `PseudoValueCore`'s child node ids as
    a shared slice (`Arc<[String]>`, or the model's own, borrowed).
 

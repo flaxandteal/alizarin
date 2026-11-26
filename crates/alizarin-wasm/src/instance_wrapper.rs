@@ -531,8 +531,7 @@ impl WASMResourceInstanceWrapper {
             .as_ref()
             .ok_or_else(|| JsValue::from_str(&format!("No tiles loaded: {}", tile_id)))?
             .get(&tile_id)
-            .cloned()
-            .map(WasmStaticTile)
+            .map(|tile| WasmStaticTile((**tile).clone()))
             .ok_or_else(|| JsValue::from_str(&format!("Tile not found: {}", tile_id)))
     }
 
