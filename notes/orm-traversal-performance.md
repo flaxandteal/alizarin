@@ -1,6 +1,6 @@
 # ORM traversal: child-node maps and where the rest of the time goes
 
-Status: **step 1 done**; the rest planned.
+Status: **steps 1 and 4 done**; the rest planned (order: 7, 3 with 2, 8).
 
 ## What was measured
 
@@ -50,8 +50,8 @@ minutes, ~90 s of it child maps.
    `getRegisteredExtensionHandlers` (a `HashMap` in a thread-local). Nothing
    lints for it: `tests/sourceParity.test.ts` rule 5 covers serialised
    `HashMap` fields only.
-5. **~91% of the traversal is elsewhere**: ~3.3 µs per value. Not profiled:
-   `perf` needs `kernel.perf_event_paranoid` ≤ 1 here.
+5. **~91% of the traversal is elsewhere**: ~3.3 µs per value. Profiled (step
+   4, below): it is mostly copying.
 
 ## What stays a `HashMap`
 
@@ -87,9 +87,41 @@ first.
    rebuilding (~90 µs → ~8 µs per resource here). Where: the model's existing
    lazily built indices (`GraphModelAccess`/`StaticGraph`), invalidated with
    them.
-4. **Profile the other ~91%** with `perf` (after
-   `sudo sysctl kernel.perf_event_paranoid=1`), on the benchmark, and plan
-   from what it shows.
+4. **Done: profile.** `BENCH_RESOURCES=3000`, built with
+   `RUSTFLAGS="-C force-frame-pointers=yes"` (DWARF unwinding lost most
+   callers), `perf record -e cycles:u --call-graph fp`, 31,640 samples;
+   callees aggregated from `perf script` (frame below the function). Shares
+   of all samples:
+
+   | | |
+   |---|---|
+   | `get_all_semantic_child_values` (inclusive) | 71% |
+   | → `get_semantic_child_value` (inclusive) | 56% |
+   | → → **deep copy of each matching tile** (`Arc::new(tile.clone())`, its `data` `BTreeMap` cloned) | **~23%** |
+   | → → `get_child_nodes` | 12% (16% with its other caller) |
+   | → → `semantic_child_tile_ids` | 6% |
+   | → → dropping the copies | 4% |
+   | the benchmark's own walk (outside core) | ~20% |
+   | flat: `malloc`/`free` and friends | ~40% |
+
+   `get_semantic_child_value` (`instance_wrapper_core.rs:1834-1839`) hands
+   each pseudo value `Arc::new(tile.clone())`: the store holds tiles by value
+   (`TileStore = IndexMap<String, StaticTile>`), so every read of a child
+   copies every matching tile, all its nodes' values with it, and a tile in
+   a nodegroup of k nodes is copied k times per traversal. Beside it, the
+   child's edge list is cloned per call (`:1849`) and again per value
+   (`:1864`).
+7. **Tiles shared, not copied** (the largest item, ~23%):
+   `TileStore = IndexMap<String, Arc<StaticTile>>`, so a pseudo value takes
+   `Arc::clone`; edits go through `Arc::make_mut`, copying only a tile a
+   pseudo value still holds. 114 uses of the store or `.tiles` in core to go
+   through. Check: the dual-backend ORM edit tests (an edit must not show
+   through an earlier pseudo value's tile unless it did before).
+8. **No per-value edge-list copies**: `PseudoValueCore`'s child node ids as
+   a shared slice (`Arc<[String]>`, or the model's own, borrowed).
+
+   Order by measured size: 7, then 3 (with 2), then 8. Re-run the benchmark,
+   and the profile, after each.
 5. **Sorted key lists, and a guard**: WASM's `getRegisteredExtensionHandlers`
    sorted (as its mutation listing now is); a `sourceParity` rule flagging
    `.keys()` on a `HashMap`-typed field in a binding crate unless it goes

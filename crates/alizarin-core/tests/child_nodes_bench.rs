@@ -23,8 +23,14 @@ use alizarin_core::{
 };
 
 const RESOURCE_ID: &str = "bench-resource-1";
-/// Traversals timed per measurement: as many resources of this model.
-const RESOURCES: usize = 200;
+/// Traversals timed per measurement: as many resources of this model. Raise
+/// it (`BENCH_RESOURCES=20000`) to run long enough to profile.
+fn resources() -> usize {
+    std::env::var("BENCH_RESOURCES")
+        .ok()
+        .and_then(|n| n.parse().ok())
+        .unwrap_or(200)
+}
 /// Rounds of building every node's child map, per measurement.
 const MAP_ROUNDS: usize = 2_000;
 
@@ -178,13 +184,14 @@ fn child_node_maps_in_a_full_traversal() {
     walk(&core, &model, &root, None, &mut stats);
     assert!(stats.visits > 0, "the traversal reached no values");
 
+    let resources = resources();
     let traversal = best_of_three(|| {
-        for _ in 0..RESOURCES {
+        for _ in 0..resources {
             let mut s = Walk::default();
             walk(&core, &model, &root, None, &mut s);
             black_box(s.visits);
         }
-    }) / RESOURCES as u32;
+    }) / resources as u32;
 
     let per_round = |d: Duration| d / (MAP_ROUNDS * node_ids.len()) as u32;
     // The same build into each map type, then core's own.
