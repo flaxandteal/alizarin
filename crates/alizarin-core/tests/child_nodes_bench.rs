@@ -363,3 +363,30 @@ fn child_reads_scale_with_tiles_per_nodegroup() {
         );
     }
 }
+
+/// The same, through the tiles-to-tree conversion (`resource_tiles_to_tree`):
+/// what a consumer that hydrates a resource from its tiles in one go (Rós
+/// Madair's `hydrate`) runs, rather than the ORM wrapper's reads.
+#[test]
+#[ignore = "benchmark: run with --release -- --ignored --nocapture"]
+fn tiles_to_tree_scales_with_tiles_per_nodegroup() {
+    let graph = load_graph();
+    let metadata = resource(&graph).resource_instance.unwrap();
+    println!("\nHeritage Item, tiles to tree, k tiles in each cardinality-n nodegroup:");
+    for k in [10, 20, 40, 80, 160] {
+        let tiles = many_tiles(&graph, k);
+        let reps = (2_000 / k).max(5);
+        let per_resource = best_of_three(|| {
+            for _ in 0..reps {
+                black_box(
+                    alizarin_core::resource_tiles_to_tree(&tiles, &metadata, &graph).unwrap(),
+                );
+            }
+        }) / reps as u32;
+        println!(
+            "k={k:>4}: {:>5} tiles, {per_resource:>10.2?} per resource, {:>8.2?} per tile",
+            tiles.len(),
+            per_resource / tiles.len() as u32
+        );
+    }
+}

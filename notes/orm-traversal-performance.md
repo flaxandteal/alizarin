@@ -179,6 +179,54 @@ first.
     benchmark in debug at every k, pass with it. The bindings' own "empty
     store for a lazy wrapper" moved into core's `set_lazy` (Python's never
     had it), so no binding writes the store directly.
+11. **Next: the tiles-to-tree path has the same quadratic read** (and Rós
+    Madair hydrates through it, not the ORM wrapper). `resource_tiles_to_tree`
+    builds one pseudo list per alias from all the resource's tiles
+    (`build_pseudo_cache_from_tiles`), then for each parent tile
+    `semantic_to_json` filters the child alias's whole list with
+    `matching_entries`. `tiles_to_tree_scales_with_tiles_per_nodegroup`:
+
+    | k | tiles | per resource | per tile |
+    |---|---|---|---|
+    | 10 | 210 | 5.0 ms | 24 µs |
+    | 20 | 400 | 10.3 ms | 26 µs |
+    | 40 | 780 | 24.5 ms | 31 µs |
+    | 80 | 1,540 | 62.8 ms | 41 µs |
+    | 160 | 3,060 | 157 ms | 51 µs |
+
+    Two parts: the per-tile cost grows with k (the quadratic match), and it
+    starts high (~24 µs a tile, against ~0.7 µs a value read through the
+    wrapper). Fix the match as step 10 did: the pseudo lists index their
+    values by parent tile, built once in `build_pseudo_cache_from_tiles`,
+    and `matching_entries` looks up rather than filters (the same rule,
+    `matches_tile_filter`, still deciding). Then profile the constant.
+    Rós Madair picks both up by moving its alizarin pin (`=2.0.0-alpha.146`
+    in its workspace `Cargo.toml`, before any of this); it needs no layout
+    change (see its notes below).
+
+## Rós Madair (checked 2026-11-26, `release/alpha.31`, 0.1.0-alpha.34)
+
+- **Layout:** tile rows are sorted `cluster_key, resource_id, nodegroup_id,
+  sortorder` (`ros-madair-emit/src/parquet.rs`), or with
+  `nodegroup_hierarchical_order`, `ng_order, cluster_key, resource_id,
+  sortorder`, where `ng_order` is the nodegroup's DFS `pre` (a nodegroup and
+  its sub-nodegroups are one `pre` range). There is no tile-instance (parent
+  tile) order; `parenttile_id` is a plain column.
+- **Read:** `resource_tiles(uuid)` (`ros-madair-duck/src/lib.rs`) reads one
+  resource's whole block (its `cluster_key`, bound as a literal so row groups
+  prune, then `resource_id`), and `hydrate` hands the `Vec<StaticTile>` to
+  alizarin's `resource_tiles_to_tree_with_context`. Nothing reads a subtree
+  of a resource; no lazy per-nodegroup fetch is wired.
+- **So a parent-tile ordering buys no I/O today:** a hydrate reads a
+  resource's every row, which the cluster sort already keeps together, and a
+  resource's tiles (hundreds to thousands) sit inside one 8,192-row row
+  group, so reordering within it changes no bytes read. It would matter for
+  partial reads (one tile's subtree, a lazily fetched nodegroup) of resources
+  spanning several row groups; the tile-level analogue of `ng_order` (each
+  tile's descendants a contiguous range within its resource) would give
+  those one range read. Not needed for the in-memory index, which builds
+  from `parenttile_id` in one pass whatever the input order, and shouldn't
+  depend on it: tiles also come from Arches exports, CSV and edits.
 5. **Done: sorted key lists, and a guard.** WASM's
    `getRegisteredExtensionHandlers` is sorted (it listed a `HashMap`'s keys).
    `tests/sourceParity.test.ts` rule 6: an exported binding function (WASM,
