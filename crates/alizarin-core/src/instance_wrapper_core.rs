@@ -1481,30 +1481,43 @@ impl ResourceInstanceWrapperCore {
         parent_nodegroup_id: Option<&String>,
         child_node: &StaticNode,
     ) -> Result<Vec<String>, SemanticChildError> {
+        Ok(self
+            .semantic_child_tiles(parent_tile_id, parent_nodegroup_id, child_node)?
+            .into_iter()
+            .map(|(id, _)| id.clone())
+            .collect())
+    }
+
+    /// [`semantic_child_tile_ids`](Self::semantic_child_tile_ids)'s tiles, by
+    /// id, in the same order: what a read takes, with no ids copied and no
+    /// second lookup.
+    fn semantic_child_tiles(
+        &self,
+        parent_tile_id: Option<&String>,
+        parent_nodegroup_id: Option<&String>,
+        child_node: &StaticNode,
+    ) -> Result<Vec<(&String, &Arc<StaticTile>)>, SemanticChildError> {
         let tiles = self
             .tiles
             .as_ref()
             .ok_or(SemanticChildError::TilesNotInitialized)?;
-        let candidates: Vec<&String> = match &child_node.nodegroup_id {
+        let matches = |tile: &StaticTile| {
+            matches_semantic_child(parent_tile_id, parent_nodegroup_id, child_node, tile)
+        };
+        let mut found: Vec<(&String, &Arc<StaticTile>)> = match &child_node.nodegroup_id {
             Some(nodegroup_id) => self
                 .nodegroup_index
                 .get(nodegroup_id)
-                .map(|ids| ids.iter().collect())
-                .unwrap_or_default(),
-            None => tiles.keys().collect(),
+                .into_iter()
+                .flatten()
+                .filter_map(|id| tiles.get_key_value(id))
+                .filter(|(_, tile)| matches(tile))
+                .collect(),
+            None => tiles.iter().filter(|(_, tile)| matches(tile)).collect(),
         };
-        let mut ids: Vec<String> = candidates
-            .into_iter()
-            .filter(|id| {
-                tiles.get(*id).is_some_and(|tile| {
-                    matches_semantic_child(parent_tile_id, parent_nodegroup_id, child_node, tile)
-                })
-            })
-            .cloned()
-            .collect();
         // Stable, so equal keys keep load order.
-        ids.sort_by_key(|id| sortorder_key(tiles.get(id).and_then(|tile| tile.sortorder)));
-        Ok(ids)
+        found.sort_by_key(|(_, tile)| sortorder_key(tile.sortorder));
+        Ok(found)
     }
 
     /// For every child of `parent_node_id`, by alias: the ids of its tiles that
@@ -1834,17 +1847,11 @@ impl ResourceInstanceWrapperCore {
             }
         }
 
-        // Get tiles storage
-        let tiles = self
-            .tiles
-            .as_ref()
-            .ok_or(SemanticChildError::TilesNotInitialized)?;
-
         // The matching tiles, from the child's nodegroup only, in sortorder.
         let matching_tiles: Vec<Arc<StaticTile>> = self
-            .semantic_child_tile_ids(parent_tile_id, parent_nodegroup_id, child_node)?
-            .iter()
-            .filter_map(|id| tiles.get(id).map(Arc::clone))
+            .semantic_child_tiles(parent_tile_id, parent_nodegroup_id, child_node)?
+            .into_iter()
+            .map(|(_, tile)| Arc::clone(tile))
             .collect();
 
         if matching_tiles.is_empty() {

@@ -1,7 +1,7 @@
 # ORM traversal: child-node maps and where the rest of the time goes
 
-Status: **steps 1, 2, 3, 4 and 7 done**: a full traversal ~4× faster
-(~1 ms → ~0.25 ms per resource). Planned: 8, then 5, then re-profile.
+Status: **steps 1, 2, 3, 4, 7 and 9 done**: a full traversal ~4.5× faster
+(~1 ms → 0.21–0.24 ms per resource). Planned: 10 (measure first), 8, 5.
 
 ## What was measured
 
@@ -142,6 +142,23 @@ first.
 
    Order by measured size: 7, then 3 (with 2), then 8. Re-run the benchmark,
    and the profile, after each.
+9. **Done: a child read takes its tiles, not their ids.** Re-profiled at
+   0.25 ms: `semantic_child_tile_ids` was ~20% (an intermediate `Vec` of
+   candidate ids, then each match's id `String` cloned, then each looked up
+   again by the caller). `semantic_child_tiles` returns the matching
+   `(id, &Arc<StaticTile>)`s, sorted as before; the id version wraps it for
+   `find_semantic_children`. Traversal **0.21–0.24 ms** (from 0.25–0.26).
+   The other ~20% at that profile is building the pseudo values, mostly
+   their child-id list copies: step 8.
+10. **Scaling, not yet measured: a child read scans its whole nodegroup.**
+    `semantic_child_tiles` filters every tile of the child's nodegroup for
+    the given parent. With one tile per nodegroup (this benchmark) that is
+    cheap; reading the children of each of N parent tiles of a
+    cardinality-n nodegroup scans all N child tiles each time, O(N²). At
+    2,000 tiles a resource that may outweigh everything above. Fix: index
+    tile ids by `(nodegroup, parent tile)` alongside `nodegroup_index`, kept
+    in step with it on load, merge, derive and edit. First: a benchmark
+    variant with many tiles per nodegroup, to measure it.
 5. **Sorted key lists, and a guard**: WASM's `getRegisteredExtensionHandlers`
    sorted (as its mutation listing now is); a `sourceParity` rule flagging
    `.keys()` on a `HashMap`-typed field in a binding crate unless it goes
