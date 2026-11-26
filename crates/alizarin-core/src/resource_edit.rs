@@ -571,6 +571,7 @@ impl ResourceInstanceWrapperCore {
                 }
             }
         }
+        // Also drops the child tile index, removals or not.
         self.merge_tiles(delta.upserted.clone());
         if let Ok(mut cache) = self.pseudo_cache.write() {
             cache.clear();

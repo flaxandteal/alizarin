@@ -8,6 +8,11 @@ entries is tracked in `PARITY-RESEARCH.md`.
 ## Unreleased
 
 ### Added
+- Reading a node's children no longer scans every tile of its nodegroup, so
+  a resource read through the ORM takes time linear in its tiles, where it
+  was quadratic in a multi-valued nodegroup's (1,540 tiles: 90 ms → 11 ms).
+  A lazy wrapper gets an empty tile store from core on every binding (Python
+  had none until its first fetch).
 - Reading a resource through the ORM no longer copies a tile, all its
   values with it, each time one of its nodes is read, and a node's children
   are indexed once per graph rather than rebuilt on every read: a full

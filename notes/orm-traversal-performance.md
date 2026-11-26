@@ -1,7 +1,9 @@
 # ORM traversal: child-node maps and where the rest of the time goes
 
-Status: **steps 1, 2, 3, 4, 7 and 9 done**: a full traversal ~4.5× faster
-(~1 ms → 0.21–0.24 ms per resource). Planned: 10 (measure first), 8, 5.
+Status: **steps 1, 2, 3, 4, 7, 9 and 10 done**: a full traversal ~4.5×
+faster on one tile per nodegroup (~1 ms → 0.21–0.24 ms per resource), and
+linear rather than quadratic in tiles per nodegroup (1,540 tiles: 90 ms →
+10.6 ms). Planned: 8, 5.
 
 ## What was measured
 
@@ -150,15 +152,33 @@ first.
    `find_semantic_children`. Traversal **0.21–0.24 ms** (from 0.25–0.26).
    The other ~20% at that profile is building the pseudo values, mostly
    their child-id list copies: step 8.
-10. **Scaling, not yet measured: a child read scans its whole nodegroup.**
-    `semantic_child_tiles` filters every tile of the child's nodegroup for
-    the given parent. With one tile per nodegroup (this benchmark) that is
-    cheap; reading the children of each of N parent tiles of a
-    cardinality-n nodegroup scans all N child tiles each time, O(N²). At
-    2,000 tiles a resource that may outweigh everything above. Fix: index
-    tile ids by `(nodegroup, parent tile)` alongside `nodegroup_index`, kept
-    in step with it on load, merge, derive and edit. First: a benchmark
-    variant with many tiles per nodegroup, to measure it.
+10. **Done: a child read no longer scans its whole nodegroup.** It filtered
+    every tile of the child's nodegroup for the given parent, so reading the
+    children of each of N parent tiles was O(N²).
+    `child_reads_scale_with_tiles_per_nodegroup` (k tiles in each
+    cardinality-n nodegroup, round-robin over their parents) measured it:
+
+    | k | tiles | values | before | after |
+    |---|---|---|---|---|
+    | 10 | 210 | 2,002 | 2.38 ms (1.19 µs/value) | — |
+    | 20 | 400 | 3,902 | 7.18 ms (1.84) | 2.78 ms (0.71) |
+    | 40 | 780 | 7,702 | 24.3 ms (3.15) | 5.36 ms (0.70) |
+    | 80 | 1,540 | 15,302 | 90.0 ms (5.88) | 10.6 ms (0.69) |
+    | 160 | 3,060 | 30,502 | 363 ms (11.9) | 21.2 ms (0.70) |
+
+    The wrapper keeps a child tile index (nodegroup → parent tile →
+    positions in its `nodegroup_index` list), built on the first read and
+    dropped by `tiles_changed`, which every writer of the tiles calls
+    (`load_tiles`, `merge_tiles` and so `apply_tile_delta`,
+    `derive_on_load`, `prune_to_permitted`, `release`, `set_lazy`). Reads
+    take as candidates the parent's own tile (same nodegroup), or the tiles
+    under the parent tile or under none (or, for a collector read with no
+    parent tile, the nodegroup's all), merged in load order;
+    `matches_semantic_child` still decides, unchanged. Debug builds also run
+    the old scan and assert the two agree: core's tests, and the scaling
+    benchmark in debug at every k, pass with it. The bindings' own "empty
+    store for a lazy wrapper" moved into core's `set_lazy` (Python's never
+    had it), so no binding writes the store directly.
 5. **Sorted key lists, and a guard**: WASM's `getRegisteredExtensionHandlers`
    sorted (as its mutation listing now is); a `sourceParity` rule flagging
    `.keys()` on a `HashMap`-typed field in a binding crate unless it goes

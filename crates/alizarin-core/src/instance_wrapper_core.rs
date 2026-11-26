@@ -694,10 +694,13 @@ pub struct ResourceInstanceWrapperCore {
     /// Resource metadata
     pub resource_instance: Option<StaticResourceMetadata>,
 
-    /// Tile storage (tileid -> tile)
+    /// Tile storage (tileid -> tile). Change it through this type's methods
+    /// (`load_tiles`, `merge_tiles`, `release`, …), which keep the child tile
+    /// index in step; a direct write must call `tiles_changed`.
     pub tiles: Option<TileStore>,
 
-    /// Index: nodegroup_id -> list of tile_ids
+    /// Index: nodegroup_id -> list of tile_ids, in load order. Changed with
+    /// `tiles`, under the same rule.
     pub nodegroup_index: IndexMap<String, Vec<String>>,
 
     /// Track which nodegroups have been loaded/loading
@@ -721,7 +724,16 @@ pub struct ResourceInstanceWrapperCore {
     /// loader on a lazy fetch ([`fetch_from_tile_source`](Self::fetch_from_tile_source)).
     /// Set from Rust, the same way on every binding.
     pub tile_source: Option<Arc<dyn crate::TileSource>>,
+
+    /// Each nodegroup's tiles by parent tile, so a parent's children are read
+    /// without scanning the nodegroup ([`semantic_child_tiles`](Self::semantic_child_tiles)).
+    /// Built on the first read; dropped whenever the tiles change.
+    child_tile_index: SharedMut<Option<Arc<ChildTileIndex>>>,
 }
+
+/// Nodegroup id → parent tile id (`None`: no parent tile) → positions, in
+/// order, in that nodegroup's `nodegroup_index` list.
+type ChildTileIndex = HashMap<String, HashMap<Option<String>, Vec<usize>>>;
 
 impl ResourceInstanceWrapperCore {
     /// Create a new empty core with just a graph ID
@@ -737,7 +749,43 @@ impl ResourceInstanceWrapperCore {
             lazy: false,
             on_load_derived: HashSet::new(),
             tile_source: None,
+            child_tile_index: SharedMut::new(None),
         }
+    }
+
+    /// Record that the tiles (or their `nodegroup_index`) changed: every write
+    /// to them calls this.
+    pub(crate) fn tiles_changed(&self) {
+        if let Ok(mut index) = self.child_tile_index.write() {
+            *index = None;
+        }
+    }
+
+    /// The child tile index, built from the tiles if it isn't.
+    fn child_tile_index(&self) -> Arc<ChildTileIndex> {
+        let cached = self.child_tile_index.read().ok().and_then(|i| i.clone());
+        if let Some(index) = cached {
+            return index;
+        }
+        let mut index = ChildTileIndex::new();
+        if let Some(tiles) = &self.tiles {
+            for (nodegroup_id, ids) in &self.nodegroup_index {
+                let by_parent = index.entry(nodegroup_id.clone()).or_default();
+                for (position, id) in ids.iter().enumerate() {
+                    if let Some(tile) = tiles.get(id) {
+                        by_parent
+                            .entry(tile.parenttile_id.clone())
+                            .or_default()
+                            .push(position);
+                    }
+                }
+            }
+        }
+        let index = Arc::new(index);
+        if let Ok(mut cached) = self.child_tile_index.write() {
+            *cached = Some(Arc::clone(&index));
+        }
+        index
     }
 
     /// A core for the model `id` names (a model wrapper's id, or a graph id):
@@ -773,6 +821,7 @@ impl ResourceInstanceWrapperCore {
 
         self.tiles = Some(tiles_map);
         self.nodegroup_index = nodegroup_index;
+        self.tiles_changed();
 
         // Lazy mode: exactly the nodegroups loaded now count as fetched.
         if self.lazy {
@@ -913,6 +962,7 @@ impl ResourceInstanceWrapperCore {
         }
         // Earlier tiles not produced again are gone.
         changed.extend(previous.into_values().map(|t| t.nodegroup_id.clone()));
+        self.tiles_changed();
 
         // Drop the cached values those targets' nodes held.
         if !changed.is_empty() {
@@ -943,6 +993,7 @@ impl ResourceInstanceWrapperCore {
         for ids in self.nodegroup_index.values_mut() {
             ids.retain(|id| kept.contains(id));
         }
+        self.tiles_changed();
         Ok(())
     }
 
@@ -1192,6 +1243,7 @@ impl ResourceInstanceWrapperCore {
             }
             tiles_map.insert(tile_id, Arc::new(tile));
         }
+        self.tiles_changed();
 
         // Lazy mode: the merged nodegroups now count as fetched.
         if self.lazy {
@@ -1317,6 +1369,7 @@ impl ResourceInstanceWrapperCore {
     pub fn release(&mut self) {
         self.tiles = None;
         self.nodegroup_index.clear();
+        self.tiles_changed();
         if let Ok(mut cache) = self.pseudo_cache.write() {
             cache.clear();
         }
@@ -1326,8 +1379,14 @@ impl ResourceInstanceWrapperCore {
     }
 
     /// Switch lazy mode (see [`Self::lazy`]).
+    /// Set lazy mode: a lazy wrapper with no tiles yet gets an empty store,
+    /// which fetched nodegroups are merged into.
     pub fn set_lazy(&mut self, lazy: bool) {
         self.lazy = lazy;
+        if lazy && self.tiles.is_none() {
+            self.tiles = Some(TileStore::new());
+            self.tiles_changed();
+        }
     }
 
     /// Whether this instance is in lazy mode.
@@ -1506,18 +1565,83 @@ impl ResourceInstanceWrapperCore {
         };
         let mut found: Vec<(&String, &Arc<StaticTile>)> = match &child_node.nodegroup_id {
             Some(nodegroup_id) => self
-                .nodegroup_index
-                .get(nodegroup_id)
+                .child_tile_candidates(
+                    nodegroup_id,
+                    parent_tile_id,
+                    parent_nodegroup_id,
+                    child_node,
+                )
                 .into_iter()
-                .flatten()
                 .filter_map(|id| tiles.get_key_value(id))
                 .filter(|(_, tile)| matches(tile))
                 .collect(),
             None => tiles.iter().filter(|(_, tile)| matches(tile)).collect(),
         };
+        // The index only narrows the scan: the same tiles, in the same order.
+        #[cfg(debug_assertions)]
+        if let Some(nodegroup_id) = &child_node.nodegroup_id {
+            let scanned: Vec<&String> = self
+                .nodegroup_index
+                .get(nodegroup_id)
+                .into_iter()
+                .flatten()
+                .filter(|id| tiles.get(*id).is_some_and(|tile| matches(tile)))
+                .collect();
+            debug_assert_eq!(
+                found.iter().map(|(id, _)| *id).collect::<Vec<_>>(),
+                scanned,
+                "child tile index disagrees with a scan of {nodegroup_id}"
+            );
+        }
         // Stable, so equal keys keep load order.
         found.sort_by_key(|(_, tile)| sortorder_key(tile.sortorder));
         Ok(found)
+    }
+
+    /// The ids of `nodegroup_id`'s tiles that can be `child_node`'s under the
+    /// given parent, in load order: a superset of those
+    /// [`matches_semantic_child`] accepts, from the child tile index rather
+    /// than the nodegroup's every tile. In the parent's own nodegroup only the
+    /// parent's tile can be; in another, tiles under the parent tile or under
+    /// none (or, for a collector read with no parent tile, any).
+    fn child_tile_candidates(
+        &self,
+        nodegroup_id: &str,
+        parent_tile_id: Option<&String>,
+        parent_nodegroup_id: Option<&String>,
+        child_node: &StaticNode,
+    ) -> Vec<&String> {
+        let Some(ids) = self.nodegroup_index.get(nodegroup_id) else {
+            return Vec::new();
+        };
+        if parent_nodegroup_id.map(String::as_str) == Some(nodegroup_id) {
+            return parent_tile_id
+                .and_then(|parent| self.tiles.as_ref()?.get_key_value(parent))
+                .filter(|(_, tile)| tile.nodegroup_id == nodegroup_id)
+                .map(|(id, _)| id)
+                .into_iter()
+                .collect();
+        }
+        if parent_tile_id.is_none() && child_node.is_collector {
+            return ids.iter().collect();
+        }
+        let index = self.child_tile_index();
+        let Some(by_parent) = index.get(nodegroup_id) else {
+            return Vec::new();
+        };
+        let list = |parent: Option<&String>| {
+            by_parent
+                .get(&parent.cloned())
+                .map(Vec::as_slice)
+                .unwrap_or_default()
+        };
+        let under_none = list(None);
+        let mut positions: Vec<usize> = match parent_tile_id {
+            Some(parent) => [list(Some(parent)), under_none].concat(),
+            None => under_none.to_vec(),
+        };
+        positions.sort_unstable();
+        positions.into_iter().filter_map(|p| ids.get(p)).collect()
     }
 
     /// For every child of `parent_node_id`, by alias: the ids of its tiles that

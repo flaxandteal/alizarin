@@ -70,7 +70,82 @@ fn full_resource_tiles(graph: &StaticGraph) -> Vec<StaticTile> {
         .collect()
 }
 
+/// `k` tiles in every cardinality-n nodegroup, spread round-robin over its
+/// parent nodegroup's tiles, and one tile per parent tile in every
+/// cardinality-1 nodegroup: about `k` times the model's n-nodegroups in all,
+/// so the count grows linearly in `k` while each parent's children are
+/// spread among many parents, as in real data.
+fn many_tiles(graph: &StaticGraph, k: usize) -> Vec<StaticTile> {
+    let nodegroups = graph.nodegroups_slice();
+    let parent_of = |ng: &str| {
+        nodegroups
+            .iter()
+            .find(|n| n.nodegroupid == ng)
+            .and_then(|n| n.parentnodegroup_id.clone())
+    };
+    let depth = |ng: &str| {
+        let mut d = 0;
+        let mut at = parent_of(ng);
+        while let Some(p) = at {
+            d += 1;
+            at = parent_of(&p);
+        }
+        d
+    };
+    let mut ordered: Vec<_> = nodegroups.iter().collect();
+    ordered.sort_by_key(|ng| depth(&ng.nodegroupid));
+
+    let mut by_nodegroup: HashMap<String, Vec<String>> = HashMap::new();
+    let mut tiles = Vec::new();
+    for ng in ordered {
+        let parents: Vec<Option<String>> = match &ng.parentnodegroup_id {
+            Some(p) => by_nodegroup
+                .get(p)
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .map(Some)
+                .collect(),
+            None => vec![None],
+        };
+        if parents.is_empty() {
+            continue;
+        }
+        let count = if ng.cardinality.as_deref() == Some("1") {
+            parents.len()
+        } else {
+            k
+        };
+        for i in 0..count {
+            let id = format!("tile-{}-{i}", ng.nodegroupid);
+            let mut tile = StaticTile::new_empty(ng.nodegroupid.clone());
+            tile.resourceinstance_id = RESOURCE_ID.to_string();
+            tile.tileid = Some(id.clone());
+            tile.parenttile_id = parents[i % parents.len()].clone();
+            tile.sortorder = Some(i as i32);
+            for node in graph.nodes_slice() {
+                if node.nodegroup_id.as_deref() == Some(ng.nodegroupid.as_str())
+                    && node.datatype != "semantic"
+                {
+                    tile.data
+                        .insert(node.nodeid.clone(), serde_json::json!("value"));
+                }
+            }
+            by_nodegroup
+                .entry(ng.nodegroupid.clone())
+                .or_default()
+                .push(id);
+            tiles.push(tile);
+        }
+    }
+    tiles
+}
+
 fn resource(graph: &StaticGraph) -> ResourceInstanceWrapperCore {
+    resource_with(graph, full_resource_tiles(graph))
+}
+
+fn resource_with(graph: &StaticGraph, tiles: Vec<StaticTile>) -> ResourceInstanceWrapperCore {
     let mut core = ResourceInstanceWrapperCore::new(graph.graphid.clone());
     core.resource_instance = Some(StaticResourceMetadata {
         descriptors: Default::default(),
@@ -86,7 +161,7 @@ fn resource(graph: &StaticGraph) -> ResourceInstanceWrapperCore {
         resource_instance_lifecycle_state_id: None,
         lifecycle_state_conflict: Vec::new(),
     });
-    core.load_tiles(full_resource_tiles(graph));
+    core.load_tiles(tiles);
     core
 }
 
@@ -255,4 +330,36 @@ fn child_node_maps_in_a_full_traversal() {
         traversal * 1_000_000,
         in_maps * 1_000_000
     );
+}
+
+/// How a traversal scales with tiles per multi-valued nodegroup: the time per
+/// value read stays flat if reading a parent's children is linear in them,
+/// and grows with `k` if each read scans the nodegroup's every tile.
+#[test]
+#[ignore = "benchmark: run with --release -- --ignored --nocapture"]
+fn child_reads_scale_with_tiles_per_nodegroup() {
+    let graph = load_graph();
+    let model = GraphModelAccess::new_eager(Arc::new(graph.clone()), true);
+    let root = graph.root.clone();
+    println!("\nHeritage Item, k tiles in each cardinality-n nodegroup:");
+    for k in [10, 20, 40, 80, 160] {
+        let tiles = many_tiles(&graph, k);
+        let tile_count = tiles.len();
+        let core = resource_with(&graph, tiles);
+        let mut stats = Walk::default();
+        walk(&core, &model, &root, None, &mut stats);
+        let reps = (2_000 / k).max(5);
+        let per_resource = best_of_three(|| {
+            for _ in 0..reps {
+                let mut s = Walk::default();
+                walk(&core, &model, &root, None, &mut s);
+                black_box(s.visits);
+            }
+        }) / reps as u32;
+        println!(
+            "k={k:>4}: {tile_count:>5} tiles, {:>6} values, {per_resource:>10.2?} per resource, {:>8.2?} per value",
+            stats.visits,
+            per_resource / stats.visits as u32
+        );
+    }
 }

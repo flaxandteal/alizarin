@@ -362,12 +362,7 @@ impl WASMResourceInstanceWrapper {
     /// Set whether this wrapper should use lazy tile loading
     #[wasm_bindgen(js_name = setLazy)]
     pub fn set_lazy(&self, lazy: bool) {
-        let mut core = self.core.borrow_mut();
-        core.set_lazy(lazy);
-        if lazy && core.tiles.is_none() {
-            // Initialize empty tiles HashMap for lazy mode
-            core.tiles = Some(alizarin_core::TileStore::new());
-        }
+        self.core.borrow_mut().set_lazy(lazy);
     }
 
     /// Whether tiles arrive per nodegroup as lookups need them. Core's, as on

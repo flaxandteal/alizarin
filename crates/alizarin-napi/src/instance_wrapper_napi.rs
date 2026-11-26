@@ -1065,9 +1065,6 @@ impl NapiResourceInstanceWrapper {
     #[napi]
     pub fn set_lazy(&mut self, lazy: bool) {
         self.inner.set_lazy(lazy);
-        if lazy && self.inner.tiles.is_none() {
-            self.inner.tiles = Some(alizarin_core::TileStore::new());
-        }
     }
 
     /// Whether tiles arrive per nodegroup as lookups need them. Core's, as on
