@@ -24,8 +24,9 @@ const ITERABLE_DATATYPES: &[&str] = &[
 #[derive(Clone, Debug)]
 pub struct PseudoNodeCore {
     pub node: Arc<StaticNode>,
-    /// Children by alias (empty on an outer node: its inner holds them).
-    pub child_nodes: ChildNodes,
+    /// Children by alias, shared with the model (empty on an outer node: its
+    /// inner holds them).
+    pub child_nodes: Arc<ChildNodes>,
     /// Whether this is an inner node, read as `semantic`.
     pub is_inner: bool,
     /// An outer node's inner.
@@ -37,13 +38,13 @@ pub struct PseudoNodeCore {
 impl PseudoNodeCore {
     /// The pseudo node for `node` with its children, split into outer and
     /// inner when it isn't semantic and has children.
-    pub fn new(node: Arc<StaticNode>, child_nodes: ChildNodes) -> Self {
+    pub fn new(node: Arc<StaticNode>, child_nodes: Arc<ChildNodes>) -> Self {
         Self::with_parent(node, child_nodes, None)
     }
 
     fn with_parent(
         node: Arc<StaticNode>,
-        child_nodes: ChildNodes,
+        child_nodes: Arc<ChildNodes>,
         parent_placeholder: Option<String>,
     ) -> Self {
         if node.datatype != "semantic" && !child_nodes.is_empty() {
@@ -56,7 +57,7 @@ impl PseudoNodeCore {
             };
             PseudoNodeCore {
                 node,
-                child_nodes: ChildNodes::new(),
+                child_nodes: Arc::default(),
                 is_inner: false,
                 inner: Some(Arc::new(inner)),
                 parent_placeholder,

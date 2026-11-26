@@ -9,10 +9,14 @@ entries is tracked in `PARITY-RESEARCH.md`.
 
 ### Added
 - Reading a resource through the ORM no longer copies a tile, all its
-  values with it, each time one of its nodes is read: a full traversal of a
-  large model (Heritage Item, a tile per nodegroup) takes about half the time
-  it did. **Breaking** (Rust): `TileStore` holds `Arc<StaticTile>`; change a
-  stored tile by replacing it (`Arc::make_mut`, or a new `Arc`).
+  values with it, each time one of its nodes is read, and a node's children
+  are indexed once per graph rather than rebuilt on every read: a full
+  traversal of a large model (Heritage Item, a tile per nodegroup) takes
+  about a quarter of the time it did. **Breaking** (Rust): `TileStore` holds
+  `Arc<StaticTile>` (change a stored tile by replacing it: `Arc::make_mut`,
+  or a new `Arc`); `ModelAccess::get_child_nodes`,
+  `GraphModelAccess::get_child_nodes` and `PseudoNodeCore.child_nodes` are
+  `Arc<ChildNodes>`.
 - A node's child aliases come back sorted on every binding
   (`childNodeAliases`, `getChildNodeAliases`, `getChildNodes`), where they were
   in hash order, which differed between processes and bindings.

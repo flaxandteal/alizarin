@@ -1539,7 +1539,7 @@ impl PyResourceModelWrapper {
         let model = self.model()?;
         let children = model.get_child_nodes(node_id);
         let dict = pyo3::types::PyDict::new_bound(py);
-        for (alias, node) in &children {
+        for (alias, node) in children.iter() {
             let node_json = serde_json::to_string(node.as_ref()).map_err(|e| {
                 PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
                     "Failed to serialize node: {}",

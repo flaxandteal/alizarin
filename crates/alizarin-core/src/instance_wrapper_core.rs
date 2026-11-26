@@ -190,9 +190,10 @@ pub trait ModelAccess {
         Err("Could not find root node".to_string())
     }
 
-    /// Get child nodes for a parent node, keyed by alias.
-    /// Default implementation derives from `get_edges()` and `get_nodes()`.
-    fn get_child_nodes(&self, node_id: &str) -> Result<ChildNodes, String> {
+    /// Get child nodes for a parent node, keyed by alias, shared. The default
+    /// builds them from `get_edges()` and `get_nodes()` on each call; a model
+    /// with an index of them (`GraphModelAccess`) hands out its own.
+    fn get_child_nodes(&self, node_id: &str) -> Result<Arc<ChildNodes>, String> {
         let edges = self.get_edges().ok_or("Edges not initialized")?;
         let nodes = self.get_nodes().ok_or("Nodes not initialized")?;
         let mut children = ChildNodes::new();
@@ -205,7 +206,7 @@ pub trait ModelAccess {
                 }
             }
         }
-        Ok(children)
+        Ok(Arc::new(children))
     }
 
     /// The node with this alias. The default scans every node; models with an
@@ -1817,12 +1818,12 @@ impl ResourceInstanceWrapperCore {
             .map_err(SemanticChildError::ModelNotInitialized)?;
 
         // Find the child node by alias
-        let child_node = child_nodes
-            .values()
-            .find(|n| n.alias.as_deref() == Some(child_alias))
-            .ok_or_else(|| SemanticChildError::ChildNotFound {
-                alias: child_alias.to_string(),
-            })?;
+        let child_node =
+            child_nodes
+                .get(child_alias)
+                .ok_or_else(|| SemanticChildError::ChildNotFound {
+                    alias: child_alias.to_string(),
+                })?;
 
         // Lazy mode: the host hasn't fetched this nodegroup's tiles yet, so
         // its absence would be a guess. Say so; the host fetches and asks again.

@@ -1744,7 +1744,7 @@ impl NapiPseudoNode {
         let map_ctor: napi::JsFunction = env.get_global()?.get_named_property("Map")?;
         let map = map_ctor.new_instance::<napi::JsUnknown>(&[])?;
         let set: napi::JsFunction = map.get_named_property("set")?;
-        for (alias, node) in &self.core.child_nodes {
+        for (alias, node) in self.core.child_nodes.iter() {
             let key = env.create_string(alias)?.into_unknown();
             let value = crate::json_arg::to_js(&env, &**node)?;
             set.call(Some(&map), &[key, value])?;
@@ -2056,7 +2056,7 @@ impl NapiResourceModelWrapper {
         let model = self.model()?;
         let children = model.get_child_nodes(&node_id);
         let mut result = std::collections::BTreeMap::new();
-        for (alias, node) in &children {
+        for (alias, node) in children.iter() {
             result.insert(
                 alias.clone(),
                 serde_json::to_value(&**node)

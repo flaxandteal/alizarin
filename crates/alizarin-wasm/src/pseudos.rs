@@ -125,7 +125,7 @@ impl PseudoNode {
     pub fn get_child_nodes(&self) -> JsValue {
         let map = js_sys::Map::new();
         // Create a serializer that uses plain objects instead of Maps
-        for (key, value) in &self.core.child_nodes {
+        for (key, value) in self.core.child_nodes.iter() {
             let node_obj = crate::js_json::to_value(value.as_ref()).unwrap_or(JsValue::NULL);
             map.set(&JsValue::from_str(key), &node_obj);
         }

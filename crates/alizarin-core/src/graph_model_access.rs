@@ -34,6 +34,9 @@ pub struct GraphModelAccess {
     reverse_edges: Option<Arc<HashMap<String, Vec<String>>>>,
     nodes_by_nodegroup: Option<Arc<HashMap<String, Vec<Arc<StaticNode>>>>>,
     nodegroups: Option<Arc<HashMap<String, Arc<StaticNodegroup>>>>,
+    /// Each node's children by alias, built once with the other indices: a
+    /// traversal asks for them for every value it reads.
+    child_nodes: Option<Arc<HashMap<String, Arc<ChildNodes>>>>,
     root_node_id: Option<String>,
     /// The graph's on-load Derive declarations, parsed once.
     on_load_functions: Option<Arc<Vec<crate::DeriveConfig>>>,
@@ -60,6 +63,7 @@ impl GraphModelAccess {
             reverse_edges: None,
             nodes_by_nodegroup: None,
             nodegroups: None,
+            child_nodes: None,
             root_node_id: None,
             on_load_functions: None,
             explicit_permissions: HashMap::new(),
@@ -109,6 +113,7 @@ impl GraphModelAccess {
         self.reverse_edges = None;
         self.nodes_by_nodegroup = None;
         self.nodegroups = None;
+        self.child_nodes = None;
         self.root_node_id = None;
         self.on_load_functions = None;
     }
@@ -219,6 +224,26 @@ impl GraphModelAccess {
             nodegroups.insert(ng.nodegroupid.clone(), Arc::new(ng.clone()));
         }
 
+        // Each node's children by alias, as ModelAccess::get_child_nodes
+        // builds them (children without an alias are left out).
+        let child_nodes: HashMap<String, Arc<ChildNodes>> = edges_map
+            .iter()
+            .map(|(parent_id, child_ids)| {
+                let children: ChildNodes = child_ids
+                    .iter()
+                    .filter_map(|id| nodes.get(id))
+                    .filter_map(|node| match node.alias.as_deref() {
+                        Some(alias) if !alias.is_empty() => {
+                            Some((alias.to_string(), Arc::clone(node)))
+                        }
+                        _ => None,
+                    })
+                    .collect();
+                (parent_id.clone(), Arc::new(children))
+            })
+            .collect();
+
+        self.child_nodes = Some(Arc::new(child_nodes));
         self.nodes = Some(Arc::new(nodes));
         self.nodes_by_alias = Some(Arc::new(nodes_by_alias));
         self.edges = Some(Arc::new(edges_map));
@@ -368,9 +393,8 @@ impl GraphModelAccess {
     }
 
     /// Get child nodes for a given node, building caches if needed.
-    pub fn get_child_nodes_mut(&mut self, node_id: &str) -> Result<ChildNodes, String> {
+    pub fn get_child_nodes_mut(&mut self, node_id: &str) -> Result<Arc<ChildNodes>, String> {
         self.ensure_built()?;
-        // Delegates to the ModelAccess::get_child_nodes default impl
         ModelAccess::get_child_nodes(self, node_id)
     }
 
@@ -379,8 +403,15 @@ impl GraphModelAccess {
     // =========================================================================
 
     /// Get child nodes from already-built caches. Returns empty map if caches not built.
-    pub fn get_child_nodes(&self, node_id: &str) -> ChildNodes {
+    pub fn get_child_nodes(&self, node_id: &str) -> Arc<ChildNodes> {
         ModelAccess::get_child_nodes(self, node_id).unwrap_or_default()
+    }
+
+    /// `node_id`'s children from the index built with the others: `None` if
+    /// the caches aren't built.
+    pub fn child_nodes_internal(&self, node_id: &str) -> Option<Arc<ChildNodes>> {
+        let index = self.child_nodes.as_ref()?;
+        Some(index.get(node_id).cloned().unwrap_or_default())
     }
 
     // =========================================================================
@@ -571,6 +602,11 @@ impl ModelAccess for GraphModelAccess {
 
     fn get_nodegroups(&self) -> Option<&HashMap<String, Arc<StaticNodegroup>>> {
         self.nodegroups.as_ref().map(|arc| arc.as_ref())
+    }
+
+    fn get_child_nodes(&self, node_id: &str) -> Result<Arc<ChildNodes>, String> {
+        self.child_nodes_internal(node_id)
+            .ok_or_else(|| "Edges not initialized".to_string())
     }
 
     fn get_root_node(&self) -> Result<Arc<StaticNode>, String> {
@@ -871,6 +907,30 @@ mod tests {
         assert!(children.contains_key("name"));
         assert!(children.contains_key("details"));
         assert_eq!(children.get("name").unwrap().nodeid, "child-a-id");
+    }
+
+    /// The child maps are built with the other indices, so a changed graph
+    /// gives new ones, never the earlier graph's.
+    #[test]
+    fn get_child_nodes_follows_a_changed_graph() {
+        let graph = create_test_graph();
+        let mut access = GraphModelAccess::from_graph(&graph);
+        let before = access.get_child_nodes("root-id");
+        assert_eq!(before.len(), 2);
+
+        let edges: Vec<StaticEdge> = graph
+            .edges
+            .iter()
+            .filter(|e| e.rangenode_id != "child-a-id")
+            .cloned()
+            .collect();
+        access.set_graph_edges(edges);
+        access.ensure_built().unwrap();
+
+        let after = access.get_child_nodes("root-id");
+        assert_eq!(after.keys().collect::<Vec<_>>(), vec!["details"]);
+        // A map handed out earlier is the earlier graph's, unchanged.
+        assert_eq!(before.len(), 2);
     }
 
     #[test]

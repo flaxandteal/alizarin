@@ -1,6 +1,7 @@
 # ORM traversal: child-node maps and where the rest of the time goes
 
-Status: **steps 1, 4 and 7 done**; the rest planned (order: 3 with 2, 8).
+Status: **steps 1, 2, 3, 4 and 7 done**: a full traversal ~4× faster
+(~1 ms → ~0.25 ms per resource). Planned: 8, then 5, then re-profile.
 
 ## What was measured
 
@@ -80,13 +81,25 @@ first.
    `test_node_view_model.py` check the order. Measured after, three runs:
    `get_child_nodes` 184–202 ns, the same as the plain `BTreeMap` build;
    traversal 0.92–1.04 ms (noise between runs here is ~10%).
-2. **Look the child up, don't scan**: `get_semantic_child_value` uses
+2. **Done: look the child up, don't scan**: `get_semantic_child_value` uses
    `child_nodes.get(alias)`.
-3. **Child maps computed once per graph node and shared** (`Arc`), built with
-   the model's indices: removes the per-call build and the quadratic
-   rebuilding (~90 µs → ~8 µs per resource here). Where: the model's existing
-   lazily built indices (`GraphModelAccess`/`StaticGraph`), invalidated with
-   them.
+3. **Done: child maps computed once per graph node and shared.**
+   `ModelAccess::get_child_nodes` returns `Arc<ChildNodes>` (the default
+   still builds one per call); `GraphModelAccess` builds every node's in
+   `build_indices`, from the same nodes and edges indices the default reads,
+   and `invalidate_caches` drops them with those. Every way its graph
+   changes (`set_graph`, `set_graph_nodes`/`_edges`/`_nodegroups`,
+   `prune_graph`) goes through `invalidate_caches`, so the maps are exactly
+   as fresh as the indices they were derived from per call before;
+   `get_child_nodes_follows_a_changed_graph` checks it. A map already handed
+   out keeps the graph it was taken from, as any `Arc` of the old indices
+   does. `LayeredGraph` is not involved: it implements `GraphLookup`, not
+   `ModelAccess`, has its own `OnceLock` indices, and a layer is added or
+   removed by making a new one (`with_overlay`, `without_overlay`), never by
+   changing one. WASM's `ResourceModelWrapperCore` delegates to its
+   `GraphModelAccess`. `PseudoNodeCore.child_nodes` is the shared `Arc`.
+   Measured after, three runs: `get_child_nodes` 24–25 ns (from ~200);
+   traversal **0.25–0.26 ms** per resource (from 0.45–0.51).
 4. **Done: profile.** `BENCH_RESOURCES=3000`, built with
    `RUSTFLAGS="-C force-frame-pointers=yes"` (DWARF unwinding lost most
    callers), `perf record -e cycles:u --call-graph fp`, 31,640 samples;
