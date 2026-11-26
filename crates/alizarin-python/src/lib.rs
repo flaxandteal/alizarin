@@ -1412,7 +1412,7 @@ impl PyPseudoNode {
 
     #[getter]
     fn child_node_aliases(&self) -> Vec<String> {
-        self.core.child_nodes.keys().cloned().collect()
+        alizarin_core::sorted_serde::sorted_keys(self.core.child_nodes.keys())
     }
 
     /// Children by alias, each as a dict.

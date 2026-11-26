@@ -3,7 +3,7 @@
 Status: **steps 1, 2, 3, 4, 7, 9 and 10 done**: a full traversal ~4.5×
 faster on one tile per nodegroup (~1 ms → 0.21–0.24 ms per resource), and
 linear rather than quadratic in tiles per nodegroup (1,540 tiles: 90 ms →
-10.6 ms). Planned: 8, 5.
+10.6 ms). Step 5 done too. Planned: 8.
 
 ## What was measured
 
@@ -179,8 +179,15 @@ first.
     benchmark in debug at every k, pass with it. The bindings' own "empty
     store for a lazy wrapper" moved into core's `set_lazy` (Python's never
     had it), so no binding writes the store directly.
-5. **Sorted key lists, and a guard**: WASM's `getRegisteredExtensionHandlers`
-   sorted (as its mutation listing now is); a `sourceParity` rule flagging
-   `.keys()` on a `HashMap`-typed field in a binding crate unless it goes
-   through `sorted_keys` (string-level, so a ratchet, not a proof).
+5. **Done: sorted key lists, and a guard.** WASM's
+   `getRegisteredExtensionHandlers` is sorted (it listed a `HashMap`'s keys).
+   `tests/sourceParity.test.ts` rule 6: an exported binding function (WASM,
+   NAPI, and now Python's crates) that lists a map's keys does so through
+   `sorted_serde::sorted_keys`, with no exceptions, since the rule can't see
+   types; so the `BTreeMap` sites (`ChildNodes`, NAPI's tile data) go
+   through it too. On those it is a no-op: they clone the keys to return
+   them anyway, and the stable sort finishes already-sorted input in one
+   pass. Exempting them would need a list of "known sorted" receivers,
+   which would keep passing if one became a `HashMap` again. Checked that
+   the old `getRegisteredExtensionHandlers` trips the rule.
 6. **Re-run the benchmark** after each of 1–3, and record the numbers here.

@@ -270,10 +270,9 @@ pub fn fold_may_match_js(
 #[wasm_bindgen(js_name = getRegisteredExtensionHandlers)]
 pub fn get_registered_extension_handlers() -> js_sys::Array {
     JS_TYPE_HANDLERS.with(|handlers| {
-        let handlers = handlers.borrow();
         let arr = js_sys::Array::new();
-        for datatype in handlers.keys() {
-            arr.push(&JsValue::from_str(datatype));
+        for datatype in alizarin_core::sorted_serde::sorted_keys(handlers.borrow().keys()) {
+            arr.push(&JsValue::from_str(&datatype));
         }
         arr
     })

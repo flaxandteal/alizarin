@@ -14,6 +14,11 @@
  * 5. A `HashMap` field of a serialisable core struct is written in sorted key
  *    order (`crate::sorted_serde`), or skipped, so direct serialisation is
  *    byte-stable (the rule in sorted_serde.rs and notes/backend-support-matrix.md).
+ * 6. An exported binding function that lists a map's keys sorts them through
+ *    `sorted_serde::sorted_keys`, whatever the map: a hashed map lists them
+ *    in an order that differs between processes, and the rule can't see
+ *    types. String-level, over exported functions only (a `#[pymethods]`
+ *    method with no attribute of its own isn't seen): a ratchet, not a proof.
  */
 import { describe, expect, test } from "vitest";
 import * as fs from "fs";
@@ -38,6 +43,9 @@ function extDirs(kind: "wasm" | "napi"): string[] {
 const WASM = ["crates/alizarin-wasm/src", "crates/wasm-wrapper-derive/src", ...extDirs("wasm")].flatMap(rustFiles);
 const NAPI = ["crates/alizarin-napi/src", ...extDirs("napi")].flatMap(rustFiles);
 const CORE = rustFiles("crates/alizarin-core/src");
+const PYTHON = ["crates/alizarin-python/src", ...fs.readdirSync(path.join(ROOT, "ext"))
+  .map((e) => `ext/${e}/python/src`)
+  .filter((d) => fs.existsSync(path.join(ROOT, d)))].flatMap(rustFiles);
 
 function lines(file: string): string[] {
   return fs.readFileSync(path.join(ROOT, file), "utf8").split("\n");
@@ -60,7 +68,10 @@ function functionsWith(files: string[], attr: RegExp): { where: string; body: st
     src.forEach((text, i) => {
       if (!attr.test(text)) return;
       let start = i + 1;
-      while (start < src.length && !/\bfn\s/.test(src[start])) start++;
+      // The attribute's item: a function, or something else (a struct, an
+      // impl, a module), which isn't one.
+      while (start < src.length && !/\b(fn|struct|enum|impl|mod)\s/.test(src[start])) start++;
+      if (start >= src.length || !/\bfn\s/.test(src[start])) return;
       const indent = src[start].match(/^\s*/)![0];
       let end = start + 1;
       while (end < src.length && src[end] !== `${indent}}`) end++;
@@ -135,6 +146,21 @@ describe("source parity", () => {
         if (!/sorted_|skip/.test(attrs)) unsorted.push(`${file}:${i + 1}: ${text.trim()}`);
       });
     }
+    expect(unsorted).toEqual([]);
+  });
+
+  test("6. exported binding functions list a map's keys through sorted_keys", () => {
+    const exported = functionsWith(
+      [...WASM, ...NAPI, ...PYTHON],
+      /^\s*#\[(wasm_bindgen|napi|getter|pyfunction|pyo3)\b/,
+    );
+    const unsorted = exported.flatMap(({ where, body }) =>
+      body
+        .split("\n")
+        .filter((text) => /\.keys\(\)/.test(text) && !/sorted_keys\(/.test(text))
+        .filter((text) => !text.trim().startsWith("//"))
+        .map((text) => `${where}: ${text.trim()}`),
+    );
     expect(unsorted).toEqual([]);
   });
 });

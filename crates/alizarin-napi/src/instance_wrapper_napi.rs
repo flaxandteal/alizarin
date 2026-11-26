@@ -457,7 +457,7 @@ impl NapiTileData {
     /// Keys in sorted order, matching the WASM `data` Map and serialized tiles.
     #[napi]
     pub fn keys(&self) -> Vec<String> {
-        self.entries.lock().unwrap().keys().cloned().collect()
+        alizarin_core::sorted_serde::sorted_keys(self.entries.lock().unwrap().keys())
     }
 }
 
@@ -1732,7 +1732,7 @@ impl NapiPseudoNode {
 
     #[napi(getter, js_name = "childNodeAliases")]
     pub fn child_node_aliases(&self) -> Vec<String> {
-        self.core.child_nodes.keys().cloned().collect()
+        alizarin_core::sorted_serde::sorted_keys(self.core.child_nodes.keys())
     }
 
     /// Children by alias, as a `Map` (as on WASM).
@@ -2067,7 +2067,9 @@ impl NapiResourceModelWrapper {
     #[napi(js_name = "getChildNodeAliases")]
     pub fn get_child_node_aliases(&self, node_id: String) -> Vec<String> {
         self.model()
-            .map(|model| model.get_child_nodes(&node_id).keys().cloned().collect())
+            .map(|model| {
+                alizarin_core::sorted_serde::sorted_keys(model.get_child_nodes(&node_id).keys())
+            })
             .unwrap_or_default()
     }
 

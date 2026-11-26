@@ -115,8 +115,8 @@ impl PseudoNode {
     #[wasm_bindgen(getter = childNodeAliases)]
     pub fn get_child_node_aliases(&self) -> JsValue {
         let map = js_sys::Array::new();
-        for key in self.core.child_nodes.keys() {
-            map.push(&JsValue::from_str(key));
+        for key in alizarin_core::sorted_serde::sorted_keys(self.core.child_nodes.keys()) {
+            map.push(&JsValue::from_str(&key));
         }
         map.into()
     }
