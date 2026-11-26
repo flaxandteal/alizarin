@@ -56,10 +56,7 @@ impl ResourceModelWrapperCore {
         alizarin_core::ModelAccess::get_root_node(&*self.model_access)
     }
 
-    pub fn get_child_nodes(
-        &self,
-        node_id: &str,
-    ) -> Result<HashMap<String, Arc<StaticNode>>, String> {
+    pub fn get_child_nodes(&self, node_id: &str) -> Result<alizarin_core::ChildNodes, String> {
         Ok(self.model_access.get_child_nodes(node_id))
     }
 

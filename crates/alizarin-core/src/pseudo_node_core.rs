@@ -8,10 +8,9 @@
 //! placeholder, so [`PseudoNodeCore::placeholder`] gives the whole path
 //! (`.group.basic_info`, with `[*]` after a list node) on every binding.
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::instance_wrapper_core::ModelAccess;
+use crate::instance_wrapper_core::{ChildNodes, ModelAccess};
 use crate::StaticNode;
 
 /// Datatypes whose node holds a list, marked `[*]` in a placeholder.
@@ -26,7 +25,7 @@ const ITERABLE_DATATYPES: &[&str] = &[
 pub struct PseudoNodeCore {
     pub node: Arc<StaticNode>,
     /// Children by alias (empty on an outer node: its inner holds them).
-    pub child_nodes: HashMap<String, Arc<StaticNode>>,
+    pub child_nodes: ChildNodes,
     /// Whether this is an inner node, read as `semantic`.
     pub is_inner: bool,
     /// An outer node's inner.
@@ -38,13 +37,13 @@ pub struct PseudoNodeCore {
 impl PseudoNodeCore {
     /// The pseudo node for `node` with its children, split into outer and
     /// inner when it isn't semantic and has children.
-    pub fn new(node: Arc<StaticNode>, child_nodes: HashMap<String, Arc<StaticNode>>) -> Self {
+    pub fn new(node: Arc<StaticNode>, child_nodes: ChildNodes) -> Self {
         Self::with_parent(node, child_nodes, None)
     }
 
     fn with_parent(
         node: Arc<StaticNode>,
-        child_nodes: HashMap<String, Arc<StaticNode>>,
+        child_nodes: ChildNodes,
         parent_placeholder: Option<String>,
     ) -> Self {
         if node.datatype != "semantic" && !child_nodes.is_empty() {
@@ -57,7 +56,7 @@ impl PseudoNodeCore {
             };
             PseudoNodeCore {
                 node,
-                child_nodes: HashMap::new(),
+                child_nodes: ChildNodes::new(),
                 is_inner: false,
                 inner: Some(Arc::new(inner)),
                 parent_placeholder,

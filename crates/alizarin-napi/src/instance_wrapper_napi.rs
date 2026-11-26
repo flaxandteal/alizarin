@@ -2049,10 +2049,13 @@ impl NapiResourceModelWrapper {
 
     /// Get child nodes for a parent node ID.
     #[napi(js_name = "getChildNodes")]
-    pub fn get_child_nodes(&self, node_id: String) -> Result<HashMap<String, serde_json::Value>> {
+    pub fn get_child_nodes(
+        &self,
+        node_id: String,
+    ) -> Result<std::collections::BTreeMap<String, serde_json::Value>> {
         let model = self.model()?;
         let children = model.get_child_nodes(&node_id);
-        let mut result = HashMap::new();
+        let mut result = std::collections::BTreeMap::new();
         for (alias, node) in &children {
             result.insert(
                 alias.clone(),

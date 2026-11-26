@@ -1,5 +1,5 @@
-//! How much a full ORM traversal spends building child-node maps, and what a
-//! sorted (`BTreeMap`) or cached map would cost instead. Not a correctness
+//! How much a full ORM traversal spends building child-node maps (sorted,
+//! `ChildNodes`), against a hashed or a cached map. Not a correctness
 //! test: ignored by default, timings printed.
 //!
 //!   cargo test --release -p alizarin-core --test child_nodes_bench -- --ignored --nocapture
@@ -11,15 +11,15 @@
 //! fresh alias map on each call, and `get_all_semantic_child_values` calls it
 //! once, then once more per child (through `get_semantic_child_value`).
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::hint::black_box;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use alizarin_core::{
-    GraphModelAccess, ModelAccess, ResourceInstanceWrapperCore, SemanticChildResult, StaticGraph,
-    StaticNode, StaticResourceMetadata, StaticTile,
+    ChildNodes, GraphModelAccess, ModelAccess, ResourceInstanceWrapperCore, SemanticChildResult,
+    StaticGraph, StaticNode, StaticResourceMetadata, StaticTile,
 };
 
 const RESOURCE_ID: &str = "bench-resource-1";
@@ -187,21 +187,29 @@ fn child_node_maps_in_a_full_traversal() {
     }) / RESOURCES as u32;
 
     let per_round = |d: Duration| d / (MAP_ROUNDS * node_ids.len()) as u32;
+    // The same build into each map type, then core's own.
     let hash_build = per_round(best_of_three(|| {
         for _ in 0..MAP_ROUNDS {
             for id in &node_ids {
-                black_box(ModelAccess::get_child_nodes(&model, id).unwrap());
+                black_box(child_map::<HashMap<_, _>>(&model, id));
             }
         }
     }));
     let btree_build = per_round(best_of_three(|| {
         for _ in 0..MAP_ROUNDS {
             for id in &node_ids {
-                black_box(child_map::<BTreeMap<_, _>>(&model, id));
+                black_box(child_map::<ChildNodes>(&model, id));
             }
         }
     }));
-    let cache: HashMap<String, Arc<BTreeMap<String, Arc<StaticNode>>>> = node_ids
+    let core_build = per_round(best_of_three(|| {
+        for _ in 0..MAP_ROUNDS {
+            for id in &node_ids {
+                black_box(ModelAccess::get_child_nodes(&model, id).unwrap());
+            }
+        }
+    }));
+    let cache: HashMap<String, Arc<ChildNodes>> = node_ids
         .iter()
         .map(|id| (id.clone(), Arc::new(child_map(&model, id))))
         .collect();
@@ -213,7 +221,7 @@ fn child_node_maps_in_a_full_traversal() {
         }
     }));
 
-    let in_maps = hash_build * stats.map_builds as u32;
+    let in_maps = core_build * stats.map_builds as u32;
     println!(
         "\nHeritage Item: {} nodes, {} nodegroups; one resource, a tile per nodegroup",
         graph.nodes_slice().len(),
@@ -227,8 +235,9 @@ fn child_node_maps_in_a_full_traversal() {
         "child maps (over the {} nodes with children):",
         node_ids.len()
     );
-    println!("child map, HashMap build:  {hash_build:>10.2?} per call (today)");
+    println!("child map, HashMap build:  {hash_build:>10.2?} per call");
     println!("child map, BTreeMap build: {btree_build:>10.2?} per call");
+    println!("get_child_nodes (core):    {core_build:>10.2?} per call");
     println!("child map, cached Arc:     {cached:>10.2?} per call");
     println!(
         "child-map builds in a traversal: ~{in_maps:.2?} of {traversal:.2?} ({:.0}%)",

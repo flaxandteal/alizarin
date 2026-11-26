@@ -281,9 +281,9 @@ pub use indexmap;
 pub use instance_wrapper_core::{
     create_pseudo_list_from_tiles, ensure_nodegroup, is_node_single_cardinality,
     is_node_single_cardinality_with, matches_semantic_child, resolve_and_filter_tiles,
-    values_from_resource_nodegroup, EnsureNodegroupResult, LoadState, ModelAccess, PopulateResult,
-    ResourceInstanceWrapperCore, SemanticChildError, SemanticChildResult, TileStore,
-    ValuesFromNodegroupResult,
+    values_from_resource_nodegroup, ChildNodes, EnsureNodegroupResult, LoadState, ModelAccess,
+    PopulateResult, ResourceInstanceWrapperCore, SemanticChildError, SemanticChildResult,
+    TileStore, ValuesFromNodegroupResult,
 };
 
 // Platform-agnostic ModelAccess from StaticGraph (used by Python, NAPI, etc.)

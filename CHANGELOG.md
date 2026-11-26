@@ -8,6 +8,13 @@ entries is tracked in `PARITY-RESEARCH.md`.
 ## Unreleased
 
 ### Added
+- A node's child aliases come back sorted on every binding
+  (`childNodeAliases`, `getChildNodeAliases`, `getChildNodes`), where they were
+  in hash order, which differed between processes and bindings.
+  **Breaking** (Rust): `ModelAccess::get_child_nodes`,
+  `GraphModelAccess::get_child_nodes` and `PseudoNodeCore.child_nodes` are
+  `ChildNodes` (a `BTreeMap<String, Arc<StaticNode>>`), not a `HashMap`.
+  Benchmark and plan: `notes/orm-traversal-performance.md`.
 - No extension module links a copy of alizarin-core any more
   (`notes/extension-interface-split.md`): clm, filelist and geo build against
   `alizarin-extension-api`, which now holds the plain data both sides name

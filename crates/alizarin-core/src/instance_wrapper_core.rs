@@ -135,6 +135,11 @@ pub enum SemanticChildResult {
 // Model access trait
 // =============================================================================
 
+/// A node's children, by alias. Sorted, so every binding lists them in one
+/// order; and, for maps this small (one node's children), cheaper to build
+/// than a hashed map (notes/orm-traversal-performance.md).
+pub type ChildNodes = BTreeMap<String, Arc<StaticNode>>;
+
 /// Trait for accessing model data (nodes, edges, nodegroups)
 ///
 /// This abstracts the model registry access pattern so that:
@@ -187,13 +192,12 @@ pub trait ModelAccess {
 
     /// Get child nodes for a parent node, keyed by alias.
     /// Default implementation derives from `get_edges()` and `get_nodes()`.
-    fn get_child_nodes(&self, node_id: &str) -> Result<HashMap<String, Arc<StaticNode>>, String> {
+    fn get_child_nodes(&self, node_id: &str) -> Result<ChildNodes, String> {
         let edges = self.get_edges().ok_or("Edges not initialized")?;
         let nodes = self.get_nodes().ok_or("Nodes not initialized")?;
-        let child_ids = edges.get(node_id).cloned().unwrap_or_default();
-        let mut children = HashMap::new();
-        for child_id in child_ids {
-            if let Some(node) = nodes.get(&child_id) {
+        let mut children = ChildNodes::new();
+        for child_id in edges.get(node_id).into_iter().flatten() {
+            if let Some(node) = nodes.get(child_id) {
                 if let Some(ref alias) = node.alias {
                     if !alias.is_empty() {
                         children.insert(alias.clone(), Arc::clone(node));

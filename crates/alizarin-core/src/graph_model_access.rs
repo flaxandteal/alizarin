@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use crate::graph::prune_graph as core_prune_graph;
 use crate::graph::{StaticEdge, StaticGraph, StaticNode, StaticNodegroup, StaticTile};
-use crate::instance_wrapper_core::ModelAccess;
+use crate::instance_wrapper_core::{ChildNodes, ModelAccess};
 use crate::permissions::PermissionRule;
 
 /// ModelAccess implementation built from a StaticGraph.
@@ -368,10 +368,7 @@ impl GraphModelAccess {
     }
 
     /// Get child nodes for a given node, building caches if needed.
-    pub fn get_child_nodes_mut(
-        &mut self,
-        node_id: &str,
-    ) -> Result<HashMap<String, Arc<StaticNode>>, String> {
+    pub fn get_child_nodes_mut(&mut self, node_id: &str) -> Result<ChildNodes, String> {
         self.ensure_built()?;
         // Delegates to the ModelAccess::get_child_nodes default impl
         ModelAccess::get_child_nodes(self, node_id)
@@ -382,7 +379,7 @@ impl GraphModelAccess {
     // =========================================================================
 
     /// Get child nodes from already-built caches. Returns empty map if caches not built.
-    pub fn get_child_nodes(&self, node_id: &str) -> HashMap<String, Arc<StaticNode>> {
+    pub fn get_child_nodes(&self, node_id: &str) -> ChildNodes {
         ModelAccess::get_child_nodes(self, node_id).unwrap_or_default()
     }
 

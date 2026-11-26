@@ -176,26 +176,22 @@ describe(`ResourceModelWrapper [${getBackend()} backend]`, () => {
   // getChildNodeAliases
   // =========================================================================
 
-  test("getChildNodeAliases > should return alias strings", () => {
+  test("getChildNodeAliases > should return alias strings, sorted", () => {
     const graph = createStaticGraph({ name: "Test Graph", author: "Test Author" });
     const mutator = new GraphMutator(graph);
-    mutator.addStringNode(null, "alpha", "Alpha", "n",
-      "http://www.w3.org/2000/01/rdf-schema#Literal",
-      "http://www.cidoc-crm.org/cidoc-crm/P3_has_note"
-    );
-    mutator.addStringNode(null, "beta", "Beta", "n",
-      "http://www.w3.org/2000/01/rdf-schema#Literal",
-      "http://www.cidoc-crm.org/cidoc-crm/P3_has_note"
-    );
+    // Added out of order: the list is sorted, as on every binding.
+    for (const alias of ["zeta", "alpha", "mu"]) {
+      mutator.addStringNode(null, alias, alias, "n",
+        "http://www.w3.org/2000/01/rdf-schema#Literal",
+        "http://www.cidoc-crm.org/cidoc-crm/P3_has_note"
+      );
+    }
     const mutatedGraph = mutator.apply();
     const wrapper = wrapGraph(mutatedGraph);
 
     const aliases = wrapper.getChildNodeAliases(mutatedGraph.root.nodeid);
 
-    assert.isArray(aliases);
-    assert.equal(aliases.length, 2);
-    assert.isTrue(aliases.includes("alpha"));
-    assert.isTrue(aliases.includes("beta"));
+    assert.deepEqual(aliases, ["alpha", "mu", "zeta"]);
   });
 
   // =========================================================================

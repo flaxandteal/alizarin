@@ -31,7 +31,8 @@ def test_pseudo_nodes_record_the_path_from_the_root():
 
     basic_info = wrapper.create_pseudo_node_child("basic_info", root)
     assert basic_info.get_node_placeholder() == ".group.basic_info"
-    assert sorted(basic_info.child_node_aliases) == ["image", "name", "source"]
+    # Sorted, as on every binding.
+    assert basic_info.child_node_aliases == ["image", "name", "source"]
 
     members = wrapper.create_pseudo_node_child("members", root)
     assert members.is_iterable()
