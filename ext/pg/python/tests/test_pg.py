@@ -5,21 +5,37 @@ cache) and writes what batch_trees_to_tiles would give, as COPY rows.
 """
 
 import json
-from pathlib import Path
 
 import pytest
 
 import alizarin
 from alizarin_pg import batch_trees_to_pg_copy
 
-GROUP = Path(__file__).parents[4] / "tests" / "data" / "models" / "Group.json"
 RESOURCE_ID = "11111111-1111-1111-1111-111111111111"
+EX = "http://example.org/"
 
 
 @pytest.fixture(scope="module")
 def graph_id():
-    with open(GROUP) as f:
-        graph = json.load(f)["graph"][0]
+    # Built here rather than read from the repo's tests/data: CI runs these
+    # tests from a copy outside the source tree.
+    def add(parent, alias, cardinality, datatype):
+        return {"AddNode": {
+            "parent_alias": parent, "alias": alias, "name": alias.title(),
+            "cardinality": cardinality, "datatype": datatype,
+            "ontology_class": f"{EX}{alias}", "parent_property": f"{EX}has_{alias}",
+            "options": {},
+        }}
+
+    graph = json.loads(alizarin.apply_mutations_create(json.dumps({
+        "mutations": [
+            {"CreateGraph": {"name": "Group", "is_resource": True, "root_alias": "group",
+                             "root_ontology_class": f"{EX}Group"}},
+            add("group", "basic_info", "n", "semantic"),
+            add("basic_info", "name", "1", "string"),
+        ],
+        "options": {"autocreate_card": True, "autocreate_widget": False},
+    }), graph_json=None))
     alizarin.register_graph(json.dumps(graph))
     return graph["graphid"]
 
