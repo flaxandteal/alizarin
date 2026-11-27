@@ -341,10 +341,9 @@ pub fn render_reference_display_value(
 /// tolerating unresolved `__needs_rdm_label_lookup` markers by falling back to
 /// their `label`, and skipping bare `__needs_rdm_lookup` (uuid) markers.
 ///
-/// The napi/python path resolves markers *before* rendering and uses the strict
-/// [`render_reference_display_value`]; the browser renders lazily and may still
-/// hold markers, so this mirrors what the old TypeScript handler did — keeping
-/// that logic in Rust (one source of truth) rather than reimplemented in JS.
+/// Every binding renders through this: WASM's package directly, NAPI and
+/// Python through the C ABI (after resolving the markers they can, so a
+/// marker whose concept isn't cached still reaches here).
 pub fn render_reference_display_tile(value: &Value, lang: Option<&str>) -> String {
     fn render_one(item: &Value, lang: Option<&str>) -> Option<String> {
         match item {

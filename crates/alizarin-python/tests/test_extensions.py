@@ -42,6 +42,23 @@ FILES = [
 @pytest.fixture
 def record():
     """A record with a file-list and a reference node, and a value in each."""
+    yield _record(REFERENCE)
+    viewContext.graphManager = None
+
+
+@pytest.fixture
+def marker_record():
+    """The record, its reference still an unresolved label marker."""
+    yield _record([LABEL_MARKER])
+    viewContext.graphManager = None
+
+
+# A reference value not yet resolved against its list: what a tree carries
+# when the concept wasn't in the RDM cache at conversion.
+LABEL_MARKER = {"__needs_rdm_label_lookup": True, "label": "Bowl", "controlledList": LIST_ID}
+
+
+def _record(kind):
     path = os.path.join(os.path.dirname(__file__), "../../../tests/data/models/Group.json")
     with open(path) as f:
         base = StaticGraph.from_dict(json.load(f)["graph"][0])
@@ -68,11 +85,10 @@ def record():
     gm.register_graph(graph)
     gm.register_resource({
         "resourceinstance": {"resourceinstanceid": RESOURCE_ID, "graph_id": graph["graphid"], "name": "Record"},
-        "tiles": [tile("attachments", FILES), tile("kind", REFERENCE)],
+        "tiles": [tile("attachments", FILES), tile("kind", kind)],
     })
     viewContext.graphManager = gm
-    yield gm, graph
-    viewContext.graphManager = None
+    return gm, graph
 
 
 def test_both_handlers_are_registered():
@@ -123,6 +139,18 @@ async def test_core_renders_both_for_display_through_their_handlers(record):
         "attachments": "file1.pdf, file2.jpg",
         "kind": ["Item 1>1"],
     }
+
+
+@pytest.mark.asyncio
+async def test_an_unresolved_reference_displays_as_on_every_binding(marker_record):
+    # clm renders an unresolved label marker by its label, as on WASM and
+    # NAPI (tests/dual-backend/extensions.test.ts).
+    gm, graph = marker_record
+    asset = await gm.getResource(RESOURCE_ID, lazy=False)
+    ncm = alizarin._alizarin_rust.RustNodeConfigManager()
+    ncm.load_graph_json(json.dumps(graph))
+    display = asset._i._rust_core.to_display_json(ncm, "en")
+    assert display["kind"] == ["Bowl"]
 
 
 @pytest.mark.asyncio

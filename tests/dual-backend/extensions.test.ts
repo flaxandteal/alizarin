@@ -163,6 +163,17 @@ describe(`extensions through the ORM [${getBackend()} backend]`, () => {
     expect(display.root).toEqual({ attachments: "file1.pdf, file2.jpg", kind: ["Item 1>1"] });
   });
 
+  test("an unresolved reference displays as on every binding", async () => {
+    // A value not yet resolved against its list (the concept wasn't in the RDM
+    // cache at conversion): clm renders a label marker by its label, as
+    // Python does (crates/alizarin-python/tests/test_extensions.py).
+    // eslint-disable-next-line @typescript-eslint/naming-convention -- core's marker key
+    const marker = { __needs_rdm_label_lookup: true, label: "Bowl", controlledList: LIST_ID };
+    const asset = await record([marker]);
+    const display = await asset.forDisplayJson(true, "en");
+    expect(display.root.kind).toEqual(["Bowl"]);
+  });
+
   test("a reference's URI is built on the base URI set through @alizarin/clm", async () => {
     // A concept with no stored URI, looked up from a bare id: its URI is built,
     // on the base set here, by clm's Rust (as Python's set_clm_base_uri sets it).

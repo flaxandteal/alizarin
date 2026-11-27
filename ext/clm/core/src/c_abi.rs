@@ -21,7 +21,7 @@ use alizarin_extension_api::{
 };
 
 use crate::{
-    coerce_reference_value, reference_index_spec, render_reference_display_value,
+    coerce_reference_value, reference_index_spec, render_reference_display_tile,
     ReferenceNodeConfig,
 };
 
@@ -92,10 +92,9 @@ unsafe extern "C" fn render_reference_display(
         Err(e) => return RenderDisplayResult::error(format!("Invalid JSON: {}", e)),
     };
 
-    match render_reference_display_value(&resolved, lang) {
-        Ok(s) => RenderDisplayResult::success(s),
-        Err(e) => RenderDisplayResult::error(e),
-    }
+    // The renderer WASM's package calls: a marker left unresolved (its concept
+    // not in the cache) shows its label on every binding.
+    RenderDisplayResult::success(render_reference_display_tile(&resolved, lang))
 }
 
 // =========================================================================
