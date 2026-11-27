@@ -229,10 +229,41 @@ first.
     per value); dropping the cache's tables 7.7%; hash-key comparisons
     (`memcmp`) ~13% inline in the walk. Next: the cache build (share the
     caller's tiles rather than copy them; one child-id list per node), then
-    re-profile the walk.
+    re-profile the walk. **Parked (2026-11-27)**: rationalise first (below).
     Rós Madair picks both up by moving its alizarin pin (`=2.0.0-alpha.146`
     in its workspace `Cargo.toml`, before any of this); it needs no layout
     change (see its notes below).
+
+## Rationalisation needed before more of this (2026-11-27)
+
+Stop adding micro-optimisations here; the next step in this area is to
+simplify what the steps above added, which made the code harder to follow.
+Candidates:
+
+- **Two indices for one question.** The wrapper's `child_tile_index`
+  (`ResourceInstanceWrapperCore`, step 10) and the visitor's
+  `ChildMatchIndex` (step 11) both answer "this parent's child tiles", over
+  different containers (the tile store; the pseudo lists), with different
+  rules (`matches_semantic_child`; `matches_tile_filter`). One tile index in
+  core, built with the tiles, that both paths read, and ideally one
+  matching rule, would remove a whole mechanism and the reasons the two can
+  disagree.
+- **The debug cross-checks** (each index re-runs the scan and asserts the
+  same answer) were a safety net for introducing the indices; once there is
+  one index and a direct test of it, they should go.
+- **The short-list threshold** (`ChildMatchIndex::SCAN_BELOW`) is a tuning
+  constant that measured as within noise; drop it unless a benchmark
+  justifies it.
+- **`matching_entries` / `matching_entries_at`** on `PseudoListLike`: two
+  methods per list type where one taking an optional candidate set would do;
+  and WASM's list still sorts its matches where core relies on list order.
+- **`tiles_changed`** must be called by every writer of public fields
+  (`tiles`, `nodegroup_index`): making those fields private behind methods
+  would turn a convention into a guarantee.
+- **`sorted_keys` on already-sorted maps** (step 5) exists only because the
+  lint can't see types; fine as is, but revisit if the lint is reworked.
+- **Shared-`Arc` signatures** (`Arc<ChildNodes>`, `Arc<StaticTile>` in the
+  store) are worth keeping; they are simpler than the copies they replaced.
 
 ## Rós Madair (checked 2026-11-26, `release/alpha.31`, 0.1.0-alpha.34)
 

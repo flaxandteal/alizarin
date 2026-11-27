@@ -8,6 +8,12 @@ entries is tracked in `PARITY-RESEARCH.md`.
 ## Unreleased
 
 ### Added
+- Tiles-to-tree conversion (`resource_tiles_to_tree`, and every binding's
+  tree and display JSON) looks a parent's children up rather than testing
+  every value of the child node: near-flat per tile as a resource grows
+  (3,060 tiles: 51 → ~40 µs a tile). **Breaking** (Rust):
+  `PseudoListLike` has `matching_entries_at` and `values`, and
+  `VisitorContext` a `matches` field (`Default::default()`).
 - Reading a node's children no longer scans every tile of its nodegroup, so
   a resource read through the ORM takes time linear in its tiles, where it
   was quadratic in a multi-valued nodegroup's (1,540 tiles: 90 ms → 11 ms).
