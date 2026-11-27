@@ -257,6 +257,20 @@ impl PseudoListLike for PseudoListInner {
         self.matching_entries(parent_tile_id, nodegroup_id, parent_nodegroup_id)
     }
 
+    fn matching_entries_at(
+        &self,
+        positions: &[usize],
+        parent_tile_id: Option<&String>,
+        nodegroup_id: Option<&String>,
+        parent_nodegroup_id: Option<&String>,
+    ) -> Vec<&Self::Value> {
+        self.matching_entries_at(positions, parent_tile_id, nodegroup_id, parent_nodegroup_id)
+    }
+
+    fn values(&self) -> &[Self::Value] {
+        &self.values
+    }
+
     fn is_single(&self) -> bool {
         self.is_single
     }
@@ -278,22 +292,34 @@ impl PseudoListInner {
         nodegroup_id: Option<String>,
         parent_nodegroup_id: Option<String>,
     ) -> Vec<&PseudoValueInner> {
-        use alizarin_core::matches_tile_filter;
-        let mut entries: Vec<&PseudoValueInner> = self
-            .values
+        let all: Vec<usize> = (0..self.values.len()).collect();
+        self.matching_entries_at(
+            &all,
+            parent_tile_id.as_ref(),
+            nodegroup_id.as_ref(),
+            parent_nodegroup_id.as_ref(),
+        )
+    }
+
+    /// [`matching_entries`](Self::matching_entries) among the values at
+    /// `positions` (ascending): the same rule, in the same order.
+    pub fn matching_entries_at(
+        &self,
+        positions: &[usize],
+        parent_tile_id: Option<&String>,
+        nodegroup_id: Option<&String>,
+        parent_nodegroup_id: Option<&String>,
+    ) -> Vec<&PseudoValueInner> {
+        let mut entries: Vec<&PseudoValueInner> = positions
             .iter()
+            .filter_map(|&p| self.values.get(p))
             .filter(|v| {
-                match v.core.tile.as_ref() {
-                    Some(tile) => matches_tile_filter(
-                        tile,
-                        parent_tile_id.as_ref(),
-                        nodegroup_id.as_ref(),
-                        parent_nodegroup_id.as_ref(),
-                    ),
-                    // Synthetic entries (no tile) match when at root level
-                    // These are created for parent semantic collectors that don't have their own tiles
-                    None => parent_tile_id.is_none(),
-                }
+                alizarin_core::pseudo_value_core::entry_matches(
+                    v.core.tile.as_ref(),
+                    parent_tile_id,
+                    nodegroup_id,
+                    parent_nodegroup_id,
+                )
             })
             .collect();
 

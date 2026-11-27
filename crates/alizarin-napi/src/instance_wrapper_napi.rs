@@ -1636,6 +1636,7 @@ impl NapiResourceInstanceWrapper {
             serialization_options: options,
             serialization_context: ser_ctx,
             node_config_manager: ncm,
+            matches: Default::default(),
         };
 
         Ok(root_list.to_json(&ctx))

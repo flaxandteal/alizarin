@@ -65,6 +65,20 @@ pub trait PseudoListLike {
         parent_nodegroup_id: Option<String>,
     ) -> Vec<&Self::Value>;
 
+    /// [`matching_entries`](Self::matching_entries) among the values at
+    /// `positions` (ascending) only: the same rule and order, for a caller
+    /// that has narrowed the candidates ([`ChildMatchIndex`]).
+    fn matching_entries_at(
+        &self,
+        positions: &[usize],
+        parent_tile_id: Option<&String>,
+        nodegroup_id: Option<&String>,
+        parent_nodegroup_id: Option<&String>,
+    ) -> Vec<&Self::Value>;
+
+    /// The values, in the list's order.
+    fn values(&self) -> &[Self::Value];
+
     /// Check if this is a single-cardinality list (unwraps to single value)
     fn is_single(&self) -> bool;
 
@@ -146,6 +160,9 @@ pub struct VisitorContext<'a, L: PseudoListLike> {
     pub serialization_context: SerializationContext<'a>,
     /// Node config manager for per-node config lookups at leaf serialization
     pub node_config_manager: Option<&'a NodeConfigManager>,
+    /// The pseudo lists' entries by parent, built as the walk needs them, so
+    /// a parent's children are looked up rather than every entry tested.
+    pub matches: ChildMatchIndex,
 }
 
 /// Type alias for core VisitorContext (for backward compatibility)
@@ -167,6 +184,7 @@ impl<'a, L: PseudoListLike> VisitorContext<'a, L> {
             serialization_options: SerializationOptions::tile_data(),
             serialization_context: SerializationContext::empty(),
             node_config_manager: None,
+            matches: ChildMatchIndex::default(),
         }
     }
 
@@ -186,6 +204,7 @@ impl<'a, L: PseudoListLike> VisitorContext<'a, L> {
             serialization_options: SerializationOptions::display(language),
             serialization_context: SerializationContext::empty(),
             node_config_manager: None,
+            matches: ChildMatchIndex::default(),
         }
     }
 
@@ -203,6 +222,7 @@ impl<'a, L: PseudoListLike> VisitorContext<'a, L> {
             serialization_options: self.serialization_options.clone(),
             serialization_context: self.serialization_context.with_node_config(None),
             node_config_manager: self.node_config_manager,
+            matches: self.matches.clone(),
         }
     }
 
@@ -622,17 +642,35 @@ impl PseudoListCore {
         self.values
             .iter()
             .filter(|v| {
-                match v.tile.as_ref() {
-                    Some(tile) => matches_tile_filter(
-                        tile,
-                        parent_tile_id.as_ref(),
-                        nodegroup_id.as_ref(),
-                        parent_nodegroup_id.as_ref(),
-                    ),
-                    // Synthetic entries (no tile) match when at root level
-                    // These are created for parent semantic collectors that don't have their own tiles
-                    None => parent_tile_id.is_none(),
-                }
+                entry_matches(
+                    v.tile.as_ref(),
+                    parent_tile_id.as_ref(),
+                    nodegroup_id.as_ref(),
+                    parent_nodegroup_id.as_ref(),
+                )
+            })
+            .collect()
+    }
+
+    /// [`matching_entries`](Self::matching_entries) among the values at
+    /// `positions` (ascending): the same rule, in the same order.
+    pub fn matching_entries_at(
+        &self,
+        positions: &[usize],
+        parent_tile_id: Option<&String>,
+        nodegroup_id: Option<&String>,
+        parent_nodegroup_id: Option<&String>,
+    ) -> Vec<&PseudoValueCore> {
+        positions
+            .iter()
+            .filter_map(|&p| self.values.get(p))
+            .filter(|v| {
+                entry_matches(
+                    v.tile.as_ref(),
+                    parent_tile_id,
+                    nodegroup_id,
+                    parent_nodegroup_id,
+                )
             })
             .collect()
     }
@@ -727,6 +765,20 @@ impl PseudoListLike for PseudoListCore {
         self.matching_entries(parent_tile_id, nodegroup_id, parent_nodegroup_id)
     }
 
+    fn matching_entries_at(
+        &self,
+        positions: &[usize],
+        parent_tile_id: Option<&String>,
+        nodegroup_id: Option<&String>,
+        parent_nodegroup_id: Option<&String>,
+    ) -> Vec<&Self::Value> {
+        self.matching_entries_at(positions, parent_tile_id, nodegroup_id, parent_nodegroup_id)
+    }
+
+    fn values(&self) -> &[Self::Value] {
+        &self.values
+    }
+
     fn is_single(&self) -> bool {
         self.is_single
     }
@@ -758,6 +810,165 @@ impl TileBuilder {
         tile.sortorder = self.sortorder;
         tile.data = self.data.clone();
         tile
+    }
+}
+
+/// Whether a list entry with `tile` (`None`: a synthetic entry) matches: its
+/// tile passes [`matches_tile_filter`], or, synthetic, the parent is the root.
+/// The one rule every `matching_entries` applies.
+pub fn entry_matches(
+    tile: Option<&Arc<StaticTile>>,
+    parent_tile_id: Option<&String>,
+    nodegroup_id: Option<&String>,
+    parent_nodegroup_id: Option<&String>,
+) -> bool {
+    match tile {
+        Some(tile) => matches_tile_filter(tile, parent_tile_id, nodegroup_id, parent_nodegroup_id),
+        // Synthetic entries (no tile) match when at root level: they are
+        // made for parent semantic collectors that have no tile of their own.
+        None => parent_tile_id.is_none(),
+    }
+}
+
+/// A list's entries by the tile relationships [`entry_matches`] tests, so a
+/// parent's matches are looked up rather than every entry tested: positions
+/// (ascending) by parent tile id (`None`: no parent tile), by the entry's own
+/// tile id, and those with no tile or no tile id.
+#[derive(Debug, Default)]
+struct EntryIndex {
+    by_parent: HashMap<Option<String>, Vec<usize>>,
+    by_tileid: HashMap<String, Vec<usize>>,
+    without_tileid: Vec<usize>,
+}
+
+impl EntryIndex {
+    fn of<V: PseudoValueLike>(values: &[V]) -> Self {
+        let mut index = EntryIndex::default();
+        for (position, value) in values.iter().enumerate() {
+            match value.tile() {
+                Some(tile) => {
+                    index
+                        .by_parent
+                        .entry(tile.parenttile_id.clone())
+                        .or_default()
+                        .push(position);
+                    match &tile.tileid {
+                        Some(id) => index
+                            .by_tileid
+                            .entry(id.clone())
+                            .or_default()
+                            .push(position),
+                        None => index.without_tileid.push(position),
+                    }
+                }
+                None => index.without_tileid.push(position),
+            }
+        }
+        index
+    }
+
+    /// The positions [`entry_matches`] can accept under `parent_tile_id`: the
+    /// entry's tile is the parent, or under it; under the root, those under
+    /// no tile, or with no tile or tile id. Tiles under no tile also match a
+    /// parent tile in another nodegroup (`matches_tile_filter`'s fallback,
+    /// which needs the parent's nodegroup given and different), so they are
+    /// candidates only then: in the parent's own nodegroup they would make
+    /// every read test them all.
+    fn candidates(
+        &self,
+        parent_tile_id: Option<&String>,
+        nodegroup_id: Option<&String>,
+        parent_nodegroup_id: Option<&String>,
+    ) -> Vec<usize> {
+        fn list(positions: Option<&Vec<usize>>) -> &[usize] {
+            positions.map(Vec::as_slice).unwrap_or_default()
+        }
+        let under_none = list(self.by_parent.get(&None));
+        let fallback = parent_nodegroup_id.is_some_and(|p| nodegroup_id != Some(p));
+        let mut positions = match parent_tile_id {
+            Some(parent) => [
+                list(self.by_tileid.get(parent)),
+                list(self.by_parent.get(&Some(parent.clone()))),
+                if fallback { under_none } else { &[] },
+            ]
+            .concat(),
+            None => [under_none, &self.without_tileid].concat(),
+        };
+        positions.sort_unstable();
+        positions.dedup();
+        positions
+    }
+}
+
+/// Each list's [`EntryIndex`], by alias, for one tree conversion: built the
+/// first time a list is matched, shared by a [`VisitorContext`] and its
+/// children. The pseudo cache must not change while it is in use (it lives
+/// as long as the context that reads it).
+#[derive(Clone, Default)]
+pub struct ChildMatchIndex(crate::shared_mut::SharedMut<HashMap<String, Arc<EntryIndex>>>);
+
+impl std::fmt::Debug for ChildMatchIndex {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("ChildMatchIndex")
+    }
+}
+
+impl ChildMatchIndex {
+    /// Lists up to this long are matched by testing every entry.
+    const SCAN_BELOW: usize = 32;
+
+    /// `list`'s (alias `alias`) entries matching the given parent: its own
+    /// `matching_entries`, over the indexed candidates only.
+    pub fn matching<'l, L: PseudoListLike>(
+        &self,
+        alias: &str,
+        list: &'l L,
+        parent_tile_id: Option<&String>,
+        nodegroup_id: Option<&String>,
+        parent_nodegroup_id: Option<&String>,
+    ) -> Vec<&'l L::Value> {
+        // A short list is cheaper to test whole than to index.
+        if list.values().len() <= Self::SCAN_BELOW {
+            return list.matching_entries(
+                parent_tile_id.cloned(),
+                nodegroup_id.cloned(),
+                parent_nodegroup_id.cloned(),
+            );
+        }
+        let cached = self.0.read().ok().and_then(|m| m.get(alias).cloned());
+        let index = match cached {
+            Some(index) => index,
+            None => {
+                let index = Arc::new(EntryIndex::of(list.values()));
+                if let Ok(mut by_alias) = self.0.write() {
+                    by_alias.insert(alias.to_string(), Arc::clone(&index));
+                }
+                index
+            }
+        };
+        let found = list.matching_entries_at(
+            &index.candidates(parent_tile_id, nodegroup_id, parent_nodegroup_id),
+            parent_tile_id,
+            nodegroup_id,
+            parent_nodegroup_id,
+        );
+        #[cfg(debug_assertions)]
+        {
+            let scanned = list.matching_entries(
+                parent_tile_id.cloned(),
+                nodegroup_id.cloned(),
+                parent_nodegroup_id.cloned(),
+            );
+            debug_assert!(
+                found.len() == scanned.len()
+                    && found
+                        .iter()
+                        .zip(&scanned)
+                        .all(|(a, b)| std::ptr::eq(*a, *b)),
+                "child match index disagrees with a scan of {alias}"
+            );
+        }
+        found
     }
 }
 
@@ -865,10 +1076,12 @@ where
             }
         };
 
-        let matching_values = pseudo_list.matching_entries(
-            parent_tile_id.clone(),
-            child_node.nodegroup_id.clone(),
-            parent_nodegroup_id.clone(),
+        let matching_values = ctx.matches.matching(
+            child_alias,
+            pseudo_list,
+            parent_tile_id.as_ref(),
+            child_node.nodegroup_id.as_ref(),
+            parent_nodegroup_id.as_ref(),
         );
 
         if matching_values.is_empty() {

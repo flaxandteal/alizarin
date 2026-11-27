@@ -196,10 +196,40 @@ first.
 
     Two parts: the per-tile cost grows with k (the quadratic match), and it
     starts high (~24 µs a tile, against ~0.7 µs a value read through the
-    wrapper). Fix the match as step 10 did: the pseudo lists index their
-    values by parent tile, built once in `build_pseudo_cache_from_tiles`,
-    and `matching_entries` looks up rather than filters (the same rule,
-    `matches_tile_filter`, still deciding). Then profile the constant.
+    wrapper).
+
+    **Done: the match.** `VisitorContext.matches` (`ChildMatchIndex`) holds
+    each long list's entries by parent tile, own tile id, and "no tile or
+    tile id", built on first use and shared with child contexts; lists up to
+    32 entries are scanned as before. `PseudoListLike::matching_entries_at`
+    applies each list type's own rule and order to the candidates (core's,
+    and WASM's, which also sorts by sortorder), and each type's
+    `matching_entries` is now that over every position, so they can't
+    differ. Tiles under no tile are candidates only where
+    `matches_tile_filter`'s fallback can accept them (a parent in another
+    nodegroup): the first version took them always, which kept a top-level
+    multi-valued nodegroup's reads quadratic. Debug builds run the scan too
+    and assert the same entries in the same order: core's tests and the
+    benchmark at every k pass with it. Measured, two runs each:
+
+    | tiles | before | after |
+    |---|---|---|
+    | 210 | 24 µs/tile | 27–29 |
+    | 400 | 26 | 30–31 |
+    | 780 | 31 | 34–35 |
+    | 1,540 | 41 | 35–38 |
+    | 3,060 | 51 | 39–41 |
+
+    Near-flat now, but the gain is modest (15–25% from ~1,000 tiles; a few
+    hundred tiles are ~15% slower, the index's own cost, which the scan
+    threshold didn't recover): **the constant is the cost here, not the
+    match.** Profile after (k = 80): `to_json_generic`'s walk 55%, of which
+    the matching ~15%; `build_pseudo_cache_from_tiles` 28.5% (a deep copy of
+    every tile into an `Arc`, a child-id list per value, `PseudoListCore::merge`
+    per value); dropping the cache's tables 7.7%; hash-key comparisons
+    (`memcmp`) ~13% inline in the walk. Next: the cache build (share the
+    caller's tiles rather than copy them; one child-id list per node), then
+    re-profile the walk.
     Rós Madair picks both up by moving its alizarin pin (`=2.0.0-alpha.146`
     in its workspace `Cargo.toml`, before any of this); it needs no layout
     change (see its notes below).

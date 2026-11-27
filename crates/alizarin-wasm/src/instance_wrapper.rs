@@ -920,6 +920,7 @@ impl WASMResourceInstanceWrapper {
                 serialization_options: alizarin_core::SerializationOptions::display(&lang),
                 serialization_context: ser_ctx,
                 node_config_manager,
+                matches: Default::default(),
             };
 
             // Look up the root pseudo from cache (created in populate())

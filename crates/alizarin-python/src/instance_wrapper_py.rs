@@ -248,6 +248,7 @@ impl PyResourceInstanceWrapperCore {
             serialization_options: options,
             serialization_context: ser_ctx,
             node_config_manager,
+            matches: Default::default(),
         };
 
         let json = root_list.to_json(&ctx);
