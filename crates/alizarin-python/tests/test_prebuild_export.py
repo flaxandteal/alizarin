@@ -18,7 +18,7 @@ def written(out_dir: str) -> dict:
         for name in names:
             path = os.path.join(root, name)
             with open(path, encoding="utf-8") as f:
-                files[os.path.relpath(path, out_dir)] = f.read()
+                files[os.path.relpath(path, out_dir).replace(os.sep, "/")] = f.read()
     return files
 
 
