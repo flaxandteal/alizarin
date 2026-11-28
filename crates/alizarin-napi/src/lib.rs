@@ -228,6 +228,59 @@ impl NapiPrebuildExporter {
     }
 }
 
+// The exports as free functions over core, as on WASM and Python; the class
+// above stays for its callers.
+
+/// Prebuild export data, in memory (graphs only): core's
+/// `{graphFiles, referenceDataFiles, businessDataFiles}`, as WASM's
+/// `buildPrebuildExport`. `graphIds` limits it (all registered without).
+#[napi]
+pub fn build_prebuild_export(
+    base_uri: String,
+    graph_ids: Option<Vec<String>>,
+) -> Result<serde_json::Value> {
+    let data = alizarin_core::build_prebuild_export(graph_ids.as_deref(), None, &base_uri)
+        .map_err(exporter_err)?;
+    serde_json::to_value(data).map_err(|e| napi::Error::from_reason(e.to_string()))
+}
+
+/// Write the registered graphs `graphIds` to `outDir`, as Python's.
+#[napi]
+pub fn export_graphs_to_dir(graph_ids: Vec<String>, out_dir: String) -> Result<Vec<String>> {
+    alizarin_core::export_prebuild_to_directory(
+        Some(&graph_ids),
+        None,
+        "",
+        std::path::Path::new(&out_dir),
+    )
+    .map_err(exporter_err)
+}
+
+/// Write every registered graph to `outDir`, as Python's.
+#[napi]
+pub fn export_all_graphs_to_dir(out_dir: String) -> Result<Vec<String>> {
+    alizarin_core::export_prebuild_to_directory(None, None, "", std::path::Path::new(&out_dir))
+        .map_err(exporter_err)
+}
+
+/// Write a prebuild package (graphs, and the global RDM cache's collections)
+/// to `outDir`, as Python's.
+#[napi]
+pub fn export_prebuild(
+    out_dir: String,
+    base_uri: String,
+    graph_ids: Option<Vec<String>>,
+) -> Result<Vec<String>> {
+    let cache = alizarin_core::get_global_rdm_cache_arc();
+    alizarin_core::export_prebuild_to_directory(
+        graph_ids.as_deref(),
+        cache.as_deref(),
+        &base_uri,
+        std::path::Path::new(&out_dir),
+    )
+    .map_err(exporter_err)
+}
+
 // ============================================================================
 // NapiStaticGraph
 // ============================================================================

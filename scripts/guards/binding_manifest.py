@@ -138,7 +138,7 @@ REASONS = [
     ("op:nodeConfigManager.length", {"python": "ecosystem: len(manager)"}),
     ("fn:*_to_dir", {"wasm": ECO_FS, "napi": GAP_FS}),
     ("fn:streamed_merge_from_files", {"wasm": ECO_FS, "napi": GAP_FS}),
-    ("fn:export_prebuild", {"wasm": ECO_FS + " (build_prebuild_export returns it instead)", "napi": GAP_FS + " (NapiPrebuildExporter)"}),
+    ("fn:export_prebuild", {"wasm": ECO_FS + " (build_prebuild_export returns it instead)"}),
     ("fn:import_prebuild", {"wasm": ECO_FS}),
     ("fn:apply_aggregate_functions_from_file", {"wasm": ECO_FS}),
     # Static types: core classes on WASM, plain JSON on NAPI, dataclasses in Python.
@@ -151,8 +151,6 @@ REASONS = [
     ("fn:construct_static", {"wasm": "ecosystem: WASM's static classes' constructors (new StaticNode(...)) build through core"}),
     ("fn:resources_from_business_data_json",
      {"wasm": "ecosystem: a static method on WASM's resource class, StaticResource.fromBusinessDataJsonString"}),
-    ("fn:nodegroup_name", {"wasm": "ecosystem: a method on WASM's model wrapper, getNodegroupName",
-                           "napi": "ecosystem: a method on NAPI's instance wrapper, getNodegroupName"}),
     ("fn:number_display", {"wasm": "ecosystem: JavaScript's own String(n), which core's display matches",
                            "napi": "ecosystem: JavaScript's own String(n), which core's display matches"}),
     ("fn:compare_nodes", {"wasm": "ecosystem: a static method on WASM's node class, StaticNode.compare"}),
@@ -192,9 +190,9 @@ REASONS = [
     ("fn:set_descriptor_template", {"wasm": "gap: graph registry, builders and exports are bound unevenly (A-6)",
                                     "napi": "gap: graph registry, builders and exports are bound unevenly (A-6)"}),
     ("fn:validate_model_csvs", {"napi": "gap: missing on NAPI; js/csvModelLoader.ts validates through WASM even under NAPI"}),
-    ("fn:build_prebuild_export", {"napi": "gap: NAPI exposes this as NapiPrebuildExporter", "python": "gap: Python only exports to a directory (export_prebuild)"}),
-    ("class:napiPrebuildExporter", {"wasm": "gap: WASM exposes this as build_prebuild_export",
-                                    "python": "gap: Python exposes this as export_prebuild"}),
+    ("class:napiPrebuildExporter", {
+        "wasm": "ecosystem: NAPI's older class form of the export functions (build_prebuild_export, export_graphs_to_dir, ...), kept for its callers",
+        "python": "ecosystem: NAPI's older class form of the export functions (build_prebuild_export, export_graphs_to_dir, ...), kept for its callers"}),
     ("class:ontologyValidator", {"wasm": "gap: core's OntologyValidator is bound only in Python",
                                  "napi": "gap: core's OntologyValidator is bound only in Python"}),
     # Methods per class.

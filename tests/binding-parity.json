@@ -426,8 +426,8 @@
       "napi": "NapiPrebuildExporter",
       "python": null,
       "why": {
-        "wasm": "gap: WASM exposes this as build_prebuild_export",
-        "python": "gap: Python exposes this as export_prebuild"
+        "wasm": "ecosystem: NAPI's older class form of the export functions (build_prebuild_export, export_graphs_to_dir, ...), kept for its callers",
+        "python": "ecosystem: NAPI's older class form of the export functions (build_prebuild_export, export_graphs_to_dir, ...), kept for its callers"
       },
       "operations": [
         {
@@ -3164,12 +3164,8 @@
     },
     "build_prebuild_export": {
       "wasm": "buildPrebuildExport",
-      "napi": null,
-      "python": null,
-      "why": {
-        "napi": "gap: NAPI exposes this as NapiPrebuildExporter",
-        "python": "gap: Python only exports to a directory (export_prebuild)"
-      }
+      "napi": "buildPrebuildExport",
+      "python": "build_prebuild_export"
     },
     "build_resources_from_business_csv": {
       "wasm": "buildResourcesFromBusinessCsv",
@@ -3416,11 +3412,10 @@
     },
     "export_all_graphs_to_dir": {
       "wasm": null,
-      "napi": null,
+      "napi": "exportAllGraphsToDir",
       "python": "export_all_graphs_to_dir",
       "why": {
-        "wasm": "ecosystem: reads or writes the filesystem, which WASM has not",
-        "napi": "gap: Node has a filesystem; NAPI lacks this file-based form"
+        "wasm": "ecosystem: reads or writes the filesystem, which WASM has not"
       }
     },
     "export_collections_to_dir": {
@@ -3443,20 +3438,18 @@
     },
     "export_graphs_to_dir": {
       "wasm": null,
-      "napi": null,
+      "napi": "exportGraphsToDir",
       "python": "export_graphs_to_dir",
       "why": {
-        "wasm": "ecosystem: reads or writes the filesystem, which WASM has not",
-        "napi": "gap: Node has a filesystem; NAPI lacks this file-based form"
+        "wasm": "ecosystem: reads or writes the filesystem, which WASM has not"
       }
     },
     "export_prebuild": {
       "wasm": null,
-      "napi": null,
+      "napi": "exportPrebuild",
       "python": "export_prebuild",
       "why": {
-        "wasm": "ecosystem: reads or writes the filesystem, which WASM has not (build_prebuild_export returns it instead)",
-        "napi": "gap: Node has a filesystem; NAPI lacks this file-based form (NapiPrebuildExporter)"
+        "wasm": "ecosystem: reads or writes the filesystem, which WASM has not (build_prebuild_export returns it instead)"
       }
     },
     "extension_resolve_markers": {
@@ -3753,15 +3746,6 @@
       "why": {
         "napi": "ecosystem: WASM factory used by js/backend.ts; NAPI constructs NapiResourceInstanceWrapper directly",
         "python": "ecosystem: WASM factory used by js/backend.ts; Python constructs its wrapper class directly"
-      }
-    },
-    "nodegroup_name": {
-      "wasm": null,
-      "napi": null,
-      "python": "nodegroup_name",
-      "why": {
-        "wasm": "ecosystem: a method on WASM's model wrapper, getNodegroupName",
-        "napi": "ecosystem: a method on NAPI's instance wrapper, getNodegroupName"
       }
     },
     "number_display": {

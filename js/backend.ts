@@ -676,11 +676,8 @@ export function applyGraphMutations(graph: any, mutationsJson: string): any {
  * of `{relativePath, content}`.
  */
 export function buildPrebuildExport(baseUri: string, graphIds?: string[] | null): any {
-  if (_backend === 'napi') {
-    const napi = getNapiModule();
-    return new napi.NapiPrebuildExporter().buildExportData(graphIds ?? null, baseUri);
-  }
-  return getWasmModule().buildPrebuildExport(baseUri, graphIds ?? null);
+  const native = _backend === 'napi' ? getNapiModule() : getWasmModule();
+  return native.buildPrebuildExport(baseUri, graphIds ?? null);
 }
 
 /**

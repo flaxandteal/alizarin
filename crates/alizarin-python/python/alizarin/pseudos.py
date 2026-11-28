@@ -104,11 +104,11 @@ def _describe_field(model: Optional[Any], node: Optional[StaticNode], is_list: b
 
 def _describe_field_group(model: Optional[Any], node: Optional[StaticNode], is_list: bool) -> str:
     """Core's describe_field_group: the nodegroup's name by core's rule."""
-    from .alizarin import describe_field_group, nodegroup_name
+    from .alizarin import describe_field_group
 
     if node is None:
         return "[(uninitialized node)]" if is_list else "Unavailable field"
-    group = nodegroup_name(node.graph_id, node.nodegroup_id) if model is not None and node.nodegroup_id else None
+    group = model.get_nodegroup_name(node.nodegroup_id) if model is not None and node.nodegroup_id else None
     return describe_field_group(_model_name(model), node.name, group, is_list)
 
 

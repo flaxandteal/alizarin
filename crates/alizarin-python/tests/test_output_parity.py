@@ -169,6 +169,13 @@ def routes():
         }
 
     out.append(("ResourceModelWrapper lookups", "model:lookups", model_lookups))
+    out.append(
+        (
+            "build_prebuild_export",
+            "export:prebuild",
+            lambda: alizarin.build_prebuild_export("http://localhost/", [GRAPH["graphid"]]),
+        )
+    )
 
     # Built from input, as the WASM constructors and NAPI's createStatic* build them.
     for node in GRAPH["nodes"]:

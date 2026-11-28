@@ -88,6 +88,21 @@ export declare function getCurrentLanguage(): string
 /** Set the language a plain string is taken as, as on WASM and Python. */
 export declare function setCurrentLanguage(language: string): void
 /**
+ * Prebuild export data, in memory (graphs only): core's
+ * `{graphFiles, referenceDataFiles, businessDataFiles}`, as WASM's
+ * `buildPrebuildExport`. `graphIds` limits it (all registered without).
+ */
+export declare function buildPrebuildExport(baseUri: string, graphIds?: Array<string> | undefined | null): any
+/** Write the registered graphs `graphIds` to `outDir`, as Python's. */
+export declare function exportGraphsToDir(graphIds: Array<string>, outDir: string): Array<string>
+/** Write every registered graph to `outDir`, as Python's. */
+export declare function exportAllGraphsToDir(outDir: string): Array<string>
+/**
+ * Write a prebuild package (graphs, and the global RDM cache's collections)
+ * to `outDir`, as Python's.
+ */
+export declare function exportPrebuild(outDir: string, baseUri: string, graphIds?: Array<string> | undefined | null): Array<string>
+/**
  * Apply a mutation request (core's `MutationRequest` JSON) to `graph`, giving
  * a new graph: core's, as WASM's `applyMutationsFromJson` and Python's
  * `apply_mutations_from_json`.

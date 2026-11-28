@@ -49,6 +49,7 @@ set_descriptor_template = _alizarin_rust.set_descriptor_template
 PyResourceModelWrapper = _alizarin_rust.PyResourceModelWrapper
 import_prebuild = _alizarin_rust.import_prebuild
 export_prebuild = _alizarin_rust.export_prebuild
+build_prebuild_export = _alizarin_rust.build_prebuild_export
 get_registered_graph_ids = _alizarin_rust.get_registered_graph_ids
 
 
@@ -623,6 +624,7 @@ __all__ = [
     # Prebuild import/export
     "import_prebuild",
     "export_prebuild",
+    "build_prebuild_export",
     "get_registered_graph_ids",
     # Build pipeline
     "process_mutation_csvs",

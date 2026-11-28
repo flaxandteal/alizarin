@@ -550,18 +550,6 @@ fn describe_field_group(
     alizarin_core::describe_field_group(model_name, node_name, nodegroup_name, list)
 }
 
-/// The name of a registered graph's nodegroup: its grouping node's, as
-/// WASM's and NAPI's `getNodegroupName`.
-#[pyfunction]
-fn nodegroup_name(graph_id: &str, nodegroup_id: &str) -> PyResult<String> {
-    let model = alizarin_core::get_model(graph_id).ok_or_else(|| {
-        PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!("No model for graph {graph_id}"))
-    })?;
-    model
-        .nodegroup_name(nodegroup_id)
-        .map_err(PyErr::new::<pyo3::exceptions::PyKeyError, _>)
-}
-
 /// A number as JavaScript's `String(n)` shows it (`7`, not `7.0`; `1e+21`):
 /// core's, so number view models display alike on every backend.
 #[pyfunction]
@@ -2349,28 +2337,37 @@ fn batch_merge_result_to_py(
 #[pyfunction]
 #[pyo3(signature = (graph_ids, out_dir))]
 fn export_graphs_to_dir(graph_ids: Vec<String>, out_dir: String) -> PyResult<Vec<String>> {
-    let files = alizarin_core::export_graphs(&graph_ids)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
-    let export_data = alizarin_core::PrebuildExportData {
-        graph_files: files,
-        ..Default::default()
-    };
-    alizarin_core::write_to_directory(&export_data, std::path::Path::new(&out_dir))
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+    alizarin_core::export_prebuild_to_directory(
+        Some(&graph_ids),
+        None,
+        "",
+        std::path::Path::new(&out_dir),
+    )
+    .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
 }
 
 /// Export all registered graphs to a directory.
 #[pyfunction]
 #[pyo3(signature = (out_dir,))]
 fn export_all_graphs_to_dir(out_dir: String) -> PyResult<Vec<String>> {
-    let files = alizarin_core::export_all_graphs()
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
-    let export_data = alizarin_core::PrebuildExportData {
-        graph_files: files,
-        ..Default::default()
-    };
-    alizarin_core::write_to_directory(&export_data, std::path::Path::new(&out_dir))
+    alizarin_core::export_prebuild_to_directory(None, None, "", std::path::Path::new(&out_dir))
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+}
+
+/// Prebuild export data, in memory (graphs only): core's
+/// `{graphFiles, referenceDataFiles, businessDataFiles}`, as WASM's and NAPI's
+/// `buildPrebuildExport`. `graph_ids` limits it (all registered without).
+#[pyfunction]
+#[pyo3(signature = (base_uri, graph_ids=None))]
+fn build_prebuild_export(
+    py: Python,
+    base_uri: &str,
+    graph_ids: Option<Vec<String>>,
+) -> PyResult<PyObject> {
+    let data = alizarin_core::build_prebuild_export(graph_ids.as_deref(), None, base_uri)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+    pythonize::pythonize(py, &data)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
 }
 
 /// Export RDM collections from the global cache as SKOS XML files.
@@ -2493,6 +2490,7 @@ fn alizarin(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(export_all_graphs_to_dir, m)?)?;
     m.add_function(wrap_pyfunction!(export_collections_to_dir, m)?)?;
     m.add_function(wrap_pyfunction!(export_prebuild, m)?)?;
+    m.add_function(wrap_pyfunction!(build_prebuild_export, m)?)?;
     m.add_function(wrap_pyfunction!(import_prebuild, m)?)?;
 
     // List datatype registry (for datatypes where array IS the value)
@@ -2525,7 +2523,6 @@ fn alizarin(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(number_display, m)?)?;
     m.add_function(wrap_pyfunction!(describe_field, m)?)?;
     m.add_function(wrap_pyfunction!(describe_field_group, m)?)?;
-    m.add_function(wrap_pyfunction!(nodegroup_name, m)?)?;
     m.add_function(wrap_pyfunction!(resources_from_business_data_json, m)?)?;
     m.add_function(wrap_pyfunction!(summary_to_metadata, m)?)?;
     m.add_function(wrap_pyfunction!(static_resource_from_summary, m)?)?;

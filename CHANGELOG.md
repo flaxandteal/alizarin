@@ -13,6 +13,17 @@ entries is tracked in `PARITY-RESEARCH.md`.
   `get_node_object_from_alias`, `get_node_object_from_id`, `get_nodegroup_ids`,
   `get_nodegroup_name`, `get_nodegroup_objects`, `get_root_node`, and the
   `nodes`, `nodes_by_alias`, `nodegroups` and `edges` getters, each core's.
+- The prebuild exports are one set of free functions over core: NAPI gains
+  `buildPrebuildExport(baseUri, graphIds)` (as WASM's), `exportGraphsToDir`,
+  `exportAllGraphsToDir` and `exportPrebuild` (as Python's); Python gains
+  `build_prebuild_export(base_uri, graph_ids=None)`. NAPI's
+  `NapiPrebuildExporter` stays, for its callers; `js/backend.ts`'s
+  `buildPrebuildExport` now calls the same function on both backends.
+
+### Removed
+- **Breaking** (Python): the free function `nodegroup_name(graph_id,
+  nodegroup_id)`. Use the model wrapper's `get_nodegroup_name(nodegroup_id)`,
+  as on WASM and NAPI.
 
 ### Changed
 - Python's `ResourceModelWrapper` takes a node's children (and their order),
