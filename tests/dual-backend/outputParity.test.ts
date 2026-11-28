@@ -91,6 +91,7 @@ const GETTER_EXCEPTIONS: Record<string, Record<string, string>> = {
 };
 
 let graph: any;
+let model: any;
 let full: any;
 let fullByLanguage: any;
 
@@ -125,7 +126,7 @@ beforeAll(() => {
       extra_fields: {},
     }),
   );
-  new ResourceModelWrapper(wkrm, graph, undefined, true);
+  model = new ResourceModelWrapper(wkrm, graph, undefined, true);
   const registry = loadRegistry(resourceFixture);
   full = registry.getFull(RESOURCE_ID);
   (globalThis as any).__parityRegistry = registry;
@@ -313,6 +314,22 @@ function routes(): [string, string, () => any][] {
     () => (globalThis as any).__parityRegistry.populateCachesFromJson(`[${resourceText}]`, graph, true, false, false),
   ]);
   out.push(["resolvePath", "resolve_path:part", () => createInstanceWrapperForModel(graph.graphid).resolvePath("part")]);
+  out.push([
+    "ResourceModelWrapper lookups",
+    "model:lookups",
+    () => {
+      const nodes: any[] = graphFixture.nodes;
+      const ids: string[] = model.getNodegroupIds();
+      // Keyed as core's maps are (sorted); the lists keep the wrapper's order.
+      return sortKeys({
+        childNodeAliases: Object.fromEntries(nodes.map((n) => [n.nodeid, [...model.getChildNodes(n.nodeid).keys()]])),
+        nodeIdFromAlias: Object.fromEntries(nodes.map((n) => [n.alias, model.getNodeIdFromAlias(n.alias)])),
+        nodegroupIds: ids,
+        nodegroupNames: Object.fromEntries(ids.map((id) => [id, model.getNodegroupName(id)])),
+        rootNode: model.getRootNode().nodeid,
+      });
+    },
+  ]);
   out.push([
     "registry.loadFromBusinessDataBytes",
     "business_data:refs",

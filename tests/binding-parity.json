@@ -158,7 +158,7 @@
           "python": null,
           "why": {
             "wasm": "ecosystem: takes the WASM StaticResource directly, so there is no JSON round trip to avoid",
-            "python": "ecosystem: the Python ORM's resources live in Python, not the Rust registry"
+            "python": "gap: Python's getResource reads the Rust registry, copies the resource into its dataclass and loads the tiles back into core: the round trip this avoids"
           }
         },
         {
@@ -307,18 +307,12 @@
         {
           "wasm": "edges",
           "napi": "edges",
-          "python": null,
-          "why": {
-            "python": "ecosystem: Python's model wrapper reads its own StaticGraph"
-          }
+          "python": "edges"
         },
         {
           "wasm": "getChildNodeAliases",
           "napi": "getChildNodeAliases",
-          "python": null,
-          "why": {
-            "python": "ecosystem: Python's model wrapper reads its own StaticGraph"
-          }
+          "python": "get_child_node_aliases"
         },
         {
           "wasm": "getChildNodes",
@@ -333,26 +327,17 @@
         {
           "wasm": "getNodeIdFromAlias",
           "napi": "getNodeIdFromAlias",
-          "python": null,
-          "why": {
-            "python": "ecosystem: Python's model wrapper reads its own StaticGraph"
-          }
+          "python": "get_node_id_from_alias"
         },
         {
           "wasm": "getNodeObjectFromAlias",
           "napi": "getNodeObjectFromAlias",
-          "python": null,
-          "why": {
-            "python": "ecosystem: Python's model wrapper reads its own StaticGraph"
-          }
+          "python": "get_node_object_from_alias"
         },
         {
           "wasm": "getNodeObjectFromId",
           "napi": "getNodeObjectFromId",
-          "python": null,
-          "why": {
-            "python": "ecosystem: Python's model wrapper reads its own StaticGraph"
-          }
+          "python": "get_node_object_from_id"
         },
         {
           "wasm": "getNodeObjects",
@@ -367,26 +352,17 @@
         {
           "wasm": "getNodegroupIds",
           "napi": "getNodegroupIds",
-          "python": null,
-          "why": {
-            "python": "ecosystem: Python's model wrapper reads its own StaticGraph"
-          }
+          "python": "get_nodegroup_ids"
         },
         {
           "wasm": "getNodegroupName",
           "napi": "getNodegroupName",
-          "python": null,
-          "why": {
-            "python": "ecosystem: Python's model wrapper reads its own StaticGraph"
-          }
+          "python": "get_nodegroup_name"
         },
         {
           "wasm": "getNodegroupObjects",
           "napi": "getNodegroupObjects",
-          "python": null,
-          "why": {
-            "python": "ecosystem: Python's model wrapper reads its own StaticGraph"
-          }
+          "python": "get_nodegroup_objects"
         },
         {
           "wasm": "getPermittedNodegroups",
@@ -396,10 +372,7 @@
         {
           "wasm": "getRootNode",
           "napi": "getRootNode",
-          "python": null,
-          "why": {
-            "python": "ecosystem: Python's model wrapper reads its own StaticGraph"
-          }
+          "python": "get_root_node"
         },
         {
           "wasm": "graph",
@@ -414,26 +387,17 @@
         {
           "wasm": "nodegroups",
           "napi": "nodegroups",
-          "python": null,
-          "why": {
-            "python": "ecosystem: Python's model wrapper reads its own StaticGraph"
-          }
+          "python": "nodegroups"
         },
         {
           "wasm": "nodes",
           "napi": "nodes",
-          "python": null,
-          "why": {
-            "python": "ecosystem: Python's model wrapper reads its own StaticGraph"
-          }
+          "python": "nodes"
         },
         {
           "wasm": "nodesByAlias",
           "napi": "nodesByAlias",
-          "python": null,
-          "why": {
-            "python": "ecosystem: Python's model wrapper reads its own StaticGraph"
-          }
+          "python": "nodes_by_alias"
         },
         {
           "wasm": "modelId",
@@ -782,8 +746,8 @@
           "napi": null,
           "python": "matching_entries",
           "why": {
-            "wasm": "ecosystem: Python's ORM filters semantic children here; TS through getSemanticChildValue",
-            "napi": "ecosystem: Python's ORM filters semantic children here; TS through getSemanticChildValue"
+            "wasm": "gap: Python-only and unused by its ORM, which reads semantic children through core's get_semantic_child_value as TS does",
+            "napi": "gap: Python-only and unused by its ORM, which reads semantic children through core's get_semantic_child_value as TS does"
           }
         }
       ]

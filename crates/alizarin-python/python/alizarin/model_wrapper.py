@@ -227,12 +227,12 @@ class ResourceModelWrapper(Generic[RIVM]):
 
     def get_nodegroup_ids(self) -> List[str]:
         """
-        Get all nodegroup IDs.
+        Get all nodegroup IDs, in core's order (as TypeScript's).
 
         Returns:
             List of nodegroup IDs
         """
-        return list(self.get_nodegroup_objects().keys())
+        return self._rust_model.get_nodegroup_ids()
 
     def get_edges(self) -> Dict[str, List[StaticEdge]]:
         """
@@ -247,7 +247,8 @@ class ResourceModelWrapper(Generic[RIVM]):
 
     def get_child_nodes(self, parent_node_id: str) -> Dict[str, StaticNode]:
         """
-        Get all child nodes of a parent node.
+        Get all child nodes of a parent node: core's children, in core's
+        order (as TypeScript's), as this wrapper's StaticNodes.
 
         Args:
             parent_node_id: The parent node ID
@@ -255,21 +256,15 @@ class ResourceModelWrapper(Generic[RIVM]):
         Returns:
             Dictionary mapping alias to StaticNode for children
         """
-        edges = self.get_edges()
-        nodes = self.get_node_objects()
-
-        result: Dict[str, StaticNode] = {}
-        if parent_node_id in edges:
-            for edge in edges[parent_node_id]:
-                child_node = nodes.get(edge.rangenode_id)
-                if child_node and child_node.alias:
-                    result[child_node.alias] = child_node
-
-        return result
+        by_alias = self.get_node_objects_by_alias()
+        return {
+            alias: by_alias[alias]
+            for alias in self.get_child_node_aliases(parent_node_id)
+        }
 
     def get_child_node_aliases(self, parent_node_id: str) -> List[str]:
         """
-        Get aliases of all child nodes.
+        Get aliases of all child nodes, in core's order (as TypeScript's).
 
         Args:
             parent_node_id: The parent node ID
@@ -277,8 +272,7 @@ class ResourceModelWrapper(Generic[RIVM]):
         Returns:
             List of child node aliases
         """
-        child_nodes = self.get_child_nodes(parent_node_id)
-        return list(child_nodes.keys())
+        return self._rust_model.get_child_node_aliases(parent_node_id)
 
     def get_node_object_from_alias(self, alias: str) -> Optional[StaticNode]:
         """
@@ -295,28 +289,28 @@ class ResourceModelWrapper(Generic[RIVM]):
 
     def get_root_node(self) -> StaticNode:
         """
-        Get the root node of the graph.
+        Get the root node of the graph: core's, as this wrapper's StaticNode.
 
         Returns:
             The root StaticNode
         """
-        return self.graph.root
+        return self.get_node_objects()[self._rust_model.get_root_node()["nodeid"]]
 
     def get_nodegroup_name(self, nodegroup_id: str) -> str:
         """
-        Get human-readable nodegroup name.
+        Get human-readable nodegroup name: its grouping node's (core's rule,
+        as TypeScript's).
 
         Args:
             nodegroup_id: The nodegroup ID
 
         Returns:
-            Nodegroup name (from first node in group)
+            Nodegroup name
+
+        Raises:
+            KeyError: If the model has no grouping node for it
         """
-        nodes = self.get_node_objects()
-        for node in nodes.values():
-            if node.nodegroup_id == nodegroup_id:
-                return node.name or node.alias or nodegroup_id
-        return nodegroup_id
+        return self._rust_model.get_nodegroup_name(nodegroup_id)
 
     def create_pseudo_value(
         self,

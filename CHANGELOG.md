@@ -5,6 +5,28 @@ renames. Breaking changes are marked **Breaking**, with what to do instead.
 Renames get no aliases; they are listed here. The parity work behind most
 entries is tracked in `PARITY-RESEARCH.md`.
 
+## Unreleased
+
+### Added
+- Python's `PyResourceModelWrapper` has the model lookups WASM's and NAPI's
+  model wrappers have: `get_child_node_aliases`, `get_node_id_from_alias`,
+  `get_node_object_from_alias`, `get_node_object_from_id`, `get_nodegroup_ids`,
+  `get_nodegroup_name`, `get_nodegroup_objects`, `get_root_node`, and the
+  `nodes`, `nodes_by_alias`, `nodegroups` and `edges` getters, each core's.
+
+### Changed
+- Python's `ResourceModelWrapper` takes a node's children (and their order),
+  the nodegroup ids, nodegroup names and the root from core, as TypeScript's
+  does, rather than working them out over its own graph: children and
+  nodegroup ids come in core's (alias / id) order, not the graph's.
+  **Breaking** (Python): `get_nodegroup_name` gives the nodegroup's grouping
+  node's name (it gave the first node found in the nodegroup), and raises
+  `KeyError` for a nodegroup with no grouping node (it returned the id).
+- **Breaking** (Python): `PyResourceModelWrapper`'s `get_child_nodes`,
+  `get_node_objects` and `get_node_objects_by_alias` give nodes as dicts
+  (core's serialisation), not JSON strings; `get_child_nodes` is in alias
+  order.
+
 ## 2.0.0-alpha.149
 
 ### Added

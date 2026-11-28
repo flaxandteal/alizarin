@@ -151,6 +151,25 @@ def routes():
     out.append(("ResourceRegistry.populate_caches", "populate_caches", populate_caches))
     out.append(("resolve_path", "resolve_path:part", resolve_path))
 
+    def model_lookups():
+        # Through the ORM's model wrapper, which takes its rules from core.
+        from alizarin.model_wrapper import ResourceModelWrapper
+
+        model = ResourceModelWrapper.from_graph_id(GRAPH["graphid"], True)
+        native = model._rust_model
+        nodes = GRAPH["nodes"]
+        ids = model.get_nodegroup_ids()
+        assert native.get_nodegroup_ids() == ids
+        return {
+            "childNodeAliases": {n["nodeid"]: list(model.get_child_nodes(n["nodeid"])) for n in nodes},
+            "nodeIdFromAlias": {n["alias"]: native.get_node_id_from_alias(n["alias"]) for n in nodes},
+            "nodegroupIds": ids,
+            "nodegroupNames": {i: model.get_nodegroup_name(i) for i in ids},
+            "rootNode": model.get_root_node().nodeid,
+        }
+
+    out.append(("ResourceModelWrapper lookups", "model:lookups", model_lookups))
+
     # Built from input, as the WASM constructors and NAPI's createStatic* build them.
     for node in GRAPH["nodes"]:
         out.append(

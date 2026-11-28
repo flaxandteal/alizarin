@@ -18,7 +18,7 @@ mod rdm_cache_py;
 mod skos_py;
 mod type_coercion_py;
 use pyo3::types::PyCapsule;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use alizarin_core::rdm_cache::RdmCache as CoreRdmCache;
@@ -171,7 +171,9 @@ use alizarin_core::{
     GraphModelAccess,
     MergeAccumulator,
     StaticGraph as AlizarinCoreStaticGraph,
+    StaticNode,
     StaticNode as AlizarinStaticNode,
+    StaticNodegroup,
     StaticResource as AlizarinStaticResource,
     // Resource registry for relationship resolution
     StaticResourceRegistry as CoreStaticResourceRegistry,
@@ -1507,6 +1509,20 @@ impl PyResourceModelWrapper {
     fn model(&self) -> PyResult<Arc<GraphModelAccess>> {
         instance_wrapper_py::model_for(&self.graph_id)
     }
+
+    /// Core's serialisation of `value`, as a Python object.
+    fn to_py<T: serde::Serialize + ?Sized>(py: Python, value: &T) -> PyResult<PyObject> {
+        pythonize::pythonize(py, value).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to convert to Python: {e}"
+            ))
+        })
+    }
+
+    /// `what` is not in the model.
+    fn not_found(what: String) -> PyErr {
+        PyErr::new::<pyo3::exceptions::PyKeyError, _>(what)
+    }
 }
 
 #[pymethods]
@@ -1533,22 +1549,115 @@ impl PyResourceModelWrapper {
         self.graph_id.clone()
     }
 
-    /// Get child nodes for a given node ID, keyed by alias.
-    /// Returns a dict of {alias: node_json}.
+    /// A node's children, as {alias: node}, in alias order. As WASM's and
+    /// NAPI's `getChildNodes`.
     fn get_child_nodes(&self, py: Python, node_id: &str) -> PyResult<PyObject> {
         let model = self.model()?;
         let children = model.get_child_nodes(node_id);
-        let dict = pyo3::types::PyDict::new_bound(py);
-        for (alias, node) in children.iter() {
-            let node_json = serde_json::to_string(node.as_ref()).map_err(|e| {
-                PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                    "Failed to serialize node: {}",
-                    e
-                ))
-            })?;
-            dict.set_item(alias, node_json)?;
-        }
-        Ok(dict.to_object(py))
+        let by_alias: BTreeMap<&String, &StaticNode> =
+            children.iter().map(|(a, n)| (a, n.as_ref())).collect();
+        Self::to_py(py, &by_alias)
+    }
+
+    /// A node's children's aliases, in order. As WASM's and NAPI's
+    /// `getChildNodeAliases`.
+    fn get_child_node_aliases(&self, node_id: &str) -> PyResult<Vec<String>> {
+        let model = self.model()?;
+        let children = model.get_child_nodes(node_id);
+        Ok(alizarin_core::sorted_serde::sorted_keys(children.keys()))
+    }
+
+    /// The node with `alias`. As WASM's and NAPI's `getNodeObjectFromAlias`.
+    fn get_node_object_from_alias(&self, py: Python, alias: &str) -> PyResult<PyObject> {
+        let model = self.model()?;
+        let node = model
+            .get_nodes_by_alias()
+            .and_then(|nodes| nodes.get(alias))
+            .ok_or_else(|| Self::not_found(format!("Node not found in model: {alias}")))?;
+        Self::to_py(py, node.as_ref())
+    }
+
+    /// The node with id `id`. As WASM's and NAPI's `getNodeObjectFromId`.
+    fn get_node_object_from_id(&self, py: Python, id: &str) -> PyResult<PyObject> {
+        let model = self.model()?;
+        let node = alizarin_core::ModelAccess::get_nodes(&*model)
+            .and_then(|nodes| nodes.get(id))
+            .ok_or_else(|| Self::not_found(format!("Node not found in model: {id}")))?;
+        Self::to_py(py, node.as_ref())
+    }
+
+    /// The id of the node with `alias`. As WASM's and NAPI's
+    /// `getNodeIdFromAlias`.
+    fn get_node_id_from_alias(&self, alias: &str) -> PyResult<String> {
+        let model = self.model()?;
+        model
+            .get_nodes_by_alias()
+            .and_then(|nodes| nodes.get(alias))
+            .map(|node| node.nodeid.clone())
+            .ok_or_else(|| Self::not_found(format!("Node not found for alias: {alias}")))
+    }
+
+    /// The root node. As WASM's and NAPI's `getRootNode`.
+    fn get_root_node(&self, py: Python) -> PyResult<PyObject> {
+        let model = self.model()?;
+        let root = alizarin_core::ModelAccess::get_root_node(&*model)
+            .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
+        Self::to_py(py, root.as_ref())
+    }
+
+    /// The nodegroups, as {id: nodegroup}. As WASM's and NAPI's
+    /// `getNodegroupObjects`.
+    fn get_nodegroup_objects(&self, py: Python) -> PyResult<PyObject> {
+        let model = self.model()?;
+        let nodegroups: BTreeMap<&String, &StaticNodegroup> =
+            alizarin_core::ModelAccess::get_nodegroups(&*model)
+                .into_iter()
+                .flatten()
+                .map(|(id, ng)| (id, ng.as_ref()))
+                .collect();
+        Self::to_py(py, &nodegroups)
+    }
+
+    /// The nodegroup ids, in order. As WASM's and NAPI's `getNodegroupIds`.
+    fn get_nodegroup_ids(&self) -> PyResult<Vec<String>> {
+        let model = self.model()?;
+        Ok(alizarin_core::sorted_serde::sorted_keys(
+            alizarin_core::ModelAccess::get_nodegroups(&*model)
+                .into_iter()
+                .flat_map(|nodegroups| nodegroups.keys()),
+        ))
+    }
+
+    /// A nodegroup's name: its grouping node's (core's rule). As WASM's and
+    /// NAPI's `getNodegroupName`.
+    fn get_nodegroup_name(&self, nodegroup_id: &str) -> PyResult<String> {
+        self.model()?
+            .nodegroup_name(nodegroup_id)
+            .map_err(Self::not_found)
+    }
+
+    /// `get_node_objects`, as WASM's and NAPI's `nodes` getter.
+    #[getter]
+    fn nodes(&self, py: Python) -> PyResult<PyObject> {
+        self.get_node_objects(py)
+    }
+
+    /// `get_node_objects_by_alias`, as WASM's and NAPI's `nodesByAlias`.
+    #[getter]
+    fn nodes_by_alias(&self, py: Python) -> PyResult<PyObject> {
+        self.get_node_objects_by_alias(py)
+    }
+
+    /// `get_nodegroup_objects`, as WASM's and NAPI's `nodegroups` getter.
+    #[getter]
+    fn nodegroups(&self, py: Python) -> PyResult<PyObject> {
+        self.get_nodegroup_objects(py)
+    }
+
+    /// `get_edges`, as WASM's and NAPI's `edges` getter.
+    #[getter(edges)]
+    fn edges_prop(&self, py: Python) -> PyResult<PyObject> {
+        self.get_edges(py)
     }
 
     /// A pseudo node to navigate from: the root, or the node with `alias`.
@@ -1578,56 +1687,39 @@ impl PyResourceModelWrapper {
             .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)
     }
 
-    /// Get all nodes as a dict of {node_id: node_json}. As WASM's and NAPI's
-    /// `getNodeObjects`.
+    /// All nodes, as {id: node}. As WASM's and NAPI's `getNodeObjects`.
     fn get_node_objects(&self, py: Python) -> PyResult<PyObject> {
-        let dict = pyo3::types::PyDict::new_bound(py);
         let model = self.model()?;
-        if let Some(nodes) = alizarin_core::ModelAccess::get_nodes(&*model) {
-            for (id, node) in nodes {
-                let node_json = serde_json::to_string(node.as_ref()).map_err(|e| {
-                    PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                        "Failed to serialize node: {}",
-                        e
-                    ))
-                })?;
-                dict.set_item(id, node_json)?;
-            }
-        }
-        Ok(dict.to_object(py))
+        let nodes: BTreeMap<&String, &StaticNode> = alizarin_core::ModelAccess::get_nodes(&*model)
+            .into_iter()
+            .flatten()
+            .map(|(id, node)| (id, node.as_ref()))
+            .collect();
+        Self::to_py(py, &nodes)
     }
 
-    /// Get all edges as a dict of {node_id: [child_node_id, ...]}.
+    /// The edges, as {node_id: [child_node_id, ...]}. As WASM's and NAPI's
+    /// `getEdges`.
     fn get_edges(&self, py: Python) -> PyResult<PyObject> {
-        let dict = pyo3::types::PyDict::new_bound(py);
         let model = self.model()?;
-        if let Some(edges) = alizarin_core::ModelAccess::get_edges(&*model) {
-            for (id, children) in edges {
-                let py_list =
-                    pyo3::types::PyList::new_bound(py, children.iter().map(|s| s.as_str()));
-                dict.set_item(id, py_list)?;
-            }
-        }
-        Ok(dict.to_object(py))
+        let edges: BTreeMap<&String, &Vec<String>> = alizarin_core::ModelAccess::get_edges(&*model)
+            .into_iter()
+            .flatten()
+            .collect();
+        Self::to_py(py, &edges)
     }
 
-    /// Get nodes indexed by alias as a dict of {alias: node_json}. As WASM's
-    /// and NAPI's `getNodeObjectsByAlias`.
+    /// All nodes, as {alias: node}. As WASM's and NAPI's
+    /// `getNodeObjectsByAlias`.
     fn get_node_objects_by_alias(&self, py: Python) -> PyResult<PyObject> {
-        let dict = pyo3::types::PyDict::new_bound(py);
         let model = self.model()?;
-        if let Some(nodes_by_alias) = model.get_nodes_by_alias() {
-            for (alias, node) in nodes_by_alias {
-                let node_json = serde_json::to_string(node.as_ref()).map_err(|e| {
-                    PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                        "Failed to serialize node: {}",
-                        e
-                    ))
-                })?;
-                dict.set_item(alias, node_json)?;
-            }
-        }
-        Ok(dict.to_object(py))
+        let nodes: BTreeMap<&String, &StaticNode> = model
+            .get_nodes_by_alias()
+            .into_iter()
+            .flatten()
+            .map(|(alias, node)| (alias, node.as_ref()))
+            .collect();
+        Self::to_py(py, &nodes)
     }
 
     /// Set permitted nodegroups with support for both boolean and conditional rules.

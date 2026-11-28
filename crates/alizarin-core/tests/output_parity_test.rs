@@ -328,6 +328,41 @@ fn outputs() -> BTreeMap<String, String> {
         )),
     );
 
+    // The model wrapper's graph lookups: every node's children (aliases, in
+    // order), every alias's node id, the nodegroups (in order) and their names,
+    // and the root.
+    {
+        use alizarin_core::ModelAccess;
+        let model =
+            alizarin_core::GraphModelAccess::new_eager(std::sync::Arc::new(graph.clone()), true);
+        let mut children = BTreeMap::new();
+        let mut node_ids = BTreeMap::new();
+        for node in &graph.nodes {
+            let child_nodes = model.get_child_nodes(&node.nodeid);
+            children.insert(
+                node.nodeid.clone(),
+                child_nodes.keys().cloned().collect::<Vec<_>>(),
+            );
+            if let Some(alias) = &node.alias {
+                node_ids.insert(alias.clone(), node.nodeid.clone());
+            }
+        }
+        let nodegroup_ids =
+            alizarin_core::sorted_serde::sorted_keys(model.get_nodegroups().unwrap().keys());
+        let nodegroup_names: BTreeMap<_, _> = nodegroup_ids
+            .iter()
+            .map(|id| (id.clone(), model.nodegroup_name(id).unwrap()))
+            .collect();
+        let lookups = serde_json::json!({
+            "childNodeAliases": children,
+            "nodeIdFromAlias": node_ids,
+            "nodegroupIds": nodegroup_ids,
+            "nodegroupNames": nodegroup_names,
+            "rootNode": model.get_root_node().unwrap().nodeid,
+        });
+        put("model:lookups".into(), canonical(&lookups));
+    }
+
     // Resources built from input, as the bindings' constructors build them.
     put(
         "resource:constructed".into(),
